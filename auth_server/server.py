@@ -61,6 +61,124 @@ def load_scopes_config():
 # Global scopes configuration
 SCOPES_CONFIG = load_scopes_config()
 
+def save_scopes_config(scopes_config: Dict[str, Any]) -> bool:
+    """
+    Save the scopes configuration to scopes.yml
+    
+    Args:
+        scopes_config: The scopes configuration to save
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        scopes_file = Path(__file__).parent / "scopes.yml"
+        with open(scopes_file, 'w') as f:
+            yaml.dump(scopes_config, f, default_flow_style=False, sort_keys=False)
+        
+        # Reload global configuration
+        global SCOPES_CONFIG
+        SCOPES_CONFIG = scopes_config
+        
+        logger.info("Successfully saved scopes configuration")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to save scopes configuration: {e}")
+        return False
+
+def reload_scopes_config():
+    """Reload the scopes configuration from file"""
+    global SCOPES_CONFIG
+    SCOPES_CONFIG = load_scopes_config()
+    logger.info("Reloaded scopes configuration")
+
+def get_available_scope_names() -> List[str]:
+    """Get list of available scope names for server access"""
+    scope_names = []
+    for key in SCOPES_CONFIG.keys():
+        if key not in ['UI-Scopes', 'group_mappings'] and isinstance(SCOPES_CONFIG[key], list):
+            scope_names.append(key)
+    return scope_names
+
+def add_server_to_scopes(server_name: str, server_tools: List[str], selected_scopes: List[str]) -> bool:
+    """
+    Add a server to specified scopes with its tools
+    
+    Args:
+        server_name: Name of the server to add
+        server_tools: List of tools/methods the server provides
+        selected_scopes: List of scopes to add the server to
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Create server config
+        server_config = {
+            "server": server_name,
+            "methods": [
+                "initialize",
+                "notifications/initialized", 
+                "ping",
+                "tools/list",
+                "tools/call"
+            ],
+            "tools": server_tools
+        }
+        
+        # Add to selected scopes
+        updated_config = SCOPES_CONFIG.copy()
+        
+        for scope_name in selected_scopes:
+            if scope_name not in updated_config:
+                updated_config[scope_name] = []
+            
+            # Check if server already exists in this scope
+            server_exists = False
+            for i, existing_server in enumerate(updated_config[scope_name]):
+                if existing_server.get("server") == server_name:
+                    # Update existing server
+                    updated_config[scope_name][i] = server_config
+                    server_exists = True
+                    break
+            
+            if not server_exists:
+                updated_config[scope_name].append(server_config)
+        
+        return save_scopes_config(updated_config)
+        
+    except Exception as e:
+        logger.error(f"Failed to add server {server_name} to scopes: {e}")
+        return False
+
+def update_server_tools_in_scopes(server_name: str, new_tools: List[str]) -> bool:
+    """
+    Update the tools list for a server across all scopes
+    
+    Args:
+        server_name: Name of the server to update
+        new_tools: New list of tools for the server
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        updated_config = SCOPES_CONFIG.copy()
+        
+        # Update server in all scopes where it exists
+        for scope_name, scope_config in updated_config.items():
+            if isinstance(scope_config, list):
+                for server_config in scope_config:
+                    if server_config.get("server") == server_name:
+                        server_config["tools"] = new_tools
+        
+        return save_scopes_config(updated_config)
+        
+    except Exception as e:
+        logger.error(f"Failed to update server {server_name} tools in scopes: {e}")
+        return False
+
 def map_cognito_groups_to_scopes(groups: List[str]) -> List[str]:
     """
     Map Cognito groups to MCP scopes using the group_mappings from scopes.yml configuration.
@@ -368,6 +486,23 @@ class GenerateTokenResponse(BaseModel):
     scope: str
     issued_at: int
     description: Optional[str] = None
+
+class AddServerToScopesRequest(BaseModel):
+    """Request model for adding a server to scopes"""
+    server_name: str
+    server_tools: List[str]
+    selected_scopes: List[str]
+
+class UpdateServerToolsRequest(BaseModel):
+    """Request model for updating server tools in scopes"""
+    server_name: str
+    server_tools: List[str]
+
+class ScopesResponse(BaseModel):
+    """Response model for scopes operations"""
+    success: bool
+    message: str
+    available_scopes: Optional[List[str]] = None
 
 class SimplifiedCognitoValidator:
     """
@@ -1102,6 +1237,144 @@ async def generate_user_token(
             status_code=500,
             detail="Internal error generating token",
             headers={"Connection": "close"}
+        )
+
+@app.get("/internal/scopes", response_model=ScopesResponse)
+async def get_available_scopes():
+    """
+    Get list of available scope names for server access.
+    
+    This is an internal API endpoint meant to be called by the registry service
+    to get the list of available scopes when registering servers.
+    
+    Returns:
+        List of available scope names
+    """
+    try:
+        scope_names = get_available_scope_names()
+        
+        return ScopesResponse(
+            success=True,
+            message=f"Found {len(scope_names)} available scopes",
+            available_scopes=scope_names
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting available scopes: {e}")
+        return ScopesResponse(
+            success=False,
+            message=f"Failed to get available scopes: {str(e)}"
+        )
+
+@app.post("/internal/scopes/add-server", response_model=ScopesResponse)
+async def add_server_to_scopes_endpoint(request: AddServerToScopesRequest):
+    """
+    Add a server to specified scopes with its tools.
+    
+    This is an internal API endpoint meant to be called by the registry service
+    when a server is registered. The server will be added to the selected scopes
+    with its list of tools.
+    
+    Args:
+        request: Request containing server name, tools, and selected scopes
+        
+    Returns:
+        Success/failure response
+    """
+    try:
+        logger.info(f"Adding server '{request.server_name}' to scopes: {request.selected_scopes}")
+        logger.info(f"Server tools: {request.server_tools}")
+        
+        success = add_server_to_scopes(
+            server_name=request.server_name,
+            server_tools=request.server_tools,
+            selected_scopes=request.selected_scopes
+        )
+        
+        if success:
+            return ScopesResponse(
+                success=True,
+                message=f"Successfully added server '{request.server_name}' to {len(request.selected_scopes)} scopes"
+            )
+        else:
+            return ScopesResponse(
+                success=False,
+                message=f"Failed to add server '{request.server_name}' to scopes"
+            )
+            
+    except Exception as e:
+        logger.error(f"Error adding server to scopes: {e}")
+        return ScopesResponse(
+            success=False,
+            message=f"Failed to add server to scopes: {str(e)}"
+        )
+
+@app.post("/internal/scopes/update-server-tools", response_model=ScopesResponse)
+async def update_server_tools_endpoint(request: UpdateServerToolsRequest):
+    """
+    Update the tools list for a server across all scopes.
+    
+    This is an internal API endpoint meant to be called by the registry service
+    when a server's tools are updated. This will update the server's tools
+    in all scopes where the server exists.
+    
+    Args:
+        request: Request containing server name and new tools list
+        
+    Returns:
+        Success/failure response
+    """
+    try:
+        logger.info(f"Updating tools for server '{request.server_name}'")
+        logger.info(f"New tools: {request.server_tools}")
+        
+        success = update_server_tools_in_scopes(
+            server_name=request.server_name,
+            new_tools=request.server_tools
+        )
+        
+        if success:
+            return ScopesResponse(
+                success=True,
+                message=f"Successfully updated tools for server '{request.server_name}'"
+            )
+        else:
+            return ScopesResponse(
+                success=False,
+                message=f"Failed to update tools for server '{request.server_name}'"
+            )
+            
+    except Exception as e:
+        logger.error(f"Error updating server tools: {e}")
+        return ScopesResponse(
+            success=False,
+            message=f"Failed to update server tools: {str(e)}"
+        )
+
+@app.post("/internal/scopes/reload")
+async def reload_scopes_endpoint():
+    """
+    Reload the scopes configuration from file.
+    
+    This is an internal API endpoint that can be used to reload
+    the scopes configuration after external changes.
+    
+    Returns:
+        Success/failure response
+    """
+    try:
+        reload_scopes_config()
+        
+        return ScopesResponse(
+            success=True,
+            message="Successfully reloaded scopes configuration"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error reloading scopes configuration: {e}")
+        return ScopesResponse(
+            success=False,
+            message=f"Failed to reload scopes configuration: {str(e)}"
         )
 
 def parse_arguments():

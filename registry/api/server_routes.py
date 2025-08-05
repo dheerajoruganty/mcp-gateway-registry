@@ -279,6 +279,7 @@ async def register_service(
     from ..search.service import faiss_service
     from ..health.service import health_service
     from ..core.nginx_service import nginx_service
+    from ..core.mcp_client import mcp_client_service
     from ..auth.dependencies import user_has_ui_permission_for_service
     
     # Check if user has register_service permission for any service
@@ -325,6 +326,87 @@ async def register_service(
             content={"error": f"Service with path '{path}' already exists or failed to save"},
         )
 
+    # Try to fetch server tools to get a more complete picture
+    server_tools = []
+    try:
+        if proxy_pass_url:
+            logger.info(f"Attempting to fetch tools for newly registered server {name}")
+            tool_list = await mcp_client_service.get_tools_from_server_with_server_info(proxy_pass_url, server_entry)
+            if tool_list and isinstance(tool_list, list):
+                server_tools = [tool.get('name', '') for tool in tool_list if isinstance(tool, dict) and 'name' in tool]
+                # Update server entry with discovered tools
+                server_entry["tool_list"] = tool_list
+                server_entry["num_tools"] = len(tool_list)
+                # Save updated server info with tools
+                server_service.update_server(path, server_entry)
+                logger.info(f"Discovered {len(server_tools)} tools for {name}: {server_tools}")
+            else:
+                logger.info(f"Could not fetch tools for {name} - server may be offline or not responding")
+    except Exception as e:
+        logger.warning(f"Failed to fetch tools for newly registered server {name}: {e}")
+        # Continue with registration even if tool discovery fails
+
+    # Add server to auth server scopes
+    try:
+        logger.info(f"Adding server '{name}' to auth server scopes...")
+        
+        # Get available scopes from auth server first
+        async with httpx.AsyncClient() as client:
+            auth_server_url = settings.auth_server_url
+            
+            # Get available scopes
+            scopes_response = await client.get(f"{auth_server_url}/internal/scopes", timeout=10.0)
+            if scopes_response.status_code == 200:
+                scopes_data = scopes_response.json()
+                available_scopes = scopes_data.get('available_scopes', [])
+                logger.info(f"Available scopes from auth server: {available_scopes}")
+                
+                # For now, since only admins can register servers, add to admin-level scopes by default
+                # Later this can be enhanced to allow user selection during registration
+                default_scopes = []
+                for scope in available_scopes:
+                    # Add to unrestricted scopes (admin access) by default
+                    if 'unrestricted' in scope:
+                        default_scopes.append(scope)
+                
+                # If no unrestricted scopes found, fall back to all available scopes
+                if not default_scopes:
+                    default_scopes = available_scopes
+                
+                logger.info(f"Adding server '{name}' to default scopes: {default_scopes}")
+                
+                # Add server to selected scopes
+                if default_scopes:
+                    scope_request = {
+                        "server_name": name,
+                        "server_tools": server_tools,
+                        "selected_scopes": default_scopes
+                    }
+                    
+                    add_response = await client.post(
+                        f"{auth_server_url}/internal/scopes/add-server",
+                        json=scope_request,
+                        timeout=10.0
+                    )
+                    
+                    if add_response.status_code == 200:
+                        scope_result = add_response.json()
+                        if scope_result.get('success'):
+                            logger.info(f"Successfully added server '{name}' to auth server scopes: {scope_result.get('message')}")
+                        else:
+                            logger.warning(f"Auth server reported failure adding server to scopes: {scope_result.get('message')}")
+                    else:
+                        logger.error(f"Failed to add server to auth scopes. Status: {add_response.status_code}, Response: {add_response.text}")
+                else:
+                    logger.warning("No suitable scopes found to add server to")
+            else:
+                logger.error(f"Failed to get available scopes from auth server. Status: {scopes_response.status_code}")
+                
+    except Exception as e:
+        logger.error(f"Failed to add server '{name}' to auth server scopes: {e}")
+        # Continue with registration even if scope management fails
+        # The server will still be registered but may not be accessible until manually added to scopes
+
     # Add to FAISS index (disabled by default)
     await faiss_service.add_or_update_service(path, server_entry, False)
     
@@ -345,6 +427,8 @@ async def register_service(
         content={
             "message": "Service registered successfully",
             "service": server_entry,
+            "tools_discovered": len(server_tools),
+            "tools": server_tools[:10] if server_tools else [],  # Show first 10 tools in response
         },
     )
 
@@ -838,5 +922,3 @@ async def generate_user_token(
             status_code=500,
             detail="Internal error generating token"
         )
-
- 

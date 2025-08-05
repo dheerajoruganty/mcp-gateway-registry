@@ -52,7 +52,7 @@ from typing import Dict, List, Any, Optional
 from urllib.parse import urlparse, urljoin
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
-from langchain_anthropic import ChatAnthropic
+from langchain_aws import ChatBedrock
 from langchain_core.tools import tool
 import mcp
 from mcp import ClientSession
@@ -299,8 +299,21 @@ def parse_arguments() -> argparse.Namespace:
     if args.verbose:
         enable_verbose_logging()
     
+    # Check if connecting to official Atlassian MCP server
+    is_atlassian_official = 'mcp.atlassian.com' in args.mcp_registry_url
+    
     # Validate authentication parameters based on method
-    if args.use_session_cookie:
+    if is_atlassian_official:
+        # For official Atlassian MCP server, no Cognito auth required - OAuth happens during connection
+        logger.info("🏢 Connecting to official Atlassian MCP server - skipping Cognito authentication validation")
+        # Set defaults for AWS Bedrock
+        if not args.region:
+            args.region = 'us-east-1'  # Default region for Bedrock
+        if not args.user_pool_id:
+            args.user_pool_id = 'atlassian-oauth'  # Placeholder
+        if not args.client_id:
+            args.client_id = 'atlassian-oauth'  # Placeholder
+    elif args.use_session_cookie:
         # For session cookie auth, we just need the cookie file
         cookie_path = os.path.expanduser(args.session_cookie_file)
         if not os.path.exists(cookie_path):
@@ -688,12 +701,25 @@ async def main():
         auth_display = 'M2M Token'
     logger.info(f"Authentication method: {auth_display}")
     
+    # Check if connecting to official Atlassian MCP server
+    is_atlassian_official = 'mcp.atlassian.com' in server_url
+    
     # Initialize authentication variables
     access_token = None
     session_cookie = None
     auth_method = "session_cookie" if args.use_session_cookie else "m2m"
     
-    if args.jwt_token:
+    if is_atlassian_official:
+        # For official Atlassian MCP server, no token generation needed - OAuth handled by MCP client
+        logger.info("🏢 Skipping token generation for official Atlassian MCP server - OAuth will be handled during connection")
+        
+        # Set minimal auth variables for invoke_mcp_tool
+        agent_settings.auth_token = None
+        agent_settings.user_pool_id = args.user_pool_id
+        agent_settings.client_id = args.client_id
+        agent_settings.region = args.region
+        agent_settings.session_cookie = None
+    elif args.jwt_token:
         # Use pre-generated JWT token
         access_token = args.jwt_token
         logger.info("Using pre-generated JWT token")
@@ -751,23 +777,25 @@ async def main():
             logger.error(f"Failed to generate authentication token: {e}")
             return
     
-    # Get Anthropic API key from environment variables
-    anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
-    if not anthropic_api_key:
-        logger.error("ANTHROPIC_API_KEY not found in environment variables")
-        return
-    
-    # Initialize the model with Anthropic
-    model = ChatAnthropic(
-        model=args.model,
-        api_key=anthropic_api_key,
-        temperature=0,
-        max_tokens=8192,
+    # Initialize the model with Bedrock
+    model = ChatBedrock(
+        model_id=args.model,
+        region_name=args.region,
+        model_kwargs={"temperature": 0, "max_tokens": 8192},
     )
     
     try:
         # Prepare headers for MCP client authentication based on method
-        if args.use_session_cookie:
+        # Check if connecting to official Atlassian MCP server
+        is_atlassian_official = 'mcp.atlassian.com' in server_url
+        
+        if is_atlassian_official:
+            # For official Atlassian MCP server, OAuth 2.0 will be handled by the MCP client
+            # The server expects no additional authentication headers - OAuth happens during connection
+            auth_headers = {}
+            logger.info("🏢 Connecting to official Atlassian MCP server - OAuth 2.0 will be handled during connection")
+            logger.info("📝 You will be prompted to authenticate via your browser during the MCP connection process")
+        elif args.use_session_cookie:
             auth_headers = {
                 'Cookie': f'mcp_gateway_session={session_cookie}',
                 'X-User-Pool-Id': args.user_pool_id or '',

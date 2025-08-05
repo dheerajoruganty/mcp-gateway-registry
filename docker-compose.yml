@@ -120,4 +120,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  ssl_data: 
+  ssl_data:
