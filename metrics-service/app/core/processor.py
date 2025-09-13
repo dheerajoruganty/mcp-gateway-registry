@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 from ..core.models import MetricRequest, Metric, MetricType
 from ..storage.database import MetricsStorage
+from ..core.validator import validator
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +42,20 @@ class MetricsProcessor:
         """Process incoming metrics request."""
         result = ProcessingResult()
         
+        # Validate the entire request first
+        validation_result = validator.validate_metric_request(request)
+        if not validation_result.is_valid:
+            result.rejected = len(request.metrics)
+            result.errors.extend(validation_result.get_error_messages())
+            return result
+        
+        # Log any validation warnings
+        for warning in validation_result.warnings:
+            logger.warning(f"Metrics validation warning: {warning}")
+        
         for metric in request.metrics:
             try:
-                # Validate metric
+                # Additional runtime validation
                 if not self._validate_metric(metric):
                     result.rejected += 1
                     result.errors.append(f"Invalid metric: {metric.type}")
