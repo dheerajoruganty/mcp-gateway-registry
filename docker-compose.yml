@@ -134,5 +134,43 @@ services:
     command: --transport streamable-http --port 8005
     restart: unless-stopped
 
+  # SQLite container for metrics database
+  metrics-db:
+    image: nouchka/sqlite3:latest
+    volumes:
+      - metrics-db-data:/var/lib/sqlite
+    command: sqlite3 /var/lib/sqlite/metrics.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sqlite3", "/var/lib/sqlite/metrics.db", ".tables"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Metrics Collection Service
+  metrics-service:
+    build: ./metrics-service
+    ports:
+      - "8890:8890"
+      - "9465:9465"  # Prometheus metrics
+    environment:
+      - SQLITE_DB_PATH=/var/lib/sqlite/metrics.db
+      - OTEL_PROMETHEUS_ENABLED=true
+      - OTEL_PROMETHEUS_PORT=9465
+      - DATABASE_URL=sqlite:///var/lib/sqlite/metrics.db
+      - METRICS_SERVICE_PORT=8890
+      - METRICS_SERVICE_HOST=0.0.0.0
+    volumes:
+      - metrics-db-data:/var/lib/sqlite
+    depends_on:
+      - metrics-db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8890/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
 volumes:
-  ssl_data: 
+  ssl_data:
+  metrics-db-data: 
