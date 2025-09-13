@@ -104,7 +104,9 @@ Response:
 
 ## Endpoints
 
-### POST /metrics
+### Core Endpoints
+
+#### POST /metrics
 
 Submit metrics data for collection and processing.
 
@@ -265,10 +267,144 @@ GET /
     "metrics": "/metrics",
     "health": "/health",
     "flush": "/flush",
-    "rate-limit": "/rate-limit"
+    "rate-limit": "/rate-limit",
+    "admin": {
+      "retention": "/admin/retention/*",
+      "database": "/admin/database/*"
+    }
   }
 }
 ```
+
+### Administrative Endpoints
+
+All administrative endpoints require API key authentication and are designed for operational management of the metrics service.
+
+#### GET /admin/retention/preview
+
+Preview data cleanup operations without executing them.
+
+**Parameters:**
+- `table_name` (optional): Specific table to preview
+
+**Response:**
+```json
+{
+  "metrics": {
+    "retention_days": 90,
+    "records_to_delete": 1250,
+    "total_records": 5000,
+    "oldest_record_to_delete": "2024-01-01T00:00:00Z",
+    "newest_record_to_delete": "2024-03-15T23:59:59Z",
+    "cutoff_date": "2024-06-15T00:00:00Z",
+    "percentage_to_delete": 25.0
+  }
+}
+```
+
+#### POST /admin/retention/cleanup
+
+Execute data cleanup operations with optional dry-run mode.
+
+**Request:**
+```json
+{
+  "table_name": "metrics",  // Optional: specific table
+  "dry_run": true          // Optional: default true
+}
+```
+
+**Response:**
+```json
+{
+  "table": "metrics",
+  "status": "completed",
+  "records_deleted": 1250,
+  "duration_seconds": 2.34,
+  "retention_days": 90
+}
+```
+
+#### GET /admin/retention/policies
+
+View current retention policies for all tables.
+
+**Response:**
+```json
+{
+  "metrics": {
+    "table_name": "metrics",
+    "retention_days": 90,
+    "is_active": true,
+    "timestamp_column": "created_at"
+  }
+}
+```
+
+#### PUT /admin/retention/policies/{table_name}
+
+Update retention policy for a specific table.
+
+**Request:**
+```json
+{
+  "retention_days": 120,
+  "is_active": true
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Updated retention policy for metrics",
+  "table_name": "metrics",
+  "retention_days": 120,
+  "is_active": true
+}
+```
+
+#### GET /admin/database/stats
+
+Get comprehensive database table statistics.
+
+**Response:**
+```json
+{
+  "metrics": {
+    "record_count": 50000,
+    "oldest_record": "2024-01-01T00:00:00Z",
+    "newest_record": "2024-06-15T23:59:59Z",
+    "has_retention_policy": true,
+    "retention_days": 90,
+    "policy_active": true
+  }
+}
+```
+
+#### GET /admin/database/size
+
+Get detailed database size and efficiency metrics.
+
+**Response:**
+```json
+{
+  "main_db_bytes": 104857600,
+  "main_db_mb": 100.0,
+  "wal_bytes": 1048576,
+  "wal_mb": 1.0,
+  "total_bytes": 105938944,
+  "total_mb": 101.03,
+  "total_gb": 0.099,
+  "page_count": 25600,
+  "page_size": 4096,
+  "free_pages": 128,
+  "used_pages": 25472,
+  "database_efficiency": 99.5
+}
+```
+
+**📖 For detailed retention management documentation, see [data-retention.md](data-retention.md)**
 
 ## Data Models
 

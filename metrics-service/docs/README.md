@@ -9,6 +9,7 @@ The MCP Metrics Collection Service is a centralized, high-performance metrics co
 - [Quick Start](#quick-start)
 - [API Reference](#api-reference)
 - [Database Schema](#database-schema)
+- [Data Retention](#data-retention)
 - [Configuration](#configuration)
 - [Development](#development)
 - [Deployment](#deployment)
@@ -370,13 +371,55 @@ Current migrations:
 - **0003**: Retention policies management
 - **0004**: Enhanced API key usage tracking
 
-### Data Retention
+## Data Retention
 
-Default retention policies:
-- Raw metrics: 90 days
-- Hourly aggregates: 365 days (1 year)
-- Daily aggregates: 1095 days (3 years)
-- API key usage logs: 90 days
+The service includes a comprehensive data retention system that automatically manages the lifecycle of metrics data to prevent unbounded database growth while maintaining optimal performance.
+
+### Key Features
+
+- **Automated Cleanup**: Daily background tasks remove old data based on configurable retention policies
+- **Configurable Policies**: Different retention periods for raw metrics vs. aggregated data
+- **Safe Operations**: Dry-run capabilities and atomic transactions prevent data loss
+- **Administrative APIs**: Full control over retention policies and cleanup operations
+- **Space Reclamation**: Automatic VACUUM operations after cleanup to reclaim disk space
+
+### Default Retention Policies
+
+```
+Raw metrics: 90 days
+├── metrics (auth requests, tool executions, etc.)
+├── auth_metrics (authentication events)
+├── discovery_metrics (tool discovery operations)
+└── tool_metrics (individual tool usage)
+
+Aggregated metrics: 1-3 years  
+├── metrics_hourly (365 days)
+└── metrics_daily (1095 days)
+
+System data: 90 days
+└── api_key_usage_log (API usage tracking)
+```
+
+### Quick Operations
+
+```bash
+# Preview what would be cleaned up
+curl -H "X-API-Key: your-key" http://localhost:8890/admin/retention/preview
+
+# Execute cleanup (dry-run by default)
+curl -X POST -H "X-API-Key: your-key" http://localhost:8890/admin/retention/cleanup
+
+# View current policies
+curl -H "X-API-Key: your-key" http://localhost:8890/admin/retention/policies
+
+# Update retention period for a table
+curl -X PUT -H "X-API-Key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"retention_days": 120, "is_active": true}' \
+  http://localhost:8890/admin/retention/policies/metrics
+```
+
+**📖 For comprehensive documentation on data retention, see [data-retention.md](data-retention.md)**
 
 ## Configuration
 
