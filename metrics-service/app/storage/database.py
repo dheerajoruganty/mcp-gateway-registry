@@ -33,120 +33,24 @@ async def wait_for_database(max_retries: int = 10, delay: float = 2.0):
 
 
 async def init_database():
-    """Initialize database tables and indexes."""
+    """Initialize database using migrations."""
     db_path = settings.SQLITE_DB_PATH
     
     # Ensure directory exists
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     
-    async with aiosqlite.connect(db_path) as db:
-        # Enable WAL mode for better concurrency in container
-        await db.execute("PRAGMA journal_mode=WAL")
-        await db.execute("PRAGMA synchronous=NORMAL")
-        await db.execute("PRAGMA cache_size=10000")
-        await db.execute("PRAGMA temp_store=MEMORY")
-        
-        # Create tables
-        await db.executescript("""
-            -- API Keys table
-            CREATE TABLE IF NOT EXISTS api_keys (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                key_hash TEXT UNIQUE NOT NULL,
-                service_name TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                last_used_at TEXT,
-                is_active BOOLEAN DEFAULT 1,
-                rate_limit INTEGER DEFAULT 1000
-            );
-
-            -- Main metrics table
-            CREATE TABLE IF NOT EXISTS metrics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id TEXT NOT NULL,
-                service TEXT NOT NULL,
-                service_version TEXT,
-                instance_id TEXT,
-                metric_type TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                value REAL NOT NULL,
-                duration_ms REAL,
-                dimensions TEXT,  -- JSON
-                metadata TEXT,    -- JSON
-                created_at TEXT DEFAULT (datetime('now'))
-            );
-
-            -- Auth metrics table
-            CREATE TABLE IF NOT EXISTS auth_metrics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                service TEXT NOT NULL,
-                duration_ms REAL,
-                success BOOLEAN,
-                method TEXT,
-                server TEXT,
-                user_hash TEXT,
-                error_code TEXT,
-                created_at TEXT DEFAULT (datetime('now'))
-            );
-
-            -- Discovery metrics table
-            CREATE TABLE IF NOT EXISTS discovery_metrics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                service TEXT NOT NULL,
-                duration_ms REAL,
-                query TEXT,
-                results_count INTEGER,
-                top_k_services INTEGER,
-                top_n_tools INTEGER,
-                embedding_time_ms REAL,
-                faiss_search_time_ms REAL,
-                created_at TEXT DEFAULT (datetime('now'))
-            );
-
-            -- Tool metrics table
-            CREATE TABLE IF NOT EXISTS tool_metrics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                service TEXT NOT NULL,
-                duration_ms REAL,
-                tool_name TEXT,
-                server_path TEXT,
-                server_name TEXT,
-                success BOOLEAN,
-                error_code TEXT,
-                input_size_bytes INTEGER,
-                output_size_bytes INTEGER,
-                created_at TEXT DEFAULT (datetime('now'))
-            );
-        """)
-        
-        # Create indexes for performance
-        await db.executescript("""
-            CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics(timestamp);
-            CREATE INDEX IF NOT EXISTS idx_metrics_service_type ON metrics(service, metric_type);
-            CREATE INDEX IF NOT EXISTS idx_metrics_type_timestamp ON metrics(metric_type, timestamp);
-            
-            CREATE INDEX IF NOT EXISTS idx_auth_timestamp ON auth_metrics(timestamp);
-            CREATE INDEX IF NOT EXISTS idx_auth_success ON auth_metrics(success, timestamp);
-            CREATE INDEX IF NOT EXISTS idx_auth_user ON auth_metrics(user_hash, timestamp);
-            
-            CREATE INDEX IF NOT EXISTS idx_discovery_timestamp ON discovery_metrics(timestamp);
-            CREATE INDEX IF NOT EXISTS idx_discovery_results ON discovery_metrics(results_count, timestamp);
-            
-            CREATE INDEX IF NOT EXISTS idx_tool_timestamp ON tool_metrics(timestamp);
-            CREATE INDEX IF NOT EXISTS idx_tool_name ON tool_metrics(tool_name, timestamp);
-            CREATE INDEX IF NOT EXISTS idx_tool_success ON tool_metrics(success, timestamp);
-            
-            CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
-            CREATE INDEX IF NOT EXISTS idx_api_keys_service ON api_keys(service_name);
-        """)
-        
-        await db.commit()
-        logger.info("Database tables and indexes created successfully")
+    # Import here to avoid circular imports
+    from .migrations import migration_manager
+    
+    # Apply all pending migrations
+    logger.info("Applying database migrations...")
+    success = await migration_manager.migrate_up()
+    
+    if success:
+        logger.info("Database migrations completed successfully")
+    else:
+        raise Exception("Database migration failed")
+    
 
 
 class MetricsStorage:
