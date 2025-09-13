@@ -6,6 +6,7 @@ from .config import settings
 from .api.routes import router as api_router
 from .storage.database import init_database, wait_for_database
 from .core.rate_limiter import rate_limiter
+from .core.retention import retention_manager
 
 # Configure logging
 logging.basicConfig(
@@ -29,6 +30,13 @@ async def lifespan(app: FastAPI):
     await init_database()
     logger.info("Database initialized")
     
+    # Load retention policies from database
+    try:
+        await retention_manager.load_policies_from_database()
+        logger.info("Retention policies loaded")
+    except Exception as e:
+        logger.warning(f"Failed to load retention policies: {e}, using defaults")
+    
     # Setup OpenTelemetry (optional, continue if it fails)
     try:
         from .otel.exporters import setup_otel
@@ -37,16 +45,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"OpenTelemetry setup skipped: {e}")
     
-    # Start rate limiter cleanup task
+    # Start background tasks
     cleanup_task = asyncio.create_task(rate_limit_cleanup_task())
-    logger.info("Rate limiter cleanup task started")
+    retention_task = asyncio.create_task(retention_cleanup_task())
+    logger.info("Background tasks started")
     
     yield
     
-    # Cancel cleanup task
+    # Cancel background tasks
     cleanup_task.cancel()
+    retention_task.cancel()
     try:
         await cleanup_task
+        await retention_task
     except asyncio.CancelledError:
         pass
     
@@ -64,6 +75,29 @@ async def rate_limit_cleanup_task():
         except Exception as e:
             logger.error(f"Error in rate limit cleanup task: {e}")
             await asyncio.sleep(60)  # Wait a minute before retry
+
+
+async def retention_cleanup_task():
+    """Background task to run data retention cleanup."""
+    while True:
+        try:
+            await asyncio.sleep(86400)  # Run once per day (24 hours)
+            logger.info("Starting scheduled data retention cleanup...")
+            result = await retention_manager.cleanup_all_tables(dry_run=False)
+            
+            total_deleted = result.get('total_records_processed', 0)
+            duration = result.get('duration_seconds', 0)
+            
+            if total_deleted > 0:
+                logger.info(f"Retention cleanup completed: {total_deleted} records deleted in {duration:.2f}s")
+            else:
+                logger.info("Retention cleanup completed: no records to delete")
+                
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in retention cleanup task: {e}")
+            await asyncio.sleep(3600)  # Wait an hour before retry
 
 
 app = FastAPI(
