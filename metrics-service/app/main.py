@@ -5,6 +5,7 @@ import asyncio
 from .config import settings
 from .api.routes import router as api_router
 from .storage.database import init_database, wait_for_database
+from .core.rate_limiter import rate_limiter
 
 # Configure logging
 logging.basicConfig(
@@ -36,9 +37,33 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"OpenTelemetry setup skipped: {e}")
     
+    # Start rate limiter cleanup task
+    cleanup_task = asyncio.create_task(rate_limit_cleanup_task())
+    logger.info("Rate limiter cleanup task started")
+    
     yield
     
+    # Cancel cleanup task
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+    
     logger.info("Shutting down Metrics Collection Service")
+
+
+async def rate_limit_cleanup_task():
+    """Background task to clean up old rate limit buckets."""
+    while True:
+        try:
+            await asyncio.sleep(3600)  # Run every hour
+            await rate_limiter.cleanup_old_buckets(max_age_hours=24)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in rate limit cleanup task: {e}")
+            await asyncio.sleep(60)  # Wait a minute before retry
 
 
 app = FastAPI(
@@ -68,7 +93,8 @@ async def root():
         "endpoints": {
             "metrics": "/metrics",
             "health": "/health",
-            "flush": "/flush"
+            "flush": "/flush",
+            "rate-limit": "/rate-limit"
         }
     }
 
