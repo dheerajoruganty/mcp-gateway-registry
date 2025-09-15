@@ -34,6 +34,9 @@ from registry.core.nginx_service import nginx_service
 # Import core configuration
 from registry.core.config import settings
 
+# Import metrics integration
+from registry.metrics import add_registry_metrics_middleware
+
 # Configure logging with file and console handlers
 def setup_logging():
     """Configure logging to write to both file and console."""
@@ -144,6 +147,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Add metrics collection middleware
+add_registry_metrics_middleware(app)
 
 # Add CORS middleware for React development and Docker deployment
 app.add_middleware(
