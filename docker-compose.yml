@@ -20,6 +20,8 @@ services:
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - SRE_GATEWAY_AUTH_TOKEN=${SRE_GATEWAY_AUTH_TOKEN}
       - ATLASSIAN_AUTH_TOKEN=${ATLASSIAN_AUTH_TOKEN}
+      - METRICS_SERVICE_URL=http://metrics-service:8890
+      - METRICS_API_KEY=${REGISTRY_METRICS_API_KEY}
     ports:
       - "80:80"
       - "443:443"
@@ -32,7 +34,35 @@ services:
       - /opt/mcp-gateway/auth_server/scopes.yml:/app/auth_server/scopes.yml
     depends_on:
       - auth-server
+      - metrics-service
     restart: unless-stopped
+
+  # Metrics Collection Service
+  metrics-service:
+    build:
+      context: .
+      dockerfile: metrics-service/Dockerfile
+    environment:
+      - METRICS_SERVICE_PORT=8890
+      - METRICS_SERVICE_HOST=0.0.0.0
+      - SQLITE_DB_PATH=/app/data/metrics.db
+      - METRICS_RETENTION_DAYS=90
+      - OTEL_SERVICE_NAME=mcp-metrics-service
+      - OTEL_PROMETHEUS_ENABLED=true
+      - OTEL_PROMETHEUS_PORT=9465
+      - METRICS_RATE_LIMIT=1000
+    ports:
+      - "8890:8890"
+      - "9465:9465"  # Prometheus metrics endpoint
+    volumes:
+      - /opt/mcp-gateway/metrics-data:/app/data
+      - /var/log/mcp-gateway:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8890/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Auth service (separate and scalable)
   auth-server:
@@ -48,6 +78,8 @@ services:
       - COGNITO_CLIENT_SECRET=${COGNITO_CLIENT_SECRET}
       - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
       - AWS_REGION=${AWS_REGION:-us-east-1}
+      - METRICS_SERVICE_URL=http://metrics-service:8890
+      - METRICS_API_KEY=${AUTH_METRICS_API_KEY}
     ports:
       - "8888:8888"
     volumes:
