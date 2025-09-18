@@ -15,9 +15,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import os
 import sys
 
-# Import metrics client
-sys.path.append(os.path.join(os.path.dirname(__file__), '../metrics-service'))
-from metrics_client import create_metrics_client
+# Import metrics client - use HTTP API instead of local import
+import httpx
+import json
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +33,10 @@ class AuthMetricsMiddleware(BaseHTTPMiddleware):
     
     def __init__(self, app, service_name: str = "auth-server"):
         super().__init__(app)
-        self.metrics_client = create_metrics_client(
-            service_name=service_name,
-            service_version="1.0.0"
-        )
+        self.service_name = service_name
+        self.metrics_url = os.getenv("METRICS_SERVICE_URL", "http://localhost:8890")
+        self.api_key = os.getenv("METRICS_API_KEY", "")
+        self.client = httpx.AsyncClient(timeout=5.0)
     
     def hash_username(self, username: str) -> str:
         """Hash username for privacy in metrics."""
@@ -136,16 +137,35 @@ class AuthMetricsMiddleware(BaseHTTPMiddleware):
         Emit authentication metric asynchronously.
         """
         try:
-            await self.metrics_client.emit_auth_metric(
-                success=success,
-                method=method,
-                duration_ms=duration_ms,
-                server_name=server_name,
-                user_hash=user_hash,
-                error_code=error_code
+            if not self.api_key:
+                return
+                
+            payload = {
+                "service": self.service_name,
+                "version": "1.0.0",
+                "metrics": [{
+                    "type": "auth_request",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "value": 1.0,
+                    "duration_ms": duration_ms,
+                    "dimensions": {
+                        "success": success,
+                        "method": method,
+                        "server": server_name,
+                        "user_hash": user_hash
+                    },
+                    "metadata": {
+                        "error_code": error_code
+                    }
+                }]
+            }
+            
+            await self.client.post(
+                f"{self.metrics_url}/metrics",
+                json=payload,
+                headers={"X-API-Key": self.api_key}
             )
         except Exception as e:
-            # Never let metrics collection fail the main request
             logger.debug(f"Failed to emit auth metric: {e}")
 
 

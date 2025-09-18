@@ -4,9 +4,11 @@ import logging
 import asyncio
 from .config import settings
 from .api.routes import router as api_router
-from .storage.database import init_database, wait_for_database
+from .storage.database import init_database, wait_for_database, MetricsStorage
 from .core.rate_limiter import rate_limiter
 from .core.retention import retention_manager
+from .utils.helpers import hash_api_key
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -29,6 +31,10 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_database()
     logger.info("Database initialized")
+    
+    # Setup pre-shared API keys from environment variables
+    await setup_preshared_api_keys()
+    logger.info("Pre-shared API keys configured")
     
     # Load retention policies from database
     try:
@@ -98,6 +104,39 @@ async def retention_cleanup_task():
         except Exception as e:
             logger.error(f"Error in retention cleanup task: {e}")
             await asyncio.sleep(3600)  # Wait an hour before retry
+
+
+async def setup_preshared_api_keys():
+    """Setup pre-shared API keys from environment variables dynamically."""
+    storage = MetricsStorage()
+    
+    # Dynamically discover all METRICS_API_KEY_* environment variables
+    api_key_count = 0
+    for key, value in os.environ.items():
+        if key.startswith('METRICS_API_KEY_') and value:
+            # Extract service name from environment variable
+            # METRICS_API_KEY_AUTH -> auth
+            # METRICS_API_KEY_REGISTRY -> registry  
+            # METRICS_API_KEY_CURRENTTIME_SERVER -> currenttime-server
+            service_suffix = key.replace('METRICS_API_KEY_', '')
+            service_name = service_suffix.lower().replace('_', '-')
+            
+            try:
+                key_hash = hash_api_key(value)
+                success = await storage.create_api_key(key_hash, service_name, rate_limit=1000)
+                if success:
+                    logger.info(f"Configured API key for service: {service_name}")
+                    api_key_count += 1
+                else:
+                    logger.debug(f"API key for {service_name} already exists")
+                    api_key_count += 1
+            except Exception as e:
+                logger.error(f"Failed to setup API key for {service_name}: {e}")
+    
+    if api_key_count == 0:
+        logger.warning("No METRICS_API_KEY_* environment variables found")
+    else:
+        logger.info(f"Configured {api_key_count} API keys from environment variables")
 
 
 app = FastAPI(

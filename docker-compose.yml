@@ -21,7 +21,8 @@ services:
       - SRE_GATEWAY_AUTH_TOKEN=${SRE_GATEWAY_AUTH_TOKEN}
       - ATLASSIAN_AUTH_TOKEN=${ATLASSIAN_AUTH_TOKEN}
       - METRICS_SERVICE_URL=http://metrics-service:8890
-      - METRICS_API_KEY=${REGISTRY_METRICS_API_KEY}
+      - METRICS_API_KEY=${METRICS_API_KEY_REGISTRY}
+      - METRICS_API_KEY_NGINX=${METRICS_API_KEY_REGISTRY}
     ports:
       - "80:80"
       - "443:443"
@@ -45,8 +46,11 @@ services:
     environment:
       - METRICS_SERVICE_PORT=8890
       - METRICS_SERVICE_HOST=0.0.0.0
-      - SQLITE_DB_PATH=/app/data/metrics.db
+      - SQLITE_DB_PATH=/var/lib/sqlite/metrics.db
       - METRICS_RETENTION_DAYS=90
+      - METRICS_API_KEY_AUTH=${METRICS_API_KEY_AUTH_SERVER}
+      - METRICS_API_KEY_REGISTRY=${METRICS_API_KEY_REGISTRY}
+      - METRICS_API_KEY_MCPGW=${METRICS_API_KEY_MCPGW_SERVER}
       - OTEL_SERVICE_NAME=mcp-metrics-service
       - OTEL_PROMETHEUS_ENABLED=true
       - OTEL_PROMETHEUS_PORT=9465
@@ -55,8 +59,10 @@ services:
       - "8890:8890"
       - "9465:9465"  # Prometheus metrics endpoint
     volumes:
-      - /opt/mcp-gateway/metrics-data:/app/data
+      - metrics-db-data:/var/lib/sqlite
       - /var/log/mcp-gateway:/app/logs
+    depends_on:
+      - metrics-db
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8890/health"]
@@ -79,7 +85,7 @@ services:
       - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - METRICS_SERVICE_URL=http://metrics-service:8890
-      - METRICS_API_KEY=${AUTH_METRICS_API_KEY}
+      - METRICS_API_KEY=${METRICS_API_KEY_AUTH_SERVER}
     ports:
       - "8888:8888"
     volumes:
@@ -168,10 +174,10 @@ services:
 
   # SQLite container for metrics database
   metrics-db:
-    image: nouchka/sqlite3:latest
+    image: alpine:latest
     volumes:
       - metrics-db-data:/var/lib/sqlite
-    command: sqlite3 /var/lib/sqlite/metrics.db
+    command: ["sh", "-c", "apk add --no-cache sqlite && mkdir -p /var/lib/sqlite && sqlite3 /var/lib/sqlite/metrics.db 'CREATE TABLE IF NOT EXISTS _health (id INTEGER);' && tail -f /dev/null"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "sqlite3", "/var/lib/sqlite/metrics.db", ".tables"]
@@ -179,30 +185,41 @@ services:
       timeout: 10s
       retries: 3
 
-  # Metrics Collection Service
-  metrics-service:
-    build: ./metrics-service
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
     ports:
-      - "8890:8890"
-      - "9465:9465"  # Prometheus metrics
-    environment:
-      - SQLITE_DB_PATH=/var/lib/sqlite/metrics.db
-      - OTEL_PROMETHEUS_ENABLED=true
-      - OTEL_PROMETHEUS_PORT=9465
-      - DATABASE_URL=sqlite:///var/lib/sqlite/metrics.db
-      - METRICS_SERVICE_PORT=8890
-      - METRICS_SERVICE_HOST=0.0.0.0
+      - "9090:9090"
     volumes:
-      - metrics-db-data:/var/lib/sqlite
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+  # Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources
     depends_on:
-      - metrics-db
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8890/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - prometheus
     restart: unless-stopped
 
 volumes:
   ssl_data:
-  metrics-db-data: 
+  metrics-db-data:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,111 @@
+{
+  "id": null,
+  "title": "MCP Gateway Registry Metrics",
+    "tags": ["mcp", "metrics", "gateway"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Authentication Requests",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(rate(mcp_auth_requests_total[5m])) by (service)",
+            "legendFormat": "{{service}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Authentication Success Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(rate(mcp_auth_requests_total{success=\"True\"}[5m])) / sum(rate(mcp_auth_requests_total[5m])) * 100",
+            "legendFormat": "Success Rate %"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Authentication Request Duration",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(mcp_auth_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "95th percentile"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(mcp_auth_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "50th percentile"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+        "yAxes": [
+          {
+            "unit": "s",
+            "min": 0
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Tool Discovery Requests",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(rate(mcp_tool_discovery_total[5m]))",
+            "legendFormat": "Discovery Rate"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "Tool Executions",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(rate(mcp_tool_executions_total[5m]))",
+            "legendFormat": "Execution Rate"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 6,
+        "title": "Registry Operations by Type",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(mcp_registry_operations_total[5m])) by (operation, resource_type)",
+            "legendFormat": "{{operation}} - {{resource_type}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s",
+    "schemaVersion": 16,
+    "version": 1
+}

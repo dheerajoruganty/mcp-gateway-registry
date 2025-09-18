@@ -9,26 +9,200 @@ import os
 import sys
 import time
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from contextlib import asynccontextmanager
 from fastapi import Depends
 
-# Import the main metrics client from metrics service
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../metrics-service'))
-from metrics_client import MetricsClient as BaseMetricsClient, create_metrics_client as base_create_client
+# Import HTTP client for metrics
+import httpx
+import json
+from datetime import datetime
 from .utils import extract_server_name_from_url
 
 logger = logging.getLogger(__name__)
 
 
-class MetricsClient(BaseMetricsClient):
-    """Registry-specific metrics client."""
-    pass
+class MetricsClient:
+    """HTTP-based metrics client for registry service."""
+    
+    def __init__(
+        self, 
+        service_name: str = "registry",
+        service_version: str = "1.0.0",
+        metrics_url: str = None,
+        api_key: str = None,
+        timeout: float = 5.0
+    ):
+        self.service_name = service_name
+        self.service_version = service_version
+        self.metrics_url = metrics_url or os.getenv("METRICS_SERVICE_URL", "http://localhost:8890")
+        self.api_key = api_key or os.getenv("METRICS_API_KEY", "")
+        self.client = httpx.AsyncClient(timeout=timeout)
+    
+    async def _emit_metric(
+        self,
+        metric_type: str,
+        value: float = 1.0,
+        duration_ms: Optional[float] = None,
+        dimensions: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """Emit a metric to the metrics service."""
+        try:
+            if not self.api_key:
+                return False
+                
+            payload = {
+                "service": self.service_name,
+                "version": self.service_version,
+                "metrics": [{
+                    "type": metric_type,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "value": value,
+                    "duration_ms": duration_ms,
+                    "dimensions": dimensions or {},
+                    "metadata": metadata or {}
+                }]
+            }
+            
+            response = await self.client.post(
+                f"{self.metrics_url}/metrics",
+                json=payload,
+                headers={"X-API-Key": self.api_key}
+            )
+            
+            return response.status_code == 200
+        except Exception as e:
+            logger.debug(f"Failed to emit metric {metric_type}: {e}")
+            return False
+    
+    async def emit_registry_metric(
+        self,
+        operation: str,
+        resource_type: str,
+        success: bool,
+        duration_ms: float,
+        resource_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        error_code: Optional[str] = None
+    ) -> bool:
+        """Emit registry operation metric."""
+        return await self._emit_metric(
+            metric_type="registry_operation",
+            value=1.0,
+            duration_ms=duration_ms,
+            dimensions={
+                "operation": operation,
+                "resource_type": resource_type,
+                "success": success,
+                "resource_id": resource_id or "",
+                "user_id": user_id or ""
+            },
+            metadata={
+                "error_code": error_code
+            }
+        )
+    
+    async def emit_discovery_metric(
+        self,
+        query: str,
+        results_count: int,
+        duration_ms: float,
+        top_k_services: Optional[int] = None,
+        top_n_tools: Optional[int] = None,
+        embedding_time_ms: Optional[float] = None,
+        faiss_search_time_ms: Optional[float] = None
+    ) -> bool:
+        """Emit tool discovery metric."""
+        return await self._emit_metric(
+            metric_type="tool_discovery",
+            value=1.0,
+            duration_ms=duration_ms,
+            dimensions={
+                "query": query[:100],
+                "results_count": results_count,
+                "top_k_services": top_k_services,
+                "top_n_tools": top_n_tools
+            },
+            metadata={
+                "embedding_time_ms": embedding_time_ms,
+                "faiss_search_time_ms": faiss_search_time_ms
+            }
+        )
+    
+    async def emit_tool_execution_metric(
+        self,
+        tool_name: str,
+        server_path: str,
+        server_name: str,
+        success: bool,
+        duration_ms: float,
+        input_size_bytes: Optional[int] = None,
+        output_size_bytes: Optional[int] = None,
+        error_code: Optional[str] = None
+    ) -> bool:
+        """Emit tool execution metric."""
+        return await self._emit_metric(
+            metric_type="tool_execution",
+            value=1.0,
+            duration_ms=duration_ms,
+            dimensions={
+                "tool_name": tool_name,
+                "server_path": server_path,
+                "server_name": server_name,
+                "success": success
+            },
+            metadata={
+                "error_code": error_code,
+                "input_size_bytes": input_size_bytes,
+                "output_size_bytes": output_size_bytes
+            }
+        )
+    
+    async def emit_health_metric(
+        self,
+        endpoint: str,
+        status_code: int,
+        duration_ms: float,
+        healthy: bool = True
+    ) -> bool:
+        """Emit health check metric."""
+        return await self._emit_metric(
+            metric_type="health_check",
+            value=1.0,
+            duration_ms=duration_ms,
+            dimensions={
+                "endpoint": endpoint,
+                "status_code": status_code,
+                "healthy": healthy
+            }
+        )
+    
+    async def emit_custom_metric(
+        self,
+        metric_name: str,
+        value: float,
+        duration_ms: Optional[float] = None,
+        dimensions: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """Emit custom metric with arbitrary data."""
+        custom_dimensions = {"metric_name": metric_name}
+        if dimensions:
+            custom_dimensions.update(dimensions)
+            
+        return await self._emit_metric(
+            metric_type="custom",
+            value=value,
+            duration_ms=duration_ms,
+            dimensions=custom_dimensions,
+            metadata=metadata
+        )
 
 
 def create_metrics_client(service_name: str = "registry", **kwargs) -> MetricsClient:
     """Create a registry metrics client with default configuration."""
-    return base_create_client(service_name=service_name, **kwargs)
+    return MetricsClient(service_name=service_name, **kwargs)
 
 
 class MetricsCollector:

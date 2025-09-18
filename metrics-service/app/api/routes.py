@@ -6,7 +6,8 @@ from ..core.models import MetricRequest, MetricResponse, ErrorResponse
 from ..core.processor import MetricsProcessor
 from ..core.retention import retention_manager
 from ..api.auth import verify_api_key, get_rate_limit_status
-from ..utils.helpers import generate_request_id
+from ..utils.helpers import generate_request_id, generate_api_key, hash_api_key
+from ..storage.database import MetricsStorage
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

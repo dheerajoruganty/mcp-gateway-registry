@@ -94,8 +94,11 @@ class RetentionManager:
         self.policies['api_key_usage_log'] = RetentionPolicy(
             table_name='api_key_usage_log',
             retention_days=90,
-            timestamp_column='timestamp'
+            timestamp_column='created_at'
         )
+        
+        # Note: api_keys table uses 'created_at', not 'timestamp'
+        # Schema_migrations table may not have created_at in all environments
     
     async def load_policies_from_database(self):
         """Load retention policies from database."""

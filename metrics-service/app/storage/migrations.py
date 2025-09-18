@@ -297,6 +297,69 @@ class MigrationManager:
                 -- For now, just mark as rolled back
             """
         ))
+        
+        # Migration 5: Fix missing tables and timestamp columns
+        self.migrations.append(Migration(
+            version=5,
+            name="fix_missing_tables_and_columns",
+            up_sql="""
+                -- Create aggregated metrics tables that retention policies expect
+                CREATE TABLE IF NOT EXISTS metrics_hourly (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    hour_timestamp TEXT NOT NULL,
+                    service TEXT NOT NULL,
+                    metric_type TEXT NOT NULL,
+                    total_count INTEGER DEFAULT 0,
+                    avg_duration_ms REAL DEFAULT 0,
+                    success_count INTEGER DEFAULT 0,
+                    failure_count INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    UNIQUE(hour_timestamp, service, metric_type)
+                );
+                
+                CREATE TABLE IF NOT EXISTS metrics_daily (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT NOT NULL,
+                    service TEXT NOT NULL,
+                    metric_type TEXT NOT NULL,
+                    total_count INTEGER DEFAULT 0,
+                    avg_duration_ms REAL DEFAULT 0,
+                    success_count INTEGER DEFAULT 0,
+                    failure_count INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    UNIQUE(date, service, metric_type)
+                );
+                
+                -- Create retention policies table
+                CREATE TABLE IF NOT EXISTS retention_policies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    table_name TEXT UNIQUE NOT NULL,
+                    retention_days INTEGER NOT NULL,
+                    is_active BOOLEAN DEFAULT 1,
+                    cleanup_query TEXT,
+                    timestamp_column TEXT DEFAULT 'created_at',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+                
+                -- Add missing indexes
+                CREATE INDEX IF NOT EXISTS idx_metrics_hourly_timestamp ON metrics_hourly(hour_timestamp);
+                CREATE INDEX IF NOT EXISTS idx_metrics_hourly_service ON metrics_hourly(service, metric_type);
+                CREATE INDEX IF NOT EXISTS idx_metrics_daily_date ON metrics_daily(date);
+                CREATE INDEX IF NOT EXISTS idx_metrics_daily_service ON metrics_daily(service, metric_type);
+                CREATE INDEX IF NOT EXISTS idx_retention_policies_table ON retention_policies(table_name);
+            """,
+            down_sql="""
+                DROP TABLE IF EXISTS metrics_hourly;
+                DROP TABLE IF EXISTS metrics_daily;
+                DROP TABLE IF EXISTS retention_policies;
+                DROP INDEX IF EXISTS idx_metrics_hourly_timestamp;
+                DROP INDEX IF EXISTS idx_metrics_hourly_service;
+                DROP INDEX IF EXISTS idx_metrics_daily_date;
+                DROP INDEX IF EXISTS idx_metrics_daily_service;
+                DROP INDEX IF EXISTS idx_retention_policies_table;
+            """
+        ))
     
     async def get_current_version(self) -> int:
         """Get the current schema version from the database."""
