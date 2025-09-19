@@ -32,19 +32,56 @@ async def wait_for_database(max_retries: int = 10, delay: float = 2.0):
                 raise Exception(f"Failed to connect to database after {max_retries} attempts")
 
 
+async def _migrate_schema_if_needed(db):
+    """Migrate database schema if needed."""
+    try:
+        # Check if tool_metrics table exists and has the new columns
+        cursor = await db.execute("PRAGMA table_info(tool_metrics)")
+        columns = await cursor.fetchall()
+        existing_columns = [col[1] for col in columns] if columns else []
+
+        # If table doesn't exist, creation will handle it
+        if not existing_columns:
+            return
+
+        # Check if we need to add new columns
+        required_columns = ['client_name', 'client_version', 'method', 'user_hash']
+        missing_columns = [col for col in required_columns if col not in existing_columns]
+
+        if missing_columns:
+            logger.info(f"Adding missing columns to tool_metrics: {missing_columns}")
+            for column in missing_columns:
+                await db.execute(f"ALTER TABLE tool_metrics ADD COLUMN {column} TEXT")
+
+            # Add indexes for new columns
+            if 'client_name' in missing_columns:
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_tool_client ON tool_metrics(client_name, timestamp)")
+            if 'method' in missing_columns:
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_tool_method ON tool_metrics(method, timestamp)")
+
+            await db.commit()
+            logger.info("Schema migration completed successfully")
+
+    except Exception as e:
+        logger.warning(f"Schema migration failed, will recreate tables: {e}")
+
+
 async def init_database():
-    """Initialize database with simple table creation."""
+    """Initialize database with schema migrations."""
     db_path = settings.SQLITE_DB_PATH
-    
+
     # Ensure directory exists
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    
+
     async with aiosqlite.connect(db_path) as db:
         # Enable WAL mode for better concurrency
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA synchronous=NORMAL")
         await db.execute("PRAGMA cache_size=10000")
         await db.execute("PRAGMA temp_store=MEMORY")
+
+        # Check if we need to migrate existing schema
+        await _migrate_schema_if_needed(db)
         
         # Create tables
         await db.executescript("""
@@ -120,6 +157,10 @@ async def init_database():
                 error_code TEXT,
                 input_size_bytes INTEGER,
                 output_size_bytes INTEGER,
+                client_name TEXT,
+                client_version TEXT,
+                method TEXT,
+                user_hash TEXT,
                 created_at TEXT DEFAULT (datetime('now'))
             );
         """)
@@ -140,6 +181,8 @@ async def init_database():
             CREATE INDEX IF NOT EXISTS idx_tool_timestamp ON tool_metrics(timestamp);
             CREATE INDEX IF NOT EXISTS idx_tool_name ON tool_metrics(tool_name, timestamp);
             CREATE INDEX IF NOT EXISTS idx_tool_success ON tool_metrics(success, timestamp);
+            CREATE INDEX IF NOT EXISTS idx_tool_client ON tool_metrics(client_name, timestamp);
+            CREATE INDEX IF NOT EXISTS idx_tool_method ON tool_metrics(method, timestamp);
             
             CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
             CREATE INDEX IF NOT EXISTS idx_api_keys_service ON api_keys(service_name);
@@ -244,8 +287,9 @@ class MetricsStorage:
                 INSERT INTO tool_metrics (
                     request_id, timestamp, service, duration_ms,
                     tool_name, server_path, server_name, success,
-                    error_code, input_size_bytes, output_size_bytes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    error_code, input_size_bytes, output_size_bytes,
+                    client_name, client_version, method, user_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 request_id,
                 metric.timestamp.isoformat(),
@@ -257,7 +301,11 @@ class MetricsStorage:
                 metric.dimensions.get('success'),
                 metric.metadata.get('error_code'),
                 metric.metadata.get('input_size_bytes'),
-                metric.metadata.get('output_size_bytes')
+                metric.metadata.get('output_size_bytes'),
+                metric.dimensions.get('client_name'),
+                metric.dimensions.get('client_version'),
+                metric.dimensions.get('method'),
+                metric.dimensions.get('user_hash')
             ))
 
     async def get_api_key(self, key_hash: str) -> Dict[str, Any] | None:

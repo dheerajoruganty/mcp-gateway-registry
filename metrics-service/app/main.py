@@ -54,6 +54,7 @@ async def lifespan(app: FastAPI):
     # Start background tasks
     cleanup_task = asyncio.create_task(rate_limit_cleanup_task())
     retention_task = asyncio.create_task(retention_cleanup_task())
+    flush_task = asyncio.create_task(metrics_flush_task())
     logger.info("Background tasks started")
     
     yield
@@ -61,9 +62,11 @@ async def lifespan(app: FastAPI):
     # Cancel background tasks
     cleanup_task.cancel()
     retention_task.cancel()
+    flush_task.cancel()
     try:
         await cleanup_task
         await retention_task
+        await flush_task
     except asyncio.CancelledError:
         pass
     
@@ -104,6 +107,24 @@ async def retention_cleanup_task():
         except Exception as e:
             logger.error(f"Error in retention cleanup task: {e}")
             await asyncio.sleep(3600)  # Wait an hour before retry
+
+
+async def metrics_flush_task():
+    """Background task to flush metrics buffer every 5 seconds."""
+    from .core.processor import MetricsProcessor
+
+    processor = MetricsProcessor()
+
+    while True:
+        try:
+            await asyncio.sleep(5)  # Flush every 5 seconds
+            await processor.force_flush()
+            logger.debug("Metrics buffer flushed to database")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in metrics flush task: {e}")
+            await asyncio.sleep(5)  # Wait 5 seconds before retry
 
 
 async def setup_preshared_api_keys():

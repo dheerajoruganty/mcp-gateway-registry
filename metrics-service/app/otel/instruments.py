@@ -49,5 +49,11 @@ class MetricsInstruments:
             description="Duration of tool executions in seconds",
             unit="s"
         )
-        
+
+        self.latency_histogram = self.meter.create_histogram(
+            name="mcp_protocol_latency_seconds",
+            description="Latency between MCP protocol steps in seconds",
+            unit="s"
+        )
+
         logger.info("OpenTelemetry metric instruments initialized")

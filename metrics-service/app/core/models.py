@@ -10,6 +10,7 @@ class MetricType(str, Enum):
     TOOL_EXECUTION = "tool_execution"
     REGISTRY_OPERATION = "registry_operation"
     HEALTH_CHECK = "health_check"
+    PROTOCOL_LATENCY = "protocol_latency"
     CUSTOM = "custom"
 
 
