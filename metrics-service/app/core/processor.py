@@ -120,6 +120,11 @@ class MetricsProcessor:
         elif metric.type == MetricType.PROTOCOL_LATENCY:
             # For protocol latency, record the value as latency seconds
             self.otel.latency_histogram.record(metric.value, labels)
+
+        elif metric.type == MetricType.HEALTH_CHECK:
+            self.otel.health_counter.add(metric.value, labels)
+            if metric.duration_ms:
+                self.otel.health_histogram.record(metric.duration_ms / 1000, labels)
     
     async def _buffer_for_storage(
         self, 

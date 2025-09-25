@@ -31,7 +31,7 @@
           "legendFormat": "Auth Success Rate"
         }
       ],
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
       "options": {
         "legend": {"displayMode": "table", "placement": "bottom"}
       },
@@ -59,7 +59,7 @@
           "legendFormat": "Failed Auth"
         }
       ],
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
       "options": {
         "legend": {"displayMode": "table", "placement": "bottom"}
       },
@@ -83,7 +83,7 @@
           "legendFormat": "Success Rate %"
         }
       ],
-      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 16},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8},
       "options": {
         "colorMode": "background",
         "graphMode": "area"
@@ -111,7 +111,7 @@
           "legendFormat": "Active Servers"
         }
       ],
-      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 16},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 8},
       "options": {
         "colorMode": "background",
         "graphMode": "area"
@@ -140,7 +140,7 @@
           "legendFormat": "Tools/Hour"
         }
       ],
-      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 16},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 8},
       "options": {
         "colorMode": "background",
         "graphMode": "area"
@@ -169,7 +169,7 @@
           "legendFormat": "{{tool_name}}"
         }
       ],
-      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 16},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 8},
       "options": {
         "colorMode": "background",
         "textMode": "name"
@@ -207,7 +207,7 @@
           "legendFormat": "Tool Exec P99 Latency"
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
       "options": {
         "legend": {"displayMode": "table", "placement": "bottom"}
       },
@@ -231,7 +231,7 @@
           "legendFormat": "{{method}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
       "options": {
         "legend": {"displayMode": "table", "placement": "bottom"}
       },
@@ -259,7 +259,7 @@
           "legendFormat": "Tool Execution Error Rate"
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
       "options": {
         "legend": {"displayMode": "table", "placement": "bottom"}
       },
@@ -294,7 +294,7 @@
           "legendFormat": "Tool Exec Avg Response Time"
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
       "options": {
         "legend": {"displayMode": "table", "placement": "bottom"}
       },
@@ -332,7 +332,7 @@
           "instant": true
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
       "transformations": [
         {
           "id": "merge",
@@ -370,7 +370,7 @@
           "instant": true
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
       "transformations": [
         {
           "id": "merge",
@@ -407,7 +407,7 @@
           "legendFormat": "{{method}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 44},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 36},
       "options": {
         "orientation": "horizontal",
         "displayMode": "gradient"
@@ -434,7 +434,7 @@
           "format": "table"
         }
       ],
-      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 44},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 36},
       "options": {
         "orientation": "vertical",
         "xTickLabelRotation": -45,
@@ -463,7 +463,7 @@
           "legendFormat": "{{client_name}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 44},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 36},
       "options": {
         "orientation": "horizontal",
         "displayMode": "gradient"
@@ -502,7 +502,7 @@
           "instant": true
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 52},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 44},
       "transformations": [
         {
           "id": "merge",
@@ -532,7 +532,7 @@
           "legendFormat": "{{method}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 52},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 44},
       "options": {
         "orientation": "horizontal",
         "displayMode": "gradient"
@@ -565,7 +565,7 @@
           "legendFormat": "P99 Request Size"
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 60},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 52},
       "options": {
         "legend": {"displayMode": "table", "placement": "bottom"}
       },
@@ -589,7 +589,7 @@
           "legendFormat": "{{client_name}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 60},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 52},
       "options": {
         "orientation": "horizontal",
         "displayMode": "gradient"
@@ -601,50 +601,6 @@
             "axisLabel": "Activity Rate (req/s)"
           },
           "unit": "reqps"
-        }
-      }
-    },
-    {
-      "id": 20,
-      "title": "System Health Overview",
-      "type": "stat",
-      "targets": [
-        {
-          "expr": "up{job=\"mcp-gateway\"}",
-          "legendFormat": "Gateway Status"
-        },
-        {
-          "expr": "up{job=\"auth-server\"}",
-          "legendFormat": "Auth Server Status"
-        },
-        {
-          "expr": "up{job=\"metrics-service\"}",
-          "legendFormat": "Metrics Service Status"
-        }
-      ],
-      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 68},
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "reduceOptions": {
-          "values": false,
-          "calcs": ["lastNotNull"],
-          "fields": ""
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {"mode": "thresholds"},
-          "thresholds": {
-            "steps": [
-              {"color": "red", "value": 0},
-              {"color": "green", "value": 1}
-            ]
-          },
-          "mappings": [
-            {"options": {"0": {"text": "DOWN"}}, "type": "value"},
-            {"options": {"1": {"text": "UP"}}, "type": "value"}
-          ]
         }
       }
     }

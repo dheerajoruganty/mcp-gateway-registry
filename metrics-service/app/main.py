@@ -111,9 +111,8 @@ async def retention_cleanup_task():
 
 async def metrics_flush_task():
     """Background task to flush metrics buffer every 5 seconds."""
-    from .core.processor import MetricsProcessor
-
-    processor = MetricsProcessor()
+    # Import the shared processor instance from routes
+    from .api.routes import processor
 
     while True:
         try:

@@ -56,4 +56,17 @@ class MetricsInstruments:
             unit="s"
         )
 
+        # Health check instruments
+        self.health_counter = self.meter.create_counter(
+            name="mcp_health_checks_total",
+            description="Total number of health checks performed",
+            unit="1"
+        )
+
+        self.health_histogram = self.meter.create_histogram(
+            name="mcp_health_check_duration_seconds",
+            description="Duration of health checks in seconds",
+            unit="s"
+        )
+
         logger.info("OpenTelemetry metric instruments initialized")
