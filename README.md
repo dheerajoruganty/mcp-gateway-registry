@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/github/license/agentic-community/mcp-gateway-registry?style=flat)](https://github.com/agentic-community/mcp-gateway-registry/blob/main/LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/agentic-community/mcp-gateway-registry?style=flat&logo=github)](https://github.com/agentic-community/mcp-gateway-registry/releases)
 
-[Quick Start](#quick-start) | [Documentation](docs/) | [Enterprise Features](#enterprise-features) | [Community](#community)
+[🚀 Get Running Now](#option-a-pre-built-images-instant-setup) | [Quick Start](#quick-start) | [Documentation](docs/) | [Enterprise Features](#enterprise-features) | [Community](#community)
 
 **Demo Videos:** [Full End-to-End Functionality](https://github.com/user-attachments/assets/5ffd8e81-8885-4412-a4d4-3339bbdba4fb) | [OAuth 3-Legged Authentication](https://github.com/user-attachments/assets/3c3a570b-29e6-4dd3-b213-4175884396cc) | [Dynamic Tool Discovery](https://github.com/user-attachments/assets/cee25b31-61e4-4089-918c-c3757f84518c)
 
@@ -70,7 +70,7 @@ The **MCP Gateway & Registry** is an enterprise-ready platform that centralizes 
 └─────────────────────────────────────┘     └──────────────────────────────────────┘
 ```
 
-## 🔧 MCP Tools in Action
+## MCP Tools in Action
 
 <div align="center">
 <img src="docs/img/MCP_tools.gif" alt="MCP Tools Demo" width="800"/>
@@ -133,7 +133,7 @@ flowchart TB
     end
     
     %% Identity Provider
-    IdP[Identity Provider<br/>Amazon Cognito]
+    IdP[Identity Provider<br/>Keycloak/Cognito]
     
     subgraph EKS_Cluster["Amazon EKS/EC2 Cluster"]
         MCP_EKS1["MCP Server 3"]
@@ -250,41 +250,63 @@ flowchart TB
 
 ## Quick Start
 
-> **Important:** Before proceeding, ensure you have satisfied all [prerequisites](docs/installation.md#prerequisites) including Docker, AWS account setup, and Amazon Cognito configuration.
+### Option A: Pre-built Images (Instant Setup)
 
-Get up and running in 5 minutes with Docker Compose:
+Get running in under 2 minutes with pre-built containers:
 
+**Step 1: Clone and setup**
 ```bash
-# Clone the repository
 git clone https://github.com/agentic-community/mcp-gateway-registry.git
 cd mcp-gateway-registry
-
-# Configure environment
 cp .env.example .env
-# Edit .env with your Cognito credentials
+```
 
-# Generate authentication credentials
-./credentials-provider/generate_creds.sh
+**Step 2: Configure environment**
+Complete: **[Initial Environment Configuration](docs/complete-setup-guide.md#initial-environment-configuration)** - Configure domains, passwords, and authentication
+```bash
+export DOCKERHUB_ORG=mcpgateway
+```
 
-# Deploy with Docker Compose
-./build_and_run.sh
+**Step 3: Deploy with pre-built images**
+```bash
+./build_and_run.sh --prebuilt
+```
 
-# Access the registry
+**Step 4: Initialize Keycloak**
+Complete: **[Initialize Keycloak Configuration](docs/complete-setup-guide.md#initialize-keycloak-configuration)** - Set up identity provider and security policies
+
+**Step 5: Access the registry**
+```bash
 open http://localhost:7860
 ```
 
-**That's it!** Your enterprise MCP gateway is now running.
+**Step 6: Create your first agent**
+Complete: **[Create Your First AI Agent Account](docs/complete-setup-guide.md#create-your-first-ai-agent-account)** - Create agent credentials for testing
+
+**Step 7: Restart auth server to apply new credentials**
+```bash
+docker-compose down auth-server && docker-compose rm -f auth-server && docker-compose up -d auth-server
+```
+
+**Step 8: Test the setup**
+Complete: **[Testing with mcp_client.py and agent.py](docs/complete-setup-guide.md#test-with-python-mcp-client)** - Validate your setup works correctly
+
+**Benefits:** No build time • No Node.js required • No frontend compilation • Consistent tested images
+
+### Option B: Build from Source
+
+**New to MCP Gateway?** Start with our [Complete Setup Guide](docs/complete-setup-guide.md) for detailed step-by-step instructions from scratch on AWS EC2.
 
 ### Testing & Integration Options
 
-**Shell Scripts (No Python Required):**
-- `./mcp_cmds.sh` - Core MCP operations (ping, list tools, call tools)
-- `./mcp_demo.sh` - Intelligent agent workflows with natural language queries
+**Python Scripts:**
+- `./mcp_client.py` - Core MCP operations (ping, list tools, call tools)
+- `./tests/mcp_cmds.sh` - Shell-based MCP testing operations
 
 **Python Agent:**
 - `agents/agent.py` - Full-featured Python agent with advanced AI capabilities
 
-➡️ **Next Steps:** [Testing Guide](docs/testing.md) | [Complete Installation Guide](docs/installation.md) | [Authentication Setup](docs/auth.md) | [AI Assistant Integration](docs/ai-coding-assistants-setup.md)
+**Next Steps:** [Testing Guide](docs/testing.md) | [Complete Installation Guide](docs/installation.md) | [Authentication Setup](docs/auth.md) | [AI Assistant Integration](docs/ai-coding-assistants-setup.md)
 
 ---
 
@@ -316,7 +338,8 @@ Transform how both autonomous AI agents and development teams access enterprise 
 - **Session-Based** - For human developers using AI coding assistants and web interface
 
 **Supported Identity Providers:**
-- Amazon Cognito (Primary)
+- **[Keycloak](https://www.keycloak.org/)** - Enterprise-grade open-source identity and access management with individual agent audit trails
+- **Amazon Cognito** - Amazon managed identity service
 - Any OAuth 2.0 compatible provider
 
 **Fine-Grained Permissions:**
@@ -341,6 +364,8 @@ Transform how both autonomous AI agents and development teams access enterprise 
 
 ## What's New
 
+- **Tag-Based Tool Filtering** - Enhanced intelligent_tool_finder now supports filtering tools by server tags for precise categorical discovery alongside semantic search
+- **🔐 Keycloak Identity Provider Integration** - Enterprise-grade authentication with individual AI agent audit trails, group-based authorization, and production-ready service account management. [Learn more](docs/keycloak-integration.md)
 - **Amazon Bedrock AgentCore Integration** - Direct access to AWS services through managed MCP endpoints
 - **Three-Legged OAuth (3LO) Support** - External service integration (Atlassian, Google, GitHub)
 - **JWT Token Vending Service** - Self-service token generation for automation
@@ -355,10 +380,11 @@ Transform how both autonomous AI agents and development teams access enterprise 
 
 | Getting Started | Enterprise Setup | Developer & Operations |
 |------------------|-------------------|------------------------|
-| [Installation Guide](docs/installation.md)<br/>Complete setup instructions for EC2 and EKS | [Authentication Guide](docs/auth.md)<br/>OAuth and identity provider integration | [AI Coding Assistants Setup](docs/ai-coding-assistants-setup.md)<br/>VS Code, Cursor, Claude Code integration |
-| [Quick Start Tutorial](docs/quick-start.md)<br/>Get running in 5 minutes | [Amazon Cognito Setup](docs/cognito.md)<br/>Step-by-step IdP configuration | [API Reference](docs/registry_api.md)<br/>Programmatic registry management |
-| [Configuration Reference](docs/configuration.md)<br/>Environment variables and settings | [Fine-Grained Access Control](docs/scopes.md)<br/>Permission management and security | [Token Refresh Service](docs/token-refresh-service.md)<br/>Automated token refresh and lifecycle management |
-| | | [Dynamic Tool Discovery](docs/dynamic-tool-discovery.md)<br/>Autonomous agent capabilities |
+| [Complete Setup Guide](docs/complete-setup-guide.md)<br/>**NEW!** Step-by-step from scratch on AWS EC2 | [Authentication Guide](docs/auth.md)<br/>OAuth and identity provider integration | [AI Coding Assistants Setup](docs/ai-coding-assistants-setup.md)<br/>VS Code, Cursor, Claude Code integration |
+| [Installation Guide](docs/installation.md)<br/>Complete setup instructions for EC2 and EKS | [Keycloak Integration](docs/keycloak-integration.md)<br/>Enterprise identity with agent audit trails | [API Reference](docs/registry_api.md)<br/>Programmatic registry management |
+| [Quick Start Tutorial](docs/quick-start.md)<br/>Get running in 5 minutes | [Amazon Cognito Setup](docs/cognito.md)<br/>Step-by-step IdP configuration | [Token Refresh Service](docs/token-refresh-service.md)<br/>Automated token refresh and lifecycle management |
+| [Configuration Reference](docs/configuration.md)<br/>Environment variables and settings |  |  |
+| | [Fine-Grained Access Control](docs/scopes.md)<br/>Permission management and security | [Dynamic Tool Discovery](docs/dynamic-tool-discovery.md)<br/>Autonomous agent capabilities |
 | | | [Production Deployment](docs/installation.md)<br/>Complete setup for production environments |
 | | | [Troubleshooting Guide](docs/FAQ.md)<br/>Common issues and solutions |
 
@@ -386,22 +412,40 @@ The following GitHub issues represent our current development roadmap and planne
 
 **Major Features**
 
+- **[#120 - CLI Tool for MCP Server Registration and Health Validation](https://github.com/agentic-community/mcp-gateway-registry/issues/120)** 🚧 **IN PROGRESS**
+  Command-line interface for automated server registration, health checks, and registry management. Streamlines DevOps workflows and CI/CD integration.
+
+- **[#38 - Usage Metrics and Analytics System](https://github.com/agentic-community/mcp-gateway-registry/issues/38)** 🚧 **IN PROGRESS**
+  Implement comprehensive usage tracking across user and agent identities, with metrics emission from auth server, registry, and intelligent tool finder.
+
+- **[#129 - Virtual MCP Server Support - Dynamic Tool Aggregation and Intelligent Routing](https://github.com/agentic-community/mcp-gateway-registry/issues/129)**
+  Enable logical grouping of tools from multiple backend servers with intelligent routing using Lua/JavaScript scripting. Provides purpose-built virtual servers that abstract away backend complexity.
+
+- **[#121 - Migrate to OpenSearch for Server Storage and Vector Search](https://github.com/agentic-community/mcp-gateway-registry/issues/121)**
+  Replace current storage with OpenSearch to provide advanced vector search capabilities and improved scalability for large server registries.
+
+- **[#119 - Implement Well-Known URL for MCP Server Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/119)**
+  Standardized discovery mechanism using /.well-known/mcp-servers endpoint for automatic server detection and federation across organizations.
+
+- **[#118 - Agent-as-Tool Integration: Dynamic MCP Server Generation](https://github.com/agentic-community/mcp-gateway-registry/issues/118)**
+  Convert existing AI agents into MCP servers dynamically, enabling legacy agent ecosystems to participate in the MCP protocol without code rewrites.
+
 - **[#37 - Multi-Level Registry Support](https://github.com/agentic-community/mcp-gateway-registry/issues/37)**
   Add support for federated registries that can connect to other registries, enabling hierarchical MCP infrastructure with cross-IdP authentication.
-
-- **[#38 - Usage Metrics and Analytics System](https://github.com/agentic-community/mcp-gateway-registry/issues/38)**
-  Implement comprehensive usage tracking across user and agent identities, with metrics emission from auth server, registry, and intelligent tool finder.
 
 - **[#39 - Tool Popularity Scoring and Rating System](https://github.com/agentic-community/mcp-gateway-registry/issues/39)**
   Enhance tool discovery with popularity scores and star ratings based on usage patterns and agent feedback. *Depends on #38.*
 
 **Authentication & Identity**
 
-- **[#18 - Add Token Vending Capability to Auth Server](https://github.com/agentic-community/mcp-gateway-registry/issues/18)**
-  Extend the auth server to provide token vending capabilities for enhanced authentication workflows.
+- **[#128 - Add Microsoft Entra ID (Azure AD) Authentication Provider](https://github.com/agentic-community/mcp-gateway-registry/issues/128)** 🚧 **IN PROGRESS**
+  Extend authentication support beyond Keycloak to include Microsoft Entra ID integration. Enables enterprise SSO for organizations using Azure Active Directory.
 
-- **[#5 - Add Support for KeyCloak as IdP Provider](https://github.com/agentic-community/mcp-gateway-registry/issues/5)**
-  Add KeyCloak integration as an alternative Identity Provider alongside Amazon Cognito.
+- **[#18 - Add Token Vending Capability to Auth Server](https://github.com/agentic-community/mcp-gateway-registry/issues/18)** ✅ **COMPLETED**
+  Auth server token vending capabilities implemented for enhanced authentication workflows with OAuth token management and service account provisioning.
+
+- **[#5 - Add Support for KeyCloak as IdP Provider](https://github.com/agentic-community/mcp-gateway-registry/issues/5)** ✅ **COMPLETED**
+  KeyCloak integration implemented with individual agent audit trails, group-based authorization, and production-ready service account management. [Documentation](docs/keycloak-integration.md)
 
 For the complete list of open issues, feature requests, and bug reports, visit our [GitHub Issues page](https://github.com/agentic-community/mcp-gateway-registry/issues).
 
