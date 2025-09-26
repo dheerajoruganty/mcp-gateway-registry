@@ -282,54 +282,7 @@ class NginxConfigService:
         
         # Handle auth errors
         error_page 401 = @auth_error;
-        error_page 403 = @forbidden_error;
-        
-        # Collect MCP server metrics
-        log_by_lua_block {{
-            local cjson = require "cjson"
-            local metrics_buffer = ngx.shared.metrics_buffer
-            
-            -- Extract server name from location path
-            local server_name = "{path}":gsub("^/", ""):gsub("/$", "")
-            
-            -- Determine operation type from request
-            local operation_type = "unknown"
-            if ngx.var.request_method == "POST" then
-                -- Most MCP requests are POST
-                local uri = ngx.var.uri
-                if uri:match("/tools/") then
-                    operation_type = "tool_execution"
-                elseif uri:match("/mcp$") then
-                    operation_type = "discovery"
-                else
-                    operation_type = "mcp_request"
-                end
-            else
-                operation_type = "mcp_request"
-            end
-            
-            local metric = {{
-                type = operation_type,
-                value = 1.0,
-                duration_ms = (ngx.var.request_time or 0) * 1000,
-                dimensions = {{
-                    server_name = server_name,
-                    method = ngx.var.request_method,
-                    status = tonumber(ngx.var.status) or 0,
-                    success = (tonumber(ngx.var.status) or 0) < 400,
-                    path = ngx.var.uri,
-                    user = ngx.var.auth_user or "",
-                    transport = "{transport_type}",
-                    response_size = tonumber(ngx.var.bytes_sent) or 0
-                }}
-            }}
-            
-            local key = "mcp_" .. ngx.time() .. "_" .. math.random(10000)
-            local ok, err = metrics_buffer:set(key, cjson.encode(metric), 300) -- 5 min TTL
-            if not ok then
-                ngx.log(ngx.ERR, "Failed to store MCP metric: ", err)
-            end
-        }}"""
+        error_page 403 = @forbidden_error;"""
         
         # Transport-specific settings
         if transport_type == "sse":
