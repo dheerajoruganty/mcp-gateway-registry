@@ -133,7 +133,7 @@ fi
 
 # Stop and remove existing services if they exist
 log "Stopping existing services (if any)..."
-docker-compose -f "$DOCKER_COMPOSE_FILE" down --remove-orphans || log "No existing services to stop"
+docker compose -f "$DOCKER_COMPOSE_FILE" down --remove-orphans || log "No existing services to stop"
 log "Existing services stopped"
 
 # Clean up FAISS index files to force registry to recreate them
@@ -229,17 +229,17 @@ fi
 # Build or pull Docker images
 if [ "$USE_PREBUILT" = true ]; then
     log "Pulling pre-built Docker images..."
-    docker-compose -f "$DOCKER_COMPOSE_FILE" pull || handle_error "Docker Compose pull failed"
+    docker compose -f "$DOCKER_COMPOSE_FILE" pull || handle_error "Docker Compose pull failed"
     log "Pre-built Docker images pulled successfully"
 else
     log "Building Docker images..."
-    docker-compose -f "$DOCKER_COMPOSE_FILE" build || handle_error "Docker Compose build failed"
+    docker compose -f "$DOCKER_COMPOSE_FILE" build || handle_error "Docker Compose build failed"
     log "Docker images built successfully"
 fi
 
 # Start metrics service first to generate API keys
 log "Starting metrics service first..."
-docker-compose -f "$DOCKER_COMPOSE_FILE" up -d metrics-service || handle_error "Failed to start metrics service"
+docker compose -f "$DOCKER_COMPOSE_FILE" up -d metrics-service || handle_error "Failed to start metrics service"
 
 # Wait for metrics service to be ready
 log "Waiting for metrics service to be ready..."
@@ -308,7 +308,7 @@ log "Dynamic metrics API tokens configured successfully"
 
 # Now start all other services with the API keys in environment
 log "Starting remaining Docker Compose services..."
-docker-compose -f "$DOCKER_COMPOSE_FILE" up -d || handle_error "Failed to start remaining services"
+docker compose -f "$DOCKER_COMPOSE_FILE" up -d || handle_error "Failed to start remaining services"
 
 # Wait a moment for services to initialize
 log "Waiting for services to initialize..."
@@ -316,7 +316,7 @@ sleep 10
 
 # Check service status
 log "Checking service status..."
-docker-compose -f "$DOCKER_COMPOSE_FILE" ps
+docker compose -f "$DOCKER_COMPOSE_FILE" ps
 
 # Verify key services are running
 log "Verifying services are healthy..."
@@ -387,9 +387,9 @@ log "  - Real Server Fake Tools MCP: http://localhost:8002"
 log "  - MCP Gateway MCP: http://localhost:8003"
 log "  - Atlassian MCP: http://localhost:8005"
 log ""
-log "To view logs for all services: docker-compose -f $DOCKER_COMPOSE_FILE logs -f"
-log "To view logs for a specific service: docker-compose -f $DOCKER_COMPOSE_FILE logs -f <service-name>"
-log "To stop services: docker-compose -f $DOCKER_COMPOSE_FILE down"
+log "To view logs for all services: docker compose -f $DOCKER_COMPOSE_FILE logs -f"
+log "To view logs for a specific service: docker compose -f $DOCKER_COMPOSE_FILE logs -f <service-name>"
+log "To stop services: docker compose -f $DOCKER_COMPOSE_FILE down"
 log ""
 
 # Ask if user wants to follow logs
@@ -398,7 +398,7 @@ echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     log "Following container logs (press Ctrl+C to stop following logs without stopping the services):"
     echo "---------- DOCKER COMPOSE LOGS ----------"
-    docker-compose -f "$DOCKER_COMPOSE_FILE" logs -f
+    docker compose -f "$DOCKER_COMPOSE_FILE" logs -f
 else
-    log "Services are running in the background. Use 'docker-compose -f $DOCKER_COMPOSE_FILE logs -f' to view logs."
+    log "Services are running in the background. Use 'docker compose -f $DOCKER_COMPOSE_FILE logs -f' to view logs."
 fi
