@@ -331,6 +331,12 @@ Transform how both autonomous AI agents and development teams access enterprise 
 <p><em>AI assistants executing approved enterprise tools with governance</em></p>
 </td>
 </tr>
+<tr>
+<td colspan="2">
+<img src="docs/img/dashboard.png" alt="Grafana Metrics Dashboard" />
+<p><em>Real-time metrics and observability dashboard tracking server health, tool usage, and authentication events</em></p>
+</td>
+</tr>
 </table>
 
 
@@ -368,6 +374,7 @@ Transform how both autonomous AI agents and development teams access enterprise 
 
 ## What's New
 
+- **Real-Time Metrics & Observability** - Comprehensive monitoring via Grafana dashboards with metrics stored in PostgreSQL and exposed through OpenTelemetry (OTEL). Track server health, tool usage, authentication events, and performance metrics in real-time for complete visibility into your MCP infrastructure.
 - **Service Management Utility** - New comprehensive script for server lifecycle management with automated verification and testing. [Learn more](docs/service-management.md)
 - **Tag-Based Tool Filtering** - Enhanced intelligent_tool_finder now supports filtering tools by server tags for precise categorical discovery alongside semantic search
 - **🔐 Keycloak Identity Provider Integration** - Enterprise-grade authentication with individual AI agent audit trails, group-based authorization, and production-ready service account management. [Learn more](docs/keycloak-integration.md)
