@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     embeddings_model_name: str = "all-MiniLM-L6-v2"
     embeddings_model_dimensions: int = 384
     
-    # Health check settings  
-    health_check_interval_seconds: int = 300  # 5 minutes for automatic background checks
+    # Health check settings
+    health_check_interval_seconds: int = 300  # 5 minutes for automatic background checks (configurable via env var)
     health_check_timeout_seconds: int = 2  # Very fast timeout for user-driven actions
     
     # WebSocket performance settings
@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     websocket_broadcast_interval_ms: int = 10  # Very responsive - 10ms minimum between broadcasts
     websocket_max_batch_size: int = 20  # Smaller batches for faster updates
     websocket_cache_ttl_seconds: int = 1  # 1 second cache for near real-time user feedback
+
+    # Well-known discovery settings
+    enable_wellknown_discovery: bool = True
+    wellknown_cache_ttl: int = 300  # 5 minutes
     
     # Container paths - adjust for local development
     container_app_dir: Path = Path("/app")
