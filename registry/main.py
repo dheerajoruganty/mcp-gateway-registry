@@ -97,7 +97,7 @@ async def lifespan(app: FastAPI):
     try:
         # Initialize services in order
         logger.info("📚 Loading server definitions and state...")
-        server_service.load_servers_and_state()
+        await server_service.load_servers_and_state()
         
         logger.info("🔍 Initializing FAISS search service...")
         await faiss_service.initialize()
@@ -105,7 +105,7 @@ async def lifespan(app: FastAPI):
         logger.info("📊 Updating FAISS index with all registered services...")
         all_servers = server_service.get_all_servers()
         for service_path, server_info in all_servers.items():
-            is_enabled = server_service.is_service_enabled(service_path)
+            is_enabled = await server_service.is_service_enabled(service_path)
             try:
                 await faiss_service.add_or_update_service(service_path, server_info, is_enabled)
                 logger.debug(f"Updated FAISS index for service: {service_path}")

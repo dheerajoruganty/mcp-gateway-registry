@@ -93,7 +93,7 @@ async def read_root(
                     "path": path,
                     "description": server_info.get("description", ""),
                     "proxy_pass_url": server_info.get("proxy_pass_url", ""),
-                    "is_enabled": server_service.is_service_enabled(path),
+                    "is_enabled": await server_service.is_service_enabled(path),
                     "tags": server_info.get("tags", []),
                     "num_tools": server_info.get("num_tools", 0),
                     "num_stars": server_info.get("num_stars", 0),
@@ -170,7 +170,7 @@ async def get_servers_json(
                     "path": path,
                     "description": server_info.get("description", ""),
                     "proxy_pass_url": server_info.get("proxy_pass_url", ""),
-                    "is_enabled": server_service.is_service_enabled(path),
+                    "is_enabled": await server_service.is_service_enabled(path),
                     "tags": server_info.get("tags", []),
                     "num_tools": server_info.get("num_tools", 0),
                     "num_stars": server_info.get("num_stars", 0),
@@ -224,7 +224,7 @@ async def toggle_service_route(
             )
 
     new_state = enabled == "on"
-    success = server_service.toggle_service(service_path, new_state)
+    success = await server_service.toggle_service(service_path, new_state)
     
     if not success:
         raise HTTPException(status_code=500, detail="Failed to toggle service")
@@ -330,7 +330,7 @@ async def register_service(
     }
 
     # Register the server
-    success = server_service.register_server(server_entry)
+    success = await server_service.register_server(server_entry)
     
     if not success:
         return JSONResponse(
@@ -339,7 +339,7 @@ async def register_service(
         )
 
     # Add to FAISS index with current enabled state
-    is_enabled = server_service.is_service_enabled(path)
+    is_enabled = await server_service.is_service_enabled(path)
     await faiss_service.add_or_update_service(path, server_entry, is_enabled)
     
     # Regenerate Nginx configuration
@@ -522,9 +522,9 @@ async def internal_register_service(
     logger.warning("INTERNAL REGISTER: Calling server_service.register_server")  # TODO: replace with debug
     if existing_server and overwrite:
         logger.warning(f"INTERNAL REGISTER: Overwriting existing server at path {path}")  # TODO: replace with debug
-        success = server_service.update_server(path, server_entry)
+        success = await server_service.update_server(path, server_entry)
     else:
-        success = server_service.register_server(server_entry)
+        success = await server_service.register_server(server_entry)
 
     if not success:
         logger.warning(f"INTERNAL REGISTER: Registration failed for path {path}")  # TODO: replace with debug
@@ -541,7 +541,7 @@ async def internal_register_service(
 
     # Automatically enable the newly registered server BEFORE FAISS indexing
     try:
-        toggle_success = server_service.toggle_service(path, True)
+        toggle_success = await server_service.toggle_service(path, True)
         if toggle_success:
             logger.info(f"Successfully auto-enabled server {path} after registration")
         else:
@@ -553,7 +553,7 @@ async def internal_register_service(
     logger.warning(f"INTERNAL REGISTER: Server registered successfully, adding to FAISS index")  # TODO: replace with debug
 
     # Add to FAISS index with current enabled state (should be True after auto-enable)
-    is_enabled = server_service.is_service_enabled(path)
+    is_enabled = await server_service.is_service_enabled(path)
     await faiss_service.add_or_update_service(path, server_entry, is_enabled)
 
     logger.warning("INTERNAL REGISTER: Regenerating Nginx configuration")  # TODO: replace with debug
@@ -686,7 +686,7 @@ async def internal_remove_service(
     logger.warning(f"INTERNAL REMOVE: Service found, proceeding with removal")  # TODO: replace with debug
 
     # Remove the server
-    success = server_service.remove_server(service_path)
+    success = await server_service.remove_server(service_path)
 
     if not success:
         logger.warning(f"INTERNAL REMOVE: Failed to remove service at path '{service_path}'")  # TODO: replace with debug
@@ -825,9 +825,9 @@ async def internal_toggle_service(
     logger.warning(f"INTERNAL TOGGLE: Service found, proceeding with toggle")  # TODO: replace with debug
 
     # Get current state and toggle it
-    current_state = server_service.is_service_enabled(service_path)
+    current_state = await server_service.is_service_enabled(service_path)
     new_state = not current_state
-    success = server_service.toggle_service(service_path, new_state)
+    success = await server_service.toggle_service(service_path, new_state)
 
     if not success:
         logger.warning(f"INTERNAL TOGGLE: Failed to toggle service at path '{service_path}'")  # TODO: replace with debug
@@ -1071,13 +1071,13 @@ async def edit_server_submit(
     }
 
     # Update server
-    success = server_service.update_server(service_path, updated_server_entry)
+    success = await server_service.update_server(service_path, updated_server_entry)
     
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save updated server data")
 
     # Update FAISS metadata (keep current enabled state)
-    is_enabled = server_service.is_service_enabled(service_path)
+    is_enabled = await server_service.is_service_enabled(service_path)
     await faiss_service.add_or_update_service(service_path, updated_server_entry, is_enabled)
     
     # Regenerate Nginx configuration
@@ -1209,7 +1209,7 @@ async def get_service_tools(
             )
 
     # Check if service is enabled and healthy
-    is_enabled = server_service.is_service_enabled(service_path)
+    is_enabled = await server_service.is_service_enabled(service_path)
     if not is_enabled:
         raise HTTPException(status_code=400, detail="Cannot fetch tools from disabled service")
 
@@ -1244,7 +1244,7 @@ async def get_service_tools(
             updated_server_info["num_tools"] = new_tool_count
 
             # Save updated server info
-            success = server_service.update_server(service_path, updated_server_info)
+            success = await server_service.update_server(service_path, updated_server_info)
             if success:
                 logger.info(f"Successfully updated tool list for {service_path}")
 
@@ -1308,7 +1308,7 @@ async def refresh_service(
             )
 
     # Check if service is enabled
-    is_enabled = server_service.is_service_enabled(service_path)
+    is_enabled = await server_service.is_service_enabled(service_path)
     if not is_enabled:
         raise HTTPException(status_code=400, detail="Cannot refresh disabled service")
 
@@ -1605,7 +1605,7 @@ async def internal_list_services(
             "path": service_path,
             "description": server_info.get("description", ""),
             "proxy_pass_url": server_info.get("proxy_pass_url", ""),
-            "is_enabled": server_service.is_service_enabled(service_path),
+            "is_enabled": await server_service.is_service_enabled(service_path),
             "tags": server_info.get("tags", []),
             "num_tools": server_info.get("num_tools", 0),
             "num_stars": server_info.get("num_stars", 0),
@@ -2357,9 +2357,9 @@ async def register_service_api(
         # Register service (use update_server if overwriting, otherwise register_server)
         if existing_server and overwrite:
             logger.info(f"Overwriting existing server at path {path} by user {user_context.get('username')}")
-            success = server_service.update_server(path, server_entry)
+            success = await server_service.update_server(path, server_entry)
         else:
-            success = server_service.register_server(server_entry)
+            success = await server_service.register_server(server_entry)
 
         if not success:
             logger.error(f"Service registration failed for {path}")
@@ -2441,7 +2441,7 @@ async def toggle_service_api(
         raise HTTPException(status_code=404, detail="Service path not registered")
 
     # Toggle the service
-    success = server_service.toggle_service(path, new_state)
+    success = await server_service.toggle_service(path, new_state)
 
     if not success:
         raise HTTPException(status_code=500, detail="Failed to toggle service")
@@ -2543,7 +2543,7 @@ async def remove_service_api(
         )
 
     # Remove the server
-    success = server_service.remove_server(path)
+    success = await server_service.remove_server(path)
 
     if not success:
         logger.warning(f"Failed to remove service at path '{path}'")

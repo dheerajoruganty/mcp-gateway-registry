@@ -1,6 +1,7 @@
 import os
 import secrets
 from pathlib import Path
+from typing import Optional
 from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
@@ -41,6 +42,30 @@ class Settings(BaseSettings):
     # Well-known discovery settings
     enable_wellknown_discovery: bool = True
     wellknown_cache_ttl: int = 300  # 5 minutes
+    
+    # Storage Backend Configuration
+    storage_backend: str = "file"  # Options: "file", "opensearch"
+    
+    # OpenSearch Configuration (only used when storage_backend="opensearch")
+    opensearch_host: str = "localhost"
+    opensearch_port: int = 9200
+    opensearch_user: Optional[str] = None
+    opensearch_password: Optional[str] = None
+    opensearch_use_ssl: bool = False
+    opensearch_verify_certs: bool = False
+    
+    # OpenSearch Namespace (for multi-tenancy support)
+    opensearch_namespace: str = "default"
+    
+    # OpenSearch Index Names (computed from namespace)
+    opensearch_index_servers: str = "mcp-servers"
+    opensearch_index_agents: str = "mcp-agents"
+    opensearch_index_scopes: str = "mcp-scopes"
+    opensearch_index_embeddings: str = "mcp-embeddings"
+    
+    # Hybrid Search Weights
+    opensearch_hybrid_bm25_weight: float = 0.4
+    opensearch_hybrid_knn_weight: float = 0.6
     
     # Container paths - adjust for local development
     container_app_dir: Path = Path("/app")
