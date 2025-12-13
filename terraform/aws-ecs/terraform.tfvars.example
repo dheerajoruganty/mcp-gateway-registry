@@ -57,6 +57,14 @@ keycloak_database_username = "keycloak"
 keycloak_database_password = "CHANGE-ME-DB-PASSWORD"
 
 # ============================================================================
+# OPENSEARCH CREDENTIALS (REQUIRED)
+# ============================================================================
+
+# OpenSearch admin password
+# Must be at least 8 characters with uppercase, lowercase, number, and special character
+opensearch_admin_password = "CHANGE-ME-OpenSearch123!"
+
+# ============================================================================
 # CONTAINER IMAGE URIS (REQUIRED)
 # ============================================================================
 
