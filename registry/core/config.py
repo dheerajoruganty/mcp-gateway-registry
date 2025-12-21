@@ -74,6 +74,30 @@ class Settings(BaseSettings):
     agent_security_add_pending_tag: bool = True
     a2a_scanner_llm_api_key: str = ""  # Optional Azure OpenAI API key for LLM-based analysis
     
+    # Storage Backend Configuration
+    storage_backend: str = "file"  # Options: "file", "opensearch"
+    
+    # OpenSearch Configuration (only used when storage_backend="opensearch")
+    opensearch_host: str = "localhost"
+    opensearch_port: int = 9200
+    opensearch_user: Optional[str] = None
+    opensearch_password: Optional[str] = None
+    opensearch_use_ssl: bool = False
+    opensearch_verify_certs: bool = False
+    
+    # OpenSearch Namespace (for multi-tenancy support)
+    opensearch_namespace: str = "default"
+    
+    # OpenSearch Index Names (computed from namespace)
+    opensearch_index_servers: str = "mcp-servers"
+    opensearch_index_agents: str = "mcp-agents"
+    opensearch_index_scopes: str = "mcp-scopes"
+    opensearch_index_embeddings: str = "mcp-embeddings"
+    
+    # Hybrid Search Weights
+    opensearch_hybrid_bm25_weight: float = 0.4
+    opensearch_hybrid_knn_weight: float = 0.6
+    
     # Container paths - adjust for local development
     container_app_dir: Path = Path("/app")
     container_registry_dir: Path = Path("/app/registry")

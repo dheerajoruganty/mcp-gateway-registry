@@ -1,6 +1,53 @@
 version: '3.8'
 
 services:
+  # OpenSearch for registry data storage and hybrid search
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: mcp-opensearch
+    environment:
+      - cluster.name=mcp-gateway-cluster
+      - node.name=opensearch-node1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q 'green\\|yellow'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # OpenSearch Dashboards (optional - for debugging)
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.0
+    container_name: mcp-opensearch-dashboards
+    profiles:
+      - debug
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: unless-stopped
+
   # Registry service (includes nginx, SSL, FAISS, models)
   registry:
     build:
@@ -50,6 +97,11 @@ services:
       - SECURITY_SCAN_TIMEOUT=${SECURITY_SCAN_TIMEOUT:-60}
       - SECURITY_ADD_PENDING_TAG=${SECURITY_ADD_PENDING_TAG:-true}
       - MCP_SCANNER_LLM_API_KEY=${MCP_SCANNER_LLM_API_KEY}
+      # OpenSearch Configuration
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-file}
+      - OPENSEARCH_HOST=opensearch
+      - OPENSEARCH_PORT=9200
+      - OPENSEARCH_NAMESPACE=${OPENSEARCH_NAMESPACE:-default}
       # Embeddings Configuration
       - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-sentence-transformers}
       - EMBEDDINGS_MODEL_NAME=${EMBEDDINGS_MODEL_NAME:-all-MiniLM-L6-v2}
@@ -73,6 +125,7 @@ services:
     depends_on:
       - auth-server
       - metrics-service
+      - opensearch
     restart: unless-stopped
 
   # Metrics Collection Service
@@ -148,7 +201,7 @@ services:
       - "8888:8888"
     volumes:
       - ${HOME}/mcp-gateway/logs:/app/logs
-      - ${HOME}/mcp-gateway/auth_server/scopes.yml:/app/scopes.yml
+      # - ${HOME}/mcp-gateway/auth_server/scopes.yml:/app/scopes.yml
     restart: unless-stopped
 
   # Current Time MCP Server
@@ -341,3 +394,4 @@ volumes:
   metrics-db-data:
   prometheus-data:
   grafana-data:
+  opensearch-data:

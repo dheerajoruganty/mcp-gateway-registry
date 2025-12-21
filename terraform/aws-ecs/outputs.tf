@@ -91,7 +91,7 @@ output "deployment_summary" {
   description = "Summary of deployed components"
   value = {
     mcp_gateway_deployed = true
-    https_enabled        = aws_acm_certificate.registry.arn != ""
+    https_enabled        = false
     monitoring_enabled   = var.enable_monitoring
     multi_az_nat         = true
     autoscaling_enabled  = true
@@ -131,16 +131,38 @@ output "registry_url" {
   value       = "https://registry.${local.root_domain}"
 }
 
-output "registry_certificate_arn" {
-  description = "ACM certificate ARN for registry subdomain"
-  value       = aws_acm_certificate.registry.arn
+# Disabled for testing without certificates
+# output "registry_certificate_arn" {
+#   description = "ACM certificate ARN for registry subdomain"
+#   value       = ""
+# }
+
+# output "registry_dns_record" {
+#   description = "Registry DNS A record details"
+#   value = {}
+# }
+
+#
+# OpenSearch Outputs
+#
+
+output "opensearch_endpoint" {
+  description = "OpenSearch internal endpoint (accessible via Service Discovery)"
+  value       = "https://opensearch.${module.mcp_gateway.service_discovery_namespace_id}:9200"
 }
 
-output "registry_dns_record" {
-  description = "Registry DNS A record details"
-  value = {
-    name    = aws_route53_record.registry.name
-    type    = aws_route53_record.registry.type
-    zone_id = aws_route53_record.registry.zone_id
-  }
+output "opensearch_service_name" {
+  description = "OpenSearch ECS service name"
+  value       = aws_ecs_service.opensearch.name
+}
+
+output "opensearch_security_group_id" {
+  description = "OpenSearch ECS security group ID"
+  value       = aws_security_group.opensearch_ecs.id
+}
+
+output "opensearch_admin_password_ssm" {
+  description = "SSM parameter name for OpenSearch admin password"
+  value       = aws_ssm_parameter.opensearch_admin_password.name
+  sensitive   = false
 }

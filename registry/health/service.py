@@ -1030,8 +1030,8 @@ class HealthMonitoringService:
         """Get health data for a specific service - optimized version."""
         from ..services.server_service import server_service
         
-        # Quick enabled check using cached server_info if possible
-        is_enabled = server_service.is_service_enabled(service_path)
+        # Quick enabled check using cached service_state
+        is_enabled = server_service.service_state.get(service_path, False)
         
         if not is_enabled:
             status = "disabled"

@@ -50,6 +50,12 @@ variable "base_domain" {
   default     = "mycorp.click"
 }
 
+variable "certificate_arn" {
+  description = "ARN of ACM certificate for HTTPS. Leave empty to disable HTTPS"
+  type        = string
+  default     = ""
+}
+
 variable "keycloak_domain" {
   description = "Full domain for Keycloak (e.g., kc.example.com). Used when use_regional_domains is false"
   type        = string
@@ -84,6 +90,12 @@ variable "keycloak_database_username" {
 
 variable "keycloak_database_password" {
   description = "Keycloak database password"
+  type        = string
+  sensitive   = true
+}
+
+variable "opensearch_admin_password" {
+  description = "OpenSearch admin password (minimum 8 characters with uppercase, lowercase, number, and special character)"
   type        = string
   sensitive   = true
 }

@@ -35,8 +35,8 @@ module "mcp_gateway" {
   task_execution_role_arn = module.ecs_cluster.task_exec_iam_role_arn
 
   # HTTPS configuration
-  certificate_arn = aws_acm_certificate.registry.arn
-  domain_name     = "registry.${local.root_domain}"
+  certificate_arn = var.certificate_arn
+  domain_name     = var.base_domain
 
   # Keycloak configuration
   keycloak_domain = local.keycloak_domain
