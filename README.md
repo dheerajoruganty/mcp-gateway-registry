@@ -497,14 +497,56 @@ For detailed Podman setup instructions, see [Installation Guide](docs/installati
 
 ### Testing & Integration Options
 
-**Python Scripts:**
-- `./cli/mcp_client.py` - Core MCP operations (ping, list tools, call tools)
+**Test Suite:**
+The project includes comprehensive automated testing with pytest:
+
+```bash
+# Run all tests
+make test
+
+# Run only unit tests (fast)
+make test-unit
+
+# Run with coverage report
+make test-coverage
+
+# Run specific test categories
+uv run pytest -m unit           # Unit tests only
+uv run pytest -m integration    # Integration tests
+uv run pytest -m "not slow"     # Skip slow tests
+```
+
+**Test Structure:**
+- **Unit Tests** (`tests/unit/`) - Fast, isolated component tests
+- **Integration Tests** (`tests/integration/`) - Component interaction tests
+- **E2E Tests** (`tests/integration/test_e2e_workflows.py`) - Complete workflow tests
+- **Coverage Requirement**: 80% minimum code coverage
+
+**Legacy Shell Scripts** (deprecated, use pytest instead):
 - `./tests/mcp_cmds.sh` - Shell-based MCP testing operations
+- `./tests/agent_crud_test.sh` - Agent CRUD operations
+- `./tests/test_rate_agent_curl.sh` - Agent rating tests
+- `./tests/run-lob-bot-tests.sh` - Access control tests
 
 **Python Agent:**
 - `agents/agent.py` - Full-featured Python agent with advanced AI capabilities
 
-**Next Steps:** [Testing Guide](docs/testing.md) | [Complete Installation Guide](docs/installation.md) | [Authentication Setup](docs/auth.md) | [AI Assistant Integration](docs/ai-coding-assistants-setup.md)
+**Testing Documentation:**
+- [Testing Guide](docs/testing/README.md) - Comprehensive testing documentation
+- [Writing Tests](docs/testing/WRITING_TESTS.md) - How to write effective tests
+- [Test Maintenance](docs/testing/MAINTENANCE.md) - Maintaining test suite health
+
+**Pre-commit Hooks:**
+```bash
+# Install pre-commit hooks
+pip install pre-commit
+pre-commit install
+
+# Run hooks manually
+pre-commit run --all-files
+```
+
+**Next Steps:** [Complete Installation Guide](docs/installation.md) | [Authentication Setup](docs/auth.md) | [AI Assistant Integration](docs/ai-coding-assistants-setup.md)
 
 ---
 

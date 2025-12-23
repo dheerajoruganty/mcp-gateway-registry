@@ -1,0 +1,21 @@
+{
+  "analysis_results": {},
+  "scan_results": {
+    "target_name": "new-agent",
+    "target_type": "agent_card",
+    "status": "completed",
+    "analyzers": [
+      "yara",
+      "heuristic",
+      "spec",
+      "endpoint"
+    ],
+    "findings": [],
+    "metadata": {
+      "agent_id": null,
+      "url": "http://localhost:9000/new-agent"
+    },
+    "total_findings": 0,
+    "high_severity_count": 0
+  }
+}

@@ -5,11 +5,10 @@ Version can be set via BUILD_VERSION environment variable (for Docker builds)
 or determined from git tags at runtime (for local development).
 """
 
+import logging
 import os
 import subprocess
-import logging
 from pathlib import Path
-
 
 logger = logging.getLogger(__name__)
 

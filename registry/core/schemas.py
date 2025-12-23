@@ -1,6 +1,6 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
-from datetime import datetime
 
 
 class ServerInfo(BaseModel):
@@ -8,41 +8,41 @@ class ServerInfo(BaseModel):
     server_name: str
     description: str = ""
     path: str
-    proxy_pass_url: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
+    proxy_pass_url: str | None = None
+    tags: list[str] = Field(default_factory=list)
     num_tools: int = 0
     num_stars: int = 0
     is_python: bool = False
     license: str = "N/A"
-    tool_list: List[Dict[str, Any]] = Field(default_factory=list)
+    tool_list: list[dict[str, Any]] = Field(default_factory=list)
     is_enabled: bool = False
-    transport: Optional[str] = Field(default="auto", description="Preferred transport: sse, streamable-http, or auto")
-    supported_transports: List[str] = Field(default_factory=lambda: ["streamable-http"], description="List of supported transports")
-    mcp_endpoint: Optional[str] = Field(default=None, description="Custom /mcp endpoint path")
-    sse_endpoint: Optional[str] = Field(default=None, description="Custom /sse endpoint path")
+    transport: str | None = Field(default="auto", description="Preferred transport: sse, streamable-http, or auto")
+    supported_transports: list[str] = Field(default_factory=lambda: ["streamable-http"], description="List of supported transports")
+    mcp_endpoint: str | None = Field(default=None, description="Custom /mcp endpoint path")
+    sse_endpoint: str | None = Field(default=None, description="Custom /sse endpoint path")
 
 
 class ToolDescription(BaseModel):
     """Parsed tool description sections."""
     main: str = "No description available."
-    args: Optional[str] = None
-    returns: Optional[str] = None
-    raises: Optional[str] = None
+    args: str | None = None
+    returns: str | None = None
+    raises: str | None = None
 
 
 class ToolInfo(BaseModel):
     """Tool information model."""
     name: str
     parsed_description: ToolDescription
-    schema: Dict[str, Any] = Field(default_factory=dict)
-    server_path: Optional[str] = None
-    server_name: Optional[str] = None
+    schema: dict[str, Any] = Field(default_factory=dict)
+    server_path: str | None = None
+    server_name: str | None = None
 
 
 class HealthStatus(BaseModel):
     """Health check status model."""
     status: str
-    last_checked_iso: Optional[str] = None
+    last_checked_iso: str | None = None
     num_tools: int = 0
 
 
@@ -64,21 +64,21 @@ class ServiceRegistrationRequest(BaseModel):
     num_stars: int = Field(0, ge=0)
     is_python: bool = False
     license: str = "N/A"
-    transport: Optional[str] = Field(default="auto", description="Preferred transport: sse, streamable-http, or auto")
+    transport: str | None = Field(default="auto", description="Preferred transport: sse, streamable-http, or auto")
     supported_transports: str = Field(default="streamable-http", description="Comma-separated list of supported transports")
-    mcp_endpoint: Optional[str] = Field(default=None, description="Custom /mcp endpoint path")
-    sse_endpoint: Optional[str] = Field(default=None, description="Custom /sse endpoint path")
+    mcp_endpoint: str | None = Field(default=None, description="Custom /mcp endpoint path")
+    sse_endpoint: str | None = Field(default=None, description="Custom /sse endpoint path")
 
 
 class OAuth2Provider(BaseModel):
     """OAuth2 provider information."""
     name: str
     display_name: str
-    icon: Optional[str] = None
+    icon: str | None = None
 
 
 class FaissMetadata(BaseModel):
     """FAISS metadata model."""
     id: int
     text_for_embedding: str
-    full_server_info: ServerInfo 
+    full_server_info: ServerInfo

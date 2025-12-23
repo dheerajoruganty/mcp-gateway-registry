@@ -1,12 +1,14 @@
-import logging
 import asyncio
-import httpx
+import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
+import httpx
+
+from registry.constants import REGISTRY_CONSTANTS, HealthStatus
+
 from .config import settings
-from registry.constants import HealthStatus, REGISTRY_CONSTANTS
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +21,15 @@ class NginxConfigService:
         ssl_cert_path = Path(REGISTRY_CONSTANTS.SSL_CERT_PATH)
         ssl_key_path = Path(REGISTRY_CONSTANTS.SSL_KEY_PATH)
 
-        # Check if SSL certificates exist
-        if ssl_cert_path.exists() and ssl_key_path.exists():
+        # Check if SSL certificates exist (handle permission errors gracefully)
+        ssl_available = False
+        try:
+            ssl_available = ssl_cert_path.exists() and ssl_key_path.exists()
+        except (PermissionError, OSError) as e:
+            logger.debug(f"Unable to check SSL certificate availability: {e}")
+            ssl_available = False
+
+        if ssl_available:
             # Use HTTP + HTTPS template
             if Path(REGISTRY_CONSTANTS.NGINX_TEMPLATE_HTTP_AND_HTTPS).exists():
                 self.nginx_template_path = Path(REGISTRY_CONSTANTS.NGINX_TEMPLATE_HTTP_AND_HTTPS)
@@ -34,7 +43,7 @@ class NginxConfigService:
             else:
                 # Fallback for local development
                 self.nginx_template_path = Path(REGISTRY_CONSTANTS.NGINX_TEMPLATE_HTTP_ONLY_LOCAL)
-        
+
     async def get_additional_server_names(self) -> str:
         """Fetch or determine additional server names for nginx gateway configuration.
 
@@ -140,7 +149,7 @@ class NginxConfigService:
         logger.info("No additional server names available - will use only localhost and mcpgateway.ddns.net")
         return ""
 
-    def generate_config(self, servers: Dict[str, Dict[str, Any]]) -> bool:
+    def generate_config(self, servers: dict[str, dict[str, Any]]) -> bool:
         """Generate Nginx configuration (synchronous version for non-async contexts)."""
         try:
             # Check if we're in an async context
@@ -156,16 +165,16 @@ class NginxConfigService:
         except Exception as e:
             logger.error(f"Failed to generate Nginx configuration: {e}", exc_info=True)
             return False
-        
-    async def generate_config_async(self, servers: Dict[str, Dict[str, Any]]) -> bool:
+
+    async def generate_config_async(self, servers: dict[str, dict[str, Any]]) -> bool:
         """Generate Nginx configuration with additional server names and dynamic location blocks."""
         try:
             # Read template
             if not self.nginx_template_path.exists():
                 logger.warning(f"Nginx template not found at {self.nginx_template_path}")
                 return False
-                
-            with open(self.nginx_template_path, "r") as f:
+
+            with open(self.nginx_template_path) as f:
                 template_content = f.read()
 
             # Local-dev / Podman compatibility:
@@ -244,10 +253,10 @@ class NginxConfigService:
                     logger.warning("NGINX_DISABLE_API_AUTH_REQUEST enabled: bypassing auth_request for /api/")
                 else:
                     logger.warning("NGINX_DISABLE_API_AUTH_REQUEST enabled but could not find /api/ auth_request block in template")
-            
+
             # Get health service to check server health
             from ..health.service import health_service
-            
+
             # Generate location blocks for enabled and healthy servers with transport support
             location_blocks = []
             for path, server_info in servers.items():
@@ -255,7 +264,7 @@ class NginxConfigService:
                 if proxy_pass_url:
                     # Check if server is healthy (including auth-expired which is still reachable)
                     health_status = health_service.server_health_status.get(path, HealthStatus.UNKNOWN)
-                    
+
                     # Include servers that are healthy or just have expired auth (server is up)
                     if HealthStatus.is_healthy(health_status):
                         # Generate transport-aware location blocks
@@ -277,7 +286,7 @@ class NginxConfigService:
 #    }}"""
                         location_blocks.append(commented_block)
                         logger.debug(f"Added commented location block for unhealthy service {path} (status: {health_status})")
-            
+
             # Fetch additional server names (custom domains/IPs)
             additional_server_names = await self.get_additional_server_names()
 
@@ -323,16 +332,16 @@ class NginxConfigService:
                 f.write(config_content)
 
             logger.info(f"Generated Nginx configuration with {len(location_blocks)} location blocks and additional server names: {additional_server_names}")
-            
+
             # Automatically reload nginx after generating config
             self.reload_nginx()
-            
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to generate Nginx configuration: {e}", exc_info=True)
             return False
-            
+
     def reload_nginx(self) -> bool:
         """Reload Nginx configuration (if running in appropriate environment)."""
         try:
@@ -360,16 +369,16 @@ class NginxConfigService:
             return False
 
 
-    def _generate_transport_location_blocks(self, path: str, server_info: Dict[str, Any]) -> list:
+    def _generate_transport_location_blocks(self, path: str, server_info: dict[str, Any]) -> list:
         """Generate nginx location blocks for different transport types."""
         blocks = []
         proxy_pass_url = server_info.get("proxy_pass_url", "")
         supported_transports = server_info.get("supported_transports", ["streamable-http"])
-        
+
         # Use the proxy_pass_url exactly as specified in the JSON file
         # Users are responsible for including /mcp, /sse, or any other path in the URL
         proxy_url = proxy_pass_url
-        
+
         # Determine transport type based on supported_transports
         if not supported_transports:
             # Default to streamable-http if no transports specified
@@ -391,24 +400,24 @@ class NginxConfigService:
             # Default to streamable-http if unknown transport
             transport_type = "streamable-http"
             logger.info(f"Server {path}: Unknown transport types {supported_transports}, defaulting to streamable-http")
-        
+
         # Create a single location block for this server
         # The proxy_pass URL is used exactly as provided in the server configuration
         logger.info(f"Server {path}: Using proxy_pass URL as configured: {proxy_url}")
-        
+
         block = self._create_location_block(path, proxy_url, transport_type)
         blocks.append(block)
-        
+
         return blocks
 
 
     def _create_location_block(self, path: str, proxy_pass_url: str, transport_type: str) -> str:
         """Create a single nginx location block with transport-specific configuration."""
-        
+
         # Extract hostname from proxy_pass_url for external services
         parsed_url = urlparse(proxy_pass_url)
         upstream_host = parsed_url.netloc
-        
+
         # Determine whether to use upstream hostname or preserve original host
         # For external services (https), use the upstream hostname
         # For internal services (http without dots in hostname), preserve original host
@@ -419,8 +428,8 @@ class NginxConfigService:
         else:
             # Internal service - preserve original host
             host_header = '$host'
-            logger.info(f"Using original host for Host header: $host")
-        
+            logger.info("Using original host for Host header: $host")
+
         # Common proxy settings
         common_settings = f"""
         # Use IPv4 resolver (disable IPv6)
@@ -474,7 +483,7 @@ class NginxConfigService:
         # Handle auth errors
         error_page 401 = @auth_error;
         error_page 403 = @forbidden_error;"""
-        
+
         # Transport-specific settings
         if transport_type == "sse":
             transport_settings = """
@@ -489,7 +498,7 @@ class NginxConfigService:
         # Explicitly preserve Accept header for MCP protocol requirements
         proxy_set_header Accept $http_accept;
         chunked_transfer_encoding off;"""
-        
+
         elif transport_type == "streamable-http":
             transport_settings = """
         # Capture request body for auth validation using Lua
@@ -500,7 +509,7 @@ class NginxConfigService:
         proxy_set_header Connection "";
         # Explicitly preserve Accept header for MCP protocol requirements
         proxy_set_header Accept $http_accept;"""
-        
+
         else:  # direct
             transport_settings = """
         # Capture request body for auth validation using Lua
@@ -512,16 +521,16 @@ class NginxConfigService:
         proxy_set_header Connection $http_connection;
         proxy_set_header Upgrade $http_upgrade;
         chunked_transfer_encoding off;"""
-        
+
         # Use the location path exactly as specified in the server configuration
         # Users have full control over the location path format (with or without trailing slash)
         location_path = path
         logger.info(f"Creating location block for {location_path} with {transport_type} transport")
-        
+
         return f"""
     location {location_path} {{{transport_settings}{common_settings}
     }}"""
 
 
 # Global nginx service instance
-nginx_service = NginxConfigService() 
+nginx_service = NginxConfigService()

@@ -1,7 +1,6 @@
 import logging
-from typing import Optional
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ..core.config import settings
@@ -15,7 +14,7 @@ router = APIRouter()
 @router.get("/mcp-servers")
 async def get_wellknown_mcp_servers(
     request: Request,
-    user_context: Optional[dict] = None
+    user_context: dict | None = None
 ) -> JSONResponse:
     """
     Main endpoint handler for /.well-known/mcp-servers

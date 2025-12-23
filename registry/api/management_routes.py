@@ -28,7 +28,6 @@ from ..utils.keycloak_manager import (
     list_keycloak_users,
 )
 
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/management", tags=["Management API"])

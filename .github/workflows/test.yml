@@ -1,178 +1,222 @@
-name: 🧪 Test Suite
+name: Test Suite
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    name: "🧪 Test (${{ matrix.python-version }})"
+    name: "Test (Python ${{ matrix.python-version }})"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         python-version: ["3.12"]
       fail-fast: false
 
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🐍 Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: 📦 Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
 
-    - name: 🔧 Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .[dev]
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-${{ matrix.python-version }}-
+            ${{ runner.os }}-uv-
 
-    - name: 🔍 Check dependencies
-      run: |
-        python scripts/test.py check
+      - name: Install dependencies
+        run: uv sync --extra dev
 
-    - name: 🧪 Run unit tests
-      run: |
-        python scripts/test.py unit
+      - name: Check dependencies
+        run: uv run python scripts/test.py check
 
-    - name: 🔗 Run integration tests  
-      run: |
-        python scripts/test.py integration
+      - name: Run unit tests
+        run: uv run python scripts/test.py unit
 
-    - name: 📊 Generate coverage report
-      run: |
-        python scripts/test.py coverage
+      - name: Run integration tests
+        run: uv run python scripts/test.py integration
 
-    - name: 📤 Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
+      - name: Generate coverage report
+        run: uv run python scripts/test.py coverage
 
-    - name: 📄 Upload coverage reports
-      uses: actions/upload-artifact@v3
-      with:
-        name: coverage-report-${{ matrix.python-version }}
-        path: htmlcov/
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
 
-    - name: 📋 Upload test reports
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: test-reports-${{ matrix.python-version }}
-        path: tests/reports/
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report-${{ matrix.python-version }}
+          path: htmlcov/
+          retention-days: 14
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports-${{ matrix.python-version }}
+          path: tests/reports/
+          retention-days: 14
 
   lint:
-    name: "🔍 Code Quality"
+    name: "Code Quality"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🐍 Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.12"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: 📦 Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install bandit black isort flake8
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
 
-    - name: 🔒 Security check with bandit
-      run: |
-        bandit -r registry/ -f json -o bandit-report.json || true
+      - name: Install linting tools
+        run: uv pip install --system ruff bandit
 
-    - name: 📋 Upload security report
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: security-report
-        path: bandit-report.json
+      - name: Run ruff check
+        run: ruff check registry/ tests/
+
+      - name: Run ruff format check
+        run: ruff format --check registry/ tests/
+
+      - name: Security check with bandit
+        run: bandit -r registry/ -f json -o bandit-report.json || true
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-report
+          path: bandit-report.json
+          retention-days: 14
 
   domain-tests:
-    name: "🏗️ Domain Tests"
+    name: "Domain Tests (${{ matrix.domain }})"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         domain: [auth, servers, search, health, core]
       fail-fast: false
 
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🐍 Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.12"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: 📦 Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .[dev]
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
 
-    - name: 🏗️ Test ${{ matrix.domain }} domain
-      run: |
-        python scripts/test.py ${{ matrix.domain }}
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-domain-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-domain-
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Test ${{ matrix.domain }} domain
+        run: uv run python scripts/test.py ${{ matrix.domain }}
 
   fast-feedback:
-    name: "⚡ Fast Feedback"
+    name: "Fast Feedback"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
 
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🐍 Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.12"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: 📦 Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .[dev]
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
 
-    - name: ⚡ Run fast tests
-      run: |
-        python scripts/test.py fast
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-fast-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-fast-
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run fast tests
+        run: uv run python scripts/test.py fast
 
   summary:
-    name: "📋 Test Summary"
+    name: "Test Summary"
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [test, lint, domain-tests]
     if: always()
 
     steps:
-    - name: 📋 Test Results Summary
-      run: |
-        echo "## 🧪 Test Results Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-        echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Main Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Code Quality | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Domain Tests | ${{ needs.domain-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        if [[ "${{ needs.test.result }}" == "success" && "${{ needs.lint.result }}" == "success" && "${{ needs.domain-tests.result }}" == "success" ]]; then
-          echo "✅ All tests passed! 🎉" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "❌ Some tests failed. Please check the logs." >> $GITHUB_STEP_SUMMARY
-        fi 
+      - name: Test Results Summary
+        run: |
+          echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Main Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Quality | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Domain Tests | ${{ needs.domain-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ needs.test.result }}" == "success" && "${{ needs.lint.result }}" == "success" && "${{ needs.domain-tests.result }}" == "success" ]]; then
+            echo "All tests passed!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Some tests failed. Please check the logs." >> $GITHUB_STEP_SUMMARY
+          fi
