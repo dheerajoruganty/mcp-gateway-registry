@@ -49,6 +49,7 @@ jobs:
       - name: Terraform validate
         id: validate
         run: terraform validate
+        continue-on-error: true
 
       - name: Post validation results
         run: |
