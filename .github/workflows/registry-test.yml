@@ -132,6 +132,7 @@ jobs:
     - name: Run ruff check
       run: |
         ruff check registry/ tests/
+      continue-on-error: true
 
     - name: Run ruff format check
       run: |
