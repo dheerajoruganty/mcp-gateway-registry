@@ -187,9 +187,6 @@ async def test_get_additional_server_names_ec2_metadata(nginx_service):
 @pytest.mark.asyncio
 async def test_get_additional_server_names_ecs_metadata(nginx_service):
     """Test getting additional server names from ECS metadata."""
-    ecs_metadata = {
-        "Networks": [{"IPv4Addresses": ["172.17.0.5"]}]
-    }
 
     with patch.dict("os.environ", {"ECS_CONTAINER_METADATA_URI": "http://169.254.170.2/v4/test"}):
         mock_client = AsyncMock()
@@ -598,7 +595,7 @@ server {
                             assert result is True
 
                             # Verify file was written with parsed Keycloak values
-                            write_calls = [call for call in mock_file().write.call_args_list]
+                            write_calls = list(mock_file().write.call_args_list)
                             assert len(write_calls) > 0
 
 

@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from registry.api.agent_routes import (
     RatingRequest,
@@ -1329,5 +1330,5 @@ class TestRatingRequestModel:
     def test_rating_request_invalid_type(self):
         """Test RatingRequest with invalid type."""
         # Arrange & Act & Assert
-        with pytest.raises(Exception):  # Pydantic validation error
+        with pytest.raises(ValidationError):
             RatingRequest(rating="invalid")

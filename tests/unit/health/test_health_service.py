@@ -842,7 +842,7 @@ async def test_health_service_add_websocket_connection_failure(health_service, m
     """Test adding WebSocket connection when it fails."""
     with patch.object(
         health_service.websocket_manager, "add_connection", return_value=False
-    ) as mock_add:
+    ):
         success = await health_service.add_websocket_connection(mock_websocket)
 
         assert success is False
@@ -1016,7 +1016,7 @@ async def test_health_service_check_single_service_timeout(health_service, mock_
         "_check_server_endpoint_transport_aware",
         side_effect=httpx.TimeoutException("Timeout"),
     ):
-        status_changed = await health_service._check_single_service(
+        await health_service._check_single_service(
             mock_client, service_path, mock_server_info
         )
 
@@ -1035,7 +1035,7 @@ async def test_health_service_check_single_service_connection_error(health_servi
         "_check_server_endpoint_transport_aware",
         side_effect=httpx.ConnectError("Connection failed"),
     ):
-        status_changed = await health_service._check_single_service(
+        await health_service._check_single_service(
             mock_client, service_path, mock_server_info
         )
 
@@ -1054,7 +1054,7 @@ async def test_health_service_check_single_service_generic_error(health_service,
         "_check_server_endpoint_transport_aware",
         side_effect=ValueError("Something went wrong"),
     ):
-        status_changed = await health_service._check_single_service(
+        await health_service._check_single_service(
             mock_client, service_path, mock_server_info
         )
 
@@ -1075,7 +1075,7 @@ async def test_health_service_check_single_service_first_time_healthy(health_ser
         "_check_server_endpoint_transport_aware",
         return_value=(True, HealthStatus.HEALTHY),
     ):
-        with patch.object(health_service, "_update_tools_background") as mock_update:
+        with patch.object(health_service, "_update_tools_background"):
             status_changed = await health_service._check_single_service(
                 mock_client, service_path, mock_server_info
             )
@@ -1098,7 +1098,7 @@ async def test_health_service_check_single_service_transition_to_healthy(health_
         "_check_server_endpoint_transport_aware",
         return_value=(True, HealthStatus.HEALTHY),
     ):
-        with patch.object(health_service, "_update_tools_background") as mock_update:
+        with patch.object(health_service, "_update_tools_background"):
             status_changed = await health_service._check_single_service(
                 mock_client, service_path, mock_server_info
             )
@@ -1124,7 +1124,7 @@ async def test_health_service_check_single_service_already_healthy_no_tools(heal
         "_check_server_endpoint_transport_aware",
         return_value=(True, HealthStatus.HEALTHY),
     ):
-        with patch.object(health_service, "_update_tools_background") as mock_update:
+        with patch.object(health_service, "_update_tools_background"):
             status_changed = await health_service._check_single_service(
                 mock_client, service_path, mock_server_info_no_tools
             )

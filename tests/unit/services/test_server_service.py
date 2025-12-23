@@ -1230,7 +1230,7 @@ class TestToggleService:
         server_service.register_server(sample_server_dict)
 
         # Mock nginx service
-        with patch("registry.core.nginx_service.nginx_service") as mock_nginx_service:
+        with patch("registry.core.nginx_service.nginx_service"):
             # Act
             server_service.toggle_service(sample_server_dict["path"], True)
 

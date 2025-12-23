@@ -1080,7 +1080,7 @@ class TestFaissServiceIntegration:
         )
 
         # Step 4: Search again
-        results2 = await faiss_service.search_mixed("updated")
+        await faiss_service.search_mixed("updated")
         # Results should still work
 
         # Step 5: Remove server

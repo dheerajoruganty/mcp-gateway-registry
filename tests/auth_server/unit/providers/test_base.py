@@ -183,7 +183,7 @@ class TestAuthProviderTypeHints:
 
         # Assert
         assert 'token' in sig.parameters
-        assert sig.parameters['token'].annotation == str
+        assert sig.parameters['token'].annotation is str
         # Return type should be Dict[str, Any]
         assert 'Dict' in str(sig.return_annotation)
 
@@ -212,5 +212,5 @@ class TestAuthProviderTypeHints:
         # Assert
         assert 'code' in sig.parameters
         assert 'redirect_uri' in sig.parameters
-        assert sig.parameters['code'].annotation == str
-        assert sig.parameters['redirect_uri'].annotation == str
+        assert sig.parameters['code'].annotation is str
+        assert sig.parameters['redirect_uri'].annotation is str

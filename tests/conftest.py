@@ -58,7 +58,7 @@ _setup_auto_mocking()
 
 
 # Now we can safely import registry modules
-from registry.core.config import Settings
+from registry.core.config import Settings  # noqa: E402
 
 # =============================================================================
 # SESSION-SCOPED FIXTURES

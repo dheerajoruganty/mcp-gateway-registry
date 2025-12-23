@@ -959,7 +959,7 @@ class TestSemanticSearchSuccess:
         )
 
         # Act
-        response = await semantic_search(request, admin_user_context)
+        await semantic_search(request, admin_user_context)
 
         # Assert
         mock_faiss_service.search_mixed.assert_called_once_with(
@@ -984,7 +984,7 @@ class TestSemanticSearchSuccess:
         request = SemanticSearchRequest(query="test query", max_results=25)
 
         # Act
-        response = await semantic_search(request, admin_user_context)
+        await semantic_search(request, admin_user_context)
 
         # Assert
         mock_faiss_service.search_mixed.assert_called_once_with(

@@ -491,7 +491,7 @@ async def test_get_tools_streamable_http_anthropic_registry():
         with patch("registry.core.mcp_client.ClientSession") as mock_session_class:
             mock_session_class.return_value.__aenter__.return_value = mock_session
 
-            result = await _get_tools_streamable_http(url, server_info)
+            await _get_tools_streamable_http(url, server_info)
 
             # Verify instance_id parameter was added
             assert len(captured_urls) > 0
@@ -526,7 +526,7 @@ async def test_get_tools_streamable_http_fallback_endpoints():
         with patch("registry.core.mcp_client.ClientSession") as mock_session_class:
             mock_session_class.return_value.__aenter__.return_value = mock_session
 
-            result = await _get_tools_streamable_http(url, None)
+            await _get_tools_streamable_http(url, None)
 
             # Should try /mcp/ first, then / (root)
             assert call_count == 2
@@ -617,7 +617,7 @@ async def test_get_tools_sse_url_normalization():
         with patch("registry.core.mcp_client.ClientSession") as mock_session_class:
             mock_session_class.return_value.__aenter__.return_value = mock_session
 
-            result = await _get_tools_sse(url, None)
+            await _get_tools_sse(url, None)
 
             # Should append /sse to URL
             assert captured_url is not None

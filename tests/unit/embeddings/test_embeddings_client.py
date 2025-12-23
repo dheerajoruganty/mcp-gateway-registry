@@ -515,7 +515,7 @@ class TestLiteLLMClient:
 
         try:
             # Act
-            client = LiteLLMClient(
+            LiteLLMClient(
                 model_name="bedrock/amazon.titan-embed-text-v1",
                 aws_region="us-east-1",
             )
@@ -682,7 +682,7 @@ class TestLiteLLMClient:
             )
 
             # Act
-            result = client.encode(["test"])
+            client.encode(["test"])
 
             # Assert
             assert client._validated_dimension == 4

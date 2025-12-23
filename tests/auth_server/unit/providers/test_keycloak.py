@@ -202,15 +202,15 @@ class TestKeycloakJWKS:
 
         # First call
         mock_time.return_value = 1000
-        jwks1 = provider.get_jwks()
+        provider.get_jwks()
 
         # Second call - cache should still be valid
         mock_time.return_value = 1100
-        jwks2 = provider.get_jwks()
+        provider.get_jwks()
 
         # Third call - cache should be expired (TTL is 3600 seconds)
         mock_time.return_value = 5000
-        jwks3 = provider.get_jwks()
+        provider.get_jwks()
 
         # Assert
         assert mock_get.call_count == 2  # First call + after expiration
