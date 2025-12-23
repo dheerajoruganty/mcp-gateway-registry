@@ -332,3 +332,4 @@ image-manifest.json# Admin password files
 *.admin_password
 terraform/.admin_password
 image-manifest.json
+agent_security_scans/
