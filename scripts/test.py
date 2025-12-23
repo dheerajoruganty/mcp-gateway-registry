@@ -38,15 +38,16 @@ class Colors:
 
 
 # Required test dependencies
+# Note: These are the actual Python import names, not package names
 REQUIRED_DEPENDENCIES = [
     "pytest",
     "pytest_asyncio",
     "pytest_cov",
     "pytest_mock",
-    "pytest_xdist",
+    "xdist",  # pytest-xdist package
     "pytest_html",
-    "pytest_json_report",
-    "factory_boy",
+    "pytest_jsonreport",  # pytest-json-report package
+    "factory",  # factory-boy package
     "faker",
     "freezegun",
     "itsdangerous",
