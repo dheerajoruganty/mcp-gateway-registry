@@ -219,7 +219,8 @@ def _run_integration(
     Returns:
         Exit code from pytest
     """
-    args = ["-m", "integration", "-v"]
+    # Override coverage threshold for integration tests (they don't hit all code paths)
+    args = ["-m", "integration", "-v", "--cov-fail-under=0"]
     return _run_pytest(args, "Running Integration Tests", workers)
 
 

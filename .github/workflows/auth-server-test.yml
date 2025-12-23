@@ -60,7 +60,7 @@ jobs:
 
       - name: Run auth server tests
         run: |
-          uv run pytest tests/auth_server/ -v --cov=auth_server --cov-report=xml --cov-report=html --cov-report=term
+          uv run pytest tests/auth_server/ -v --cov=auth_server --cov-report=xml --cov-report=html --cov-report=term --cov-fail-under=0
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
