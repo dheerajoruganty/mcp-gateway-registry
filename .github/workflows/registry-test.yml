@@ -3,12 +3,7 @@ name: Registry Test Suite
 on:
   push:
     branches: [main, develop]
-    paths:
-      - 'registry/**'
-      - 'tests/**'
-      - 'pyproject.toml'
-      - 'scripts/test.py'
-      - '.github/workflows/registry-test.yml'
+    # No path filters - run on every merge to main/develop
   pull_request:
     branches: [main, develop]
     paths:
