@@ -184,8 +184,9 @@ class TestAuthProviderTypeHints:
         # Assert
         assert 'token' in sig.parameters
         assert sig.parameters['token'].annotation is str
-        # Return type should be Dict[str, Any]
-        assert 'Dict' in str(sig.return_annotation)
+        # Return type should be Dict[str, Any] (or dict[str, Any] in Python 3.12+)
+        return_str = str(sig.return_annotation).lower()
+        assert 'dict' in return_str
 
     def test_get_jwks_signature(self):
         """Test get_jwks has correct type hints."""
@@ -197,8 +198,9 @@ class TestAuthProviderTypeHints:
         sig = inspect.signature(AuthProvider.get_jwks)
 
         # Assert
-        # Should return Dict[str, Any]
-        assert 'Dict' in str(sig.return_annotation)
+        # Should return Dict[str, Any] (or dict[str, Any] in Python 3.12+)
+        return_str = str(sig.return_annotation).lower()
+        assert 'dict' in return_str
 
     def test_exchange_code_for_token_signature(self):
         """Test exchange_code_for_token has correct type hints."""
