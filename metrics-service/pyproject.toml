@@ -65,6 +65,10 @@ ignore = ["E501", "B008", "B904", "B019", "C401", "B007", "E402", "F841", "F823"
 quote-style = "double"
 indent-style = "space"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
 [tool.uv]
 # Local-only project - never resolve from PyPI
 package = false
