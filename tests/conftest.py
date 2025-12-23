@@ -6,6 +6,7 @@ that applies to all tests.
 """
 
 import logging
+import os
 import sys
 import tempfile
 from collections.abc import Generator
@@ -21,6 +22,30 @@ from tests.fixtures.mocks.mock_embeddings import (
 from tests.fixtures.mocks.mock_faiss import create_mock_faiss_module
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# SSL PATH MOCKING (BEFORE ANY IMPORTS)
+# =============================================================================
+# This must run FIRST to avoid permission errors when nginx_service is imported
+
+import errno
+
+_original_stat = os.stat
+
+
+def _patched_stat(path, *args, **kwargs):
+    """Patched stat that handles SSL paths gracefully in CI environments."""
+    path_str = str(path).lower()
+    if "ssl" in path_str or "privkey" in path_str or "fullchain" in path_str:
+        # Raise FileNotFoundError with proper errno for SSL paths
+        # This simulates missing certs and is properly handled by Path.exists()
+        raise FileNotFoundError(errno.ENOENT, "No such file or directory", str(path))
+    return _original_stat(path, *args, **kwargs)
+
+
+# Apply the patch immediately
+os.stat = _patched_stat
 
 
 # =============================================================================
