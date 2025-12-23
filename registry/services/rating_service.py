@@ -6,7 +6,8 @@ between server_service.py and agent_service.py.
 """
 
 import logging
-from typing import Any
+from typing import List, Dict, Tuple, Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,10 @@ def validate_rating(rating: int) -> None:
 
 
 def update_rating_details(
-    rating_details: list[dict[str, Any]],
+    rating_details: List[Dict[str, Any]],
     username: str,
     rating: int,
-) -> tuple[list[dict[str, Any]], bool]:
+) -> Tuple[List[Dict[str, Any]], bool]:
     """
     Update rating details list with new or updated user rating.
 
@@ -94,7 +95,7 @@ def update_rating_details(
     return rating_details, not user_found
 
 
-def calculate_average_rating(rating_details: list[dict[str, Any]]) -> float:
+def calculate_average_rating(rating_details: List[Dict[str, Any]]) -> float:
     """
     Calculate average rating from rating details.
 

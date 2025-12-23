@@ -8,29 +8,30 @@ Based on: docs/design/a2a-protocol-integration.md
 """
 
 import logging
-from datetime import UTC, datetime
-from typing import Annotated, Any
+from datetime import datetime, timezone
+from typing import Annotated, Dict, List, Optional, Any
 
-import httpx
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
-    Query,
     status,
+    Query,
 )
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+import httpx
 
-from ..auth.dependencies import nginx_proxied_auth
-from ..core.config import settings
+from ..auth.dependencies import nginx_proxied_auth, SCOPES_CONFIG
+from ..services.agent_service import agent_service
 from ..schemas.agent_models import (
     AgentCard,
     AgentInfo,
     AgentProvider,
     AgentRegistrationRequest,
 )
-from ..services.agent_service import agent_service
+from pydantic import BaseModel
+from ..core.config import settings
+
 
 # Configure logging with basicConfig
 logging.basicConfig(
@@ -67,8 +68,8 @@ async def _perform_agent_security_scan_on_registration(
     Returns:
         bool: True if agent should remain enabled, False if disabled due to scan
     """
-    from ..search.service import faiss_service
     from ..services.agent_scanner import agent_scanner_service
+    from ..search.service import faiss_service
 
     scan_config = agent_scanner_service.get_scan_config()
     if not (scan_config.enabled and scan_config.scan_on_registration):
@@ -136,8 +137,8 @@ class RatingRequest(BaseModel):
 
 
 def _normalize_path(
-    path: str | None,
-    agent_name: str | None = None,
+    path: Optional[str],
+    agent_name: Optional[str] = None,
 ) -> str:
     """
     Normalize agent path format.
@@ -174,7 +175,7 @@ def _normalize_path(
 def _check_agent_permission(
     permission: str,
     agent_name: str,
-    user_context: dict[str, Any],
+    user_context: Dict[str, Any],
 ) -> None:
     """
     Check if user has permission for agent operation.
@@ -205,9 +206,9 @@ def _check_agent_permission(
 
 
 def _filter_agents_by_access(
-    agents: list[AgentCard],
-    user_context: dict[str, Any],
-) -> list[AgentCard]:
+    agents: List[AgentCard],
+    user_context: Dict[str, Any],
+) -> List[AgentCard]:
     """
     Filter agents based on user access permissions.
 
@@ -409,9 +410,9 @@ async def register_agent(
 
 @router.get("/agents")
 async def list_agents(
-    query: str | None = Query(None, description="Search query string"),
+    query: Optional[str] = Query(None, description="Search query string"),
     enabled_only: bool = Query(False, description="Show only enabled agents"),
-    visibility: str | None = Query(None, description="Filter by visibility"),
+    visibility: Optional[str] = Query(None, description="Filter by visibility"),
     user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
 ):
     """
@@ -530,13 +531,13 @@ async def check_agent_health(
     detail = None
     status_code = None
     response_time_ms = None
-    start_time = datetime.now(UTC)
+    start_time = datetime.now(timezone.utc)
 
     try:
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             response = await client.get(ping_url)
         status_code = response.status_code
-        response_time_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
+        response_time_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
         if response.status_code == 200:
             status_label = "healthy"
         else:
@@ -552,7 +553,7 @@ async def check_agent_health(
         status_label = "unhealthy"
         detail = f"Unexpected health check error: {exc}"
 
-    last_checked_iso = datetime.now(UTC).isoformat()
+    last_checked_iso = datetime.now(timezone.utc).isoformat()
 
     logger.info(
         f"Agent health check for {path} ({ping_url}) completed with status {status_label}"
@@ -636,7 +637,7 @@ async def get_agent_rating(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have access to this agent",
         )
-
+    
     return {
         "num_stars": agent_card.num_stars,
         "rating_details": agent_card.rating_details,
@@ -940,8 +941,8 @@ async def delete_agent(
 
 @router.post("/agents/discover")
 async def discover_agents_by_skills(
-    skills: list[str],
-    tags: list[str] | None = None,
+    skills: List[str],
+    tags: Optional[List[str]] = None,
     max_results: int = Query(10, ge=1, le=100),
     user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
 ):

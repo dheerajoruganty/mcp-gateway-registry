@@ -7,11 +7,13 @@ to the gateway's internal format.
 
 import logging
 import os
-from datetime import UTC, datetime
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin
 
-from ...schemas.federation_schema import AsorAgentConfig
 from .base_client import BaseFederationClient
+from ...schemas.federation_schema import AsorAgentConfig
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,8 +30,8 @@ class AsorFederationClient(BaseFederationClient):
         self,
         endpoint: str,
         auth_type: str = "oauth2",
-        auth_env_var: str | None = None,
-        tenant_url: str | None = None,
+        auth_env_var: Optional[str] = None,
+        tenant_url: Optional[str] = None,
         timeout_seconds: int = 30,
         retry_attempts: int = 3
     ):
@@ -48,10 +50,10 @@ class AsorFederationClient(BaseFederationClient):
         self.auth_type = auth_type
         self.auth_env_var = auth_env_var
         self.tenant_url = tenant_url
-        self._access_token: str | None = None
-        self._token_expiry: datetime | None = None
+        self._access_token: Optional[str] = None
+        self._token_expiry: Optional[datetime] = None
 
-    def _get_access_token(self) -> str | None:
+    def _get_access_token(self) -> Optional[str]:
         """
         Get or refresh OAuth2 access token from Workday.
 
@@ -65,14 +67,14 @@ class AsorFederationClient(BaseFederationClient):
             logger.debug(f"Token starts with: {access_token_env[:50]}...")
             self._access_token = access_token_env
             # Set a reasonable expiry (1 hour from now)
-            self._token_expiry = datetime.now(UTC).replace(
+            self._token_expiry = datetime.now(timezone.utc).replace(
                 microsecond=0
             ) + timedelta(hours=1)
             return self._access_token
 
         # Check if we have a valid cached token (only for client credentials)
         if self._access_token and self._token_expiry:
-            if datetime.now(UTC) < self._token_expiry:
+            if datetime.now(timezone.utc) < self._token_expiry:
                 logger.debug("Using cached access token")
                 return self._access_token
 
@@ -108,7 +110,7 @@ class AsorFederationClient(BaseFederationClient):
             return None
 
         # Request token from Workday - use tenant-specific URL
-        token_url = "https://wcpdev-services1.wd103.myworkday.com/ccx/oauth2/awsasor_wcpdev1/token"
+        token_url = f"https://wcpdev-services1.wd103.myworkday.com/ccx/oauth2/awsasor_wcpdev1/token"
 
         logger.info(f"Requesting access token from Workday: {token_url}")
 
@@ -116,13 +118,13 @@ class AsorFederationClient(BaseFederationClient):
         import base64
         credentials = f"{client_id}:{client_secret}"
         credentials_b64 = base64.b64encode(credentials.encode()).decode()
-
+        
         headers = {
             "Authorization": f"Basic {credentials_b64}",
             "Content-Type": "application/x-www-form-urlencoded",
             "Accept": "application/json"
         }
-
+        
         data = {
             "grant_type": "client_credentials"
         }
@@ -140,7 +142,7 @@ class AsorFederationClient(BaseFederationClient):
             expires_in = token_data.get("expires_in", 3600)
 
             # Set expiry slightly before actual expiry (5 min buffer)
-            self._token_expiry = datetime.now(UTC).replace(
+            self._token_expiry = datetime.now(timezone.utc).replace(
                 microsecond=0
             ) + timedelta(seconds=expires_in - 300)
 
@@ -154,12 +156,12 @@ class AsorFederationClient(BaseFederationClient):
             logger.info("2. Set the ASOR_ACCESS_TOKEN environment variable with the token")
             logger.info("3. Restart the registry to use the pre-obtained token")
             return None
-
+        
     def fetch_agent(
         self,
         agent_id: str,
-        agent_config: AsorAgentConfig | None = None
-    ) -> dict[str, Any] | None:
+        agent_config: Optional[AsorAgentConfig] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Fetch a single agent from ASOR.
 
@@ -199,7 +201,7 @@ class AsorFederationClient(BaseFederationClient):
         # Transform response to internal format
         return self._transform_agent_response(response, agent_id, agent_config)
 
-    def list_all_agents(self) -> list[dict[str, Any]]:
+    def list_all_agents(self) -> List[Dict[str, Any]]:
         """
         List all agent definitions from ASOR.
 
@@ -247,13 +249,13 @@ class AsorFederationClient(BaseFederationClient):
         else:
             agents = []
             logger.warning(f"Unexpected ASOR response format: {type(response)}")
-
+            
         return agents
 
     def fetch_all_agents(
         self,
-        agent_configs: list[AsorAgentConfig]
-    ) -> list[dict[str, Any]]:
+        agent_configs: List[AsorAgentConfig]
+    ) -> List[Dict[str, Any]]:
         """
         Fetch multiple agents from ASOR.
 
@@ -285,7 +287,7 @@ class AsorFederationClient(BaseFederationClient):
         self,
         server_name: str,
         **kwargs
-    ) -> dict[str, Any] | None:
+    ) -> Optional[Dict[str, Any]]:
         """
         Fetch a single server (agent) from ASOR.
 
@@ -300,9 +302,9 @@ class AsorFederationClient(BaseFederationClient):
 
     def fetch_all_servers(
         self,
-        server_names: list[str],
+        server_names: List[str],
         **kwargs
-    ) -> list[dict[str, Any]]:
+    ) -> List[Dict[str, Any]]:
         """
         Fetch multiple servers (agents) from ASOR.
 
@@ -322,10 +324,10 @@ class AsorFederationClient(BaseFederationClient):
 
     def _transform_agent_response(
         self,
-        response: dict[str, Any],
+        response: Dict[str, Any],
         agent_id: str,
-        agent_config: AsorAgentConfig | None
-    ) -> dict[str, Any]:
+        agent_config: Optional[AsorAgentConfig]
+    ) -> Dict[str, Any]:
         """
         Transform ASOR API response to internal gateway format.
 
@@ -371,7 +373,7 @@ class AsorFederationClient(BaseFederationClient):
                 "tools": tools,
                 "config_metadata": {}
             },
-            "cached_at": datetime.now(UTC).isoformat(),
+            "cached_at": datetime.now(timezone.utc).isoformat(),
             "is_read_only": True,
             "attribution_label": "ASOR",
             # Additional fields for compatibility

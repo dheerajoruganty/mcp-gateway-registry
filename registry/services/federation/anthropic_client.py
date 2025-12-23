@@ -6,12 +6,14 @@ and transforms them to the gateway's internal format.
 """
 
 import logging
-from datetime import UTC, datetime
-from typing import Any
+import os
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
-from ...schemas.federation_schema import AnthropicServerConfig
 from .base_client import BaseFederationClient
+from ...schemas.federation_schema import AnthropicServerConfig
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,8 +48,8 @@ class AnthropicFederationClient(BaseFederationClient):
     def fetch_server(
         self,
         server_name: str,
-        server_config: AnthropicServerConfig | None = None
-    ) -> dict[str, Any] | None:
+        server_config: Optional[AnthropicServerConfig] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Fetch a single server from Anthropic Registry.
 
@@ -80,8 +82,8 @@ class AnthropicFederationClient(BaseFederationClient):
 
     def fetch_all_servers(
         self,
-        server_configs: list[AnthropicServerConfig]
-    ) -> list[dict[str, Any]]:
+        server_configs: List[AnthropicServerConfig]
+    ) -> List[Dict[str, Any]]:
         """
         Fetch multiple servers from Anthropic Registry.
 
@@ -106,10 +108,10 @@ class AnthropicFederationClient(BaseFederationClient):
 
     def _transform_server_response(
         self,
-        response: dict[str, Any],
+        response: Dict[str, Any],
         server_name: str,
-        server_config: AnthropicServerConfig | None
-    ) -> dict[str, Any]:
+        server_config: Optional[AnthropicServerConfig]
+    ) -> Dict[str, Any]:
         """
         Transform Anthropic API response to internal gateway format.
 
@@ -132,7 +134,7 @@ class AnthropicFederationClient(BaseFederationClient):
         # Extract transport info - handle both old (packages) and new (remotes) schema
         transport_type = "streamable-http"
         proxy_url = None
-
+        
         # Try new schema format (remotes)
         remotes = server.get("remotes", [])
         if remotes:
@@ -183,7 +185,7 @@ class AnthropicFederationClient(BaseFederationClient):
                 "original_response": response,
                 "config_metadata": {}
             },
-            "cached_at": datetime.now(UTC).isoformat(),
+            "cached_at": datetime.now(timezone.utc).isoformat(),
             "is_read_only": True,
             "attribution_label": "Anthropic MCP Registry",
             # Additional fields for compatibility

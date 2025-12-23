@@ -1,19 +1,19 @@
-import asyncio
 import json
+import asyncio
 import logging
 import os
 from typing import Annotated
 
-import httpx
-from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, Request, Form, Depends, HTTPException, status, Cookie
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+import httpx
 
-from ..auth.dependencies import enhanced_auth, nginx_proxied_auth
 from ..core.config import settings
-from ..services.security_scanner import security_scanner_service
+from ..auth.dependencies import enhanced_auth, nginx_proxied_auth
 from ..services.server_service import server_service
+from ..services.security_scanner import security_scanner_service
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +88,8 @@ async def _perform_security_scan_on_registration(
 
             # Disable server if configured
             if scan_config.block_unsafe_servers:
-                from ..core.nginx_service import nginx_service
                 from ..search.service import faiss_service
+                from ..core.nginx_service import nginx_service
 
                 server_service.toggle_service(path, False)
                 logger.warning(f"Disabled server {path} due to failed security scan")
@@ -311,10 +311,10 @@ async def toggle_service_route(
     user_context: Annotated[dict, Depends(enhanced_auth)] = None,
 ):
     """Toggle a service on/off (requires toggle_service UI permission)."""
-    from ..auth.dependencies import user_has_ui_permission_for_service
-    from ..core.nginx_service import nginx_service
-    from ..health.service import health_service
     from ..search.service import faiss_service
+    from ..health.service import health_service
+    from ..core.nginx_service import nginx_service
+    from ..auth.dependencies import user_has_ui_permission_for_service
 
     if not service_path.startswith("/"):
         service_path = "/" + service_path
@@ -362,7 +362,7 @@ async def toggle_service_route(
     )
 
     # If enabling, perform immediate health check
-    health_status = "disabled"
+    status = "disabled"
     last_checked_iso = None
     if new_state:
         logger.info(
@@ -370,19 +370,19 @@ async def toggle_service_route(
         )
         try:
             (
-                health_status,
+                status,
                 last_checked_dt,
             ) = await health_service.perform_immediate_health_check(service_path)
             last_checked_iso = last_checked_dt.isoformat() if last_checked_dt else None
             logger.info(
-                f"Immediate health check for {service_path} completed. Status: {health_status}"
+                f"Immediate health check for {service_path} completed. Status: {status}"
             )
         except Exception as e:
             logger.error(f"ERROR during immediate health check for {service_path}: {e}")
-            health_status = f"error: immediate check failed ({type(e).__name__})"
+            status = f"error: immediate check failed ({type(e).__name__})"
     else:
         # When disabling, set status to disabled
-        health_status = "disabled"
+        status = "disabled"
         logger.info(f"Service {service_path} toggled OFF. Status set to disabled.")
 
     # Update FAISS metadata with new enabled state
@@ -404,7 +404,7 @@ async def toggle_service_route(
             "message": f"Toggle request for {service_path} processed.",
             "service_path": service_path,
             "new_enabled_state": new_state,
-            "status": health_status,
+            "status": status,
             "last_checked_iso": last_checked_iso,
             "num_tools": server_info.get("num_tools", 0),
         },
@@ -425,9 +425,9 @@ async def register_service(
     user_context: Annotated[dict, Depends(enhanced_auth)] = None,
 ):
     """Register a new service (requires register_service UI permission)."""
-    from ..core.nginx_service import nginx_service
-    from ..health.service import health_service
     from ..search.service import faiss_service
+    from ..health.service import health_service
+    from ..core.nginx_service import nginx_service
 
     # Check if user has register_service permission for any service
     ui_permissions = user_context.get("ui_permissions", {})
@@ -533,10 +533,9 @@ async def internal_register_service(
 
     import base64
     import os
-
-    from ..core.nginx_service import nginx_service
-    from ..health.service import health_service
     from ..search.service import faiss_service
+    from ..health.service import health_service
+    from ..core.nginx_service import nginx_service
 
     logger.warning(
         f"INTERNAL REGISTER: Request parameters - name={name}, path={path}, proxy_pass_url={proxy_pass_url}"
@@ -826,10 +825,9 @@ async def internal_remove_service(
     """Internal service removal endpoint for mcpgw-server (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-
-    from ..core.nginx_service import nginx_service
-    from ..health.service import health_service
     from ..search.service import faiss_service
+    from ..health.service import health_service
+    from ..core.nginx_service import nginx_service
 
     logger.warning(
         "INTERNAL REMOVE: Function called - starting execution"
@@ -1007,10 +1005,9 @@ async def internal_toggle_service(
     """Internal service toggle endpoint for mcpgw-server (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-
-    from ..core.nginx_service import nginx_service
-    from ..health.service import health_service
     from ..search.service import faiss_service
+    from ..health.service import health_service
+    from ..core.nginx_service import nginx_service
 
     logger.warning(
         "INTERNAL TOGGLE: Function called - starting execution"
@@ -1183,7 +1180,6 @@ async def internal_healthcheck(request: Request):
     """Internal health check endpoint for mcpgw-server (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-
     from ..health.service import health_service
 
     logger.warning(
@@ -1331,9 +1327,9 @@ async def edit_server_submit(
     license_str: Annotated[str, Form(alias="license")] = "N/A",
 ):
     """Handle server edit form submission (requires modify_service UI permission)."""
-    from ..auth.dependencies import user_has_ui_permission_for_service
-    from ..core.nginx_service import nginx_service
     from ..search.service import faiss_service
+    from ..core.nginx_service import nginx_service
+    from ..auth.dependencies import user_has_ui_permission_for_service
 
     if not service_path.startswith("/"):
         service_path = "/" + service_path
@@ -1627,10 +1623,10 @@ async def refresh_service(
     service_path: str, user_context: Annotated[dict, Depends(enhanced_auth)]
 ):
     """Refresh service health and tool information (requires health_check_service permission)."""
-    from ..auth.dependencies import user_has_ui_permission_for_service
-    from ..core.nginx_service import nginx_service
-    from ..health.service import health_service
     from ..search.service import faiss_service
+    from ..health.service import health_service
+    from ..core.nginx_service import nginx_service
+    from ..auth.dependencies import user_has_ui_permission_for_service
 
     if not service_path.startswith("/"):
         service_path = "/" + service_path
@@ -1734,7 +1730,6 @@ async def internal_add_server_to_groups(
     """Internal endpoint to add a server to specific scopes groups (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-
     from ..utils.scopes_manager import add_server_to_groups
 
     # Extract and validate Basic Auth
@@ -1828,7 +1823,6 @@ async def internal_remove_server_from_groups(
     """Internal endpoint to remove a server from specific scopes groups (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-
     from ..utils.scopes_manager import remove_server_from_groups
 
     # Extract and validate Basic Auth
@@ -2044,9 +2038,8 @@ async def internal_create_group(
     """Internal endpoint to create a new group in both Keycloak and scopes.yml (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-
-    from ..utils.keycloak_manager import create_keycloak_group, group_exists_in_keycloak
     from ..utils.scopes_manager import create_group_in_scopes
+    from ..utils.keycloak_manager import create_keycloak_group, group_exists_in_keycloak
 
     # Extract and validate Basic Auth
     auth_header = request.headers.get("Authorization")
@@ -2157,9 +2150,8 @@ async def internal_delete_group(
     """Internal endpoint to delete a group from both Keycloak and scopes.yml (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-
-    from ..utils.keycloak_manager import delete_keycloak_group, group_exists_in_keycloak
     from ..utils.scopes_manager import delete_group_from_scopes
+    from ..utils.keycloak_manager import delete_keycloak_group, group_exists_in_keycloak
 
     # Extract and validate Basic Auth
     auth_header = request.headers.get("Authorization")
@@ -2291,9 +2283,8 @@ async def internal_list_groups(
     """Internal endpoint to list groups from Keycloak and/or scopes.yml (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-
-    from ..utils.keycloak_manager import list_keycloak_groups
     from ..utils.scopes_manager import list_groups_from_scopes
+    from ..utils.keycloak_manager import list_keycloak_groups
 
     # Extract and validate Basic Auth
     auth_header = request.headers.get("Authorization")
@@ -2699,8 +2690,8 @@ async def register_service_api(
 
     # Implementation extracted from internal_register_service to avoid duplicating auth logic
     # Auth is already validated by nginx_proxied_auth dependency
-    from ..health.service import health_service
     from ..search.service import faiss_service
+    from ..health.service import health_service
 
     # Validate path format
     if not path.startswith("/"):
@@ -2863,9 +2854,9 @@ async def toggle_service_api(
       -F "new_state=true"
     ```
     """
-    from ..core.nginx_service import nginx_service
-    from ..health.service import health_service
     from ..search.service import faiss_service
+    from ..health.service import health_service
+    from ..core.nginx_service import nginx_service
 
     logger.info(
         f"API toggle service request from user '{user_context.get('username')}' for path '{path}' to {new_state}"
@@ -2965,9 +2956,9 @@ async def remove_service_api(
       -F "path=/myservice"
     ```
     """
-    from ..core.nginx_service import nginx_service
-    from ..health.service import health_service
     from ..search.service import faiss_service
+    from ..health.service import health_service
+    from ..core.nginx_service import nginx_service
     from ..utils.scopes_manager import remove_server_scopes
 
     logger.info(
@@ -3565,12 +3556,12 @@ async def get_servers_json(
         all_servers = server_service.get_all_servers()
     else:
         all_servers = server_service.get_all_servers_with_permissions(user_context['accessible_servers'])
-
+    
     sorted_server_paths = sorted(
-        all_servers.keys(),
+        all_servers.keys(), 
         key=lambda p: all_servers[p]["server_name"]
     )
-
+    
     # Filter services based on UI permissions (same logic as root route)
     accessible_services = user_context.get('accessible_services', [])
 
@@ -3583,14 +3574,14 @@ async def get_servers_json(
         # Check if user can list this service using technical name
         if 'all' not in accessible_services and technical_name not in accessible_services:
             continue
-
+        
         # Include description and tags in search
         searchable_text = f"{server_name.lower()} {server_info.get('description', '').lower()} {' '.join(server_info.get('tags', []))}"
         if not search_query or search_query in searchable_text:
             # Get real health status from health service
             from ..health.service import health_service
             health_data = health_service._get_service_health_data(path)
-
+            
             service_data.append(
                 {
                     "display_name": server_name,
@@ -3603,9 +3594,9 @@ async def get_servers_json(
                     "num_stars": server_info.get("num_stars", 0),
                     "is_python": server_info.get("is_python", False),
                     "license": server_info.get("license", "N/A"),
-                    "health_status": health_data["status"],
+                    "health_status": health_data["status"],  
                     "last_checked_iso": health_data["last_checked_iso"]
                 }
             )
-
+    
     return {"servers": service_data}

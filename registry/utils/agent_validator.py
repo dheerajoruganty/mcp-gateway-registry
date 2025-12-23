@@ -10,6 +10,12 @@ Based on: docs/design/a2a-protocol-integration.md
 
 import logging
 import re
+from typing import (
+    Dict,
+    List,
+    Optional,
+    Tuple,
+)
 
 import httpx
 from pydantic import BaseModel
@@ -19,6 +25,7 @@ from registry.schemas.agent_models import (
     SecurityScheme,
     Skill,
 )
+
 
 # Configure logging with basicConfig
 logging.basicConfig(
@@ -33,8 +40,8 @@ class ValidationResult(BaseModel):
     """Result of agent card validation."""
 
     is_valid: bool
-    errors: list[str]
-    warnings: list[str]
+    errors: List[str]
+    warnings: List[str]
 
 
 def _validate_agent_url(
@@ -70,8 +77,8 @@ def _validate_agent_url(
 
 
 def _validate_skills(
-    skills: list[Skill],
-) -> list[str]:
+    skills: List[Skill],
+) -> List[str]:
     """
     Validate agent skills.
 
@@ -83,7 +90,7 @@ def _validate_skills(
     Returns:
         List of error messages (empty if valid)
     """
-    errors: list[str] = []
+    errors: List[str] = []
 
     if not isinstance(skills, list):
         errors.append("Skills must be a list")
@@ -103,8 +110,8 @@ def _validate_skills(
 
 
 def _validate_security_schemes(
-    security_schemes: dict[str, SecurityScheme],
-) -> list[str]:
+    security_schemes: Dict[str, SecurityScheme],
+) -> List[str]:
     """
     Validate security schemes configuration.
 
@@ -116,7 +123,7 @@ def _validate_security_schemes(
     Returns:
         List of error messages (empty if valid)
     """
-    errors: list[str] = []
+    errors: List[str] = []
 
     if not isinstance(security_schemes, dict):
         errors.append("Security schemes must be a dictionary")
@@ -166,8 +173,8 @@ def _validate_security_schemes(
 
 
 def _validate_tags(
-    tags: list[str],
-) -> list[str]:
+    tags: List[str],
+) -> List[str]:
     """
     Validate agent tags.
 
@@ -179,7 +186,7 @@ def _validate_tags(
     Returns:
         List of error messages (empty if valid)
     """
-    errors: list[str] = []
+    errors: List[str] = []
 
     if not isinstance(tags, list):
         errors.append("Tags must be a list")
@@ -197,7 +204,7 @@ def _validate_tags(
 
 def _check_endpoint_reachability(
     url: str,
-) -> tuple[bool, str | None]:
+) -> Tuple[bool, Optional[str]]:
     """
     Check if agent endpoint is reachable.
 
@@ -234,7 +241,7 @@ def _check_endpoint_reachability(
 
 def _validate_agent_card(
     agent_card: AgentCard,
-) -> tuple[bool, list[str]]:
+) -> Tuple[bool, List[str]]:
     """
     Validate agent card structure and content.
 
@@ -246,7 +253,7 @@ def _validate_agent_card(
     Returns:
         Tuple of (is_valid, error_messages)
     """
-    errors: list[str] = []
+    errors: List[str] = []
 
     if not agent_card.name or not agent_card.name.strip():
         errors.append("Agent name cannot be empty")
@@ -308,7 +315,7 @@ def validate_agent_card(
     """
     is_valid, errors = _validate_agent_card(agent_card)
 
-    warnings: list[str] = []
+    warnings: List[str] = []
 
     if check_reachability and agent_card.url:
         reachable, error_msg = _check_endpoint_reachability(str(agent_card.url))

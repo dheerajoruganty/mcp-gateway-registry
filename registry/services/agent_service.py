@@ -9,12 +9,13 @@ Based on: registry/services/server_service.py
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from ..core.config import settings
-from ..schemas.agent_models import AgentCard
+from ..schemas.agent_models import AgentCard, AgentInfo
+
 
 # Configure logging with basicConfig
 logging.basicConfig(
@@ -48,7 +49,7 @@ def _path_to_filename(
 
 def _load_agent_from_file(
     file_path: Path,
-) -> dict[str, Any] | None:
+) -> Optional[Dict[str, Any]]:
     """
     Load agent card from JSON file.
 
@@ -59,7 +60,7 @@ def _load_agent_from_file(
         Agent card dictionary or None if invalid
     """
     try:
-        with open(file_path) as f:
+        with open(file_path, "r") as f:
             agent_data = json.load(f)
 
             if not isinstance(agent_data, dict):
@@ -85,7 +86,7 @@ def _load_agent_from_file(
 
 def _load_state_file(
     state_file: Path,
-) -> dict[str, list[str]]:
+) -> Dict[str, List[str]]:
     """
     Load agent state from disk.
 
@@ -99,7 +100,7 @@ def _load_state_file(
 
     try:
         if state_file.exists():
-            with open(state_file) as f:
+            with open(state_file, "r") as f:
                 state_data = json.load(f)
 
             if not isinstance(state_data, dict):
@@ -126,7 +127,7 @@ def _load_state_file(
 
 
 def _persist_state_to_disk(
-    state_data: dict[str, list[str]],
+    state_data: Dict[str, List[str]],
     state_file: Path,
 ) -> None:
     """
@@ -190,8 +191,8 @@ class AgentService:
 
     def __init__(self):
         """Initialize agent service with empty state."""
-        self.registered_agents: dict[str, AgentCard] = {}
-        self.agent_state: dict[str, list[str]] = {"enabled": [], "disabled": []}
+        self.registered_agents: Dict[str, AgentCard] = {}
+        self.agent_state: Dict[str, List[str]] = {"enabled": [], "disabled": []}
 
 
     def load_agents_and_state(self) -> None:
@@ -303,9 +304,9 @@ class AgentService:
 
         # Set registration metadata
         if not agent_card.registered_at:
-            agent_card.registered_at = datetime.now(UTC)
+            agent_card.registered_at = datetime.now(timezone.utc)
         if not agent_card.updated_at:
-            agent_card.updated_at = datetime.now(UTC)
+            agent_card.updated_at = datetime.now(timezone.utc)
 
         # Save to disk
         if not _save_agent_to_disk(agent_card, settings.agents_dir):
@@ -359,7 +360,7 @@ class AgentService:
         return agent
 
 
-    def list_agents(self) -> list[AgentCard]:
+    def list_agents(self) -> List[AgentCard]:
         """
         List all registered agents.
 
@@ -444,7 +445,7 @@ class AgentService:
     def update_agent(
         self,
         path: str,
-        updates: dict[str, Any],
+        updates: Dict[str, Any],
     ) -> AgentCard:
         """
         Update an existing agent.
@@ -474,7 +475,7 @@ class AgentService:
         agent_dict["path"] = path
 
         # Update timestamp
-        agent_dict["updated_at"] = datetime.now(UTC)
+        agent_dict["updated_at"] = datetime.now(timezone.utc)
 
         # Validate updated agent
         try:
@@ -485,7 +486,7 @@ class AgentService:
 
         # Save to disk
         if not _save_agent_to_disk(updated_agent, settings.agents_dir):
-            raise ValueError("Failed to save updated agent to disk")
+            raise ValueError(f"Failed to save updated agent to disk")
 
         # Update in-memory registry
         self.registered_agents[path] = updated_agent
@@ -639,7 +640,7 @@ class AgentService:
         return alternate_path in self.agent_state["enabled"]
 
 
-    def get_enabled_agents(self) -> list[str]:
+    def get_enabled_agents(self) -> List[str]:
         """
         Get list of enabled agent paths.
 
@@ -649,7 +650,7 @@ class AgentService:
         return list(self.agent_state["enabled"])
 
 
-    def get_disabled_agents(self) -> list[str]:
+    def get_disabled_agents(self) -> List[str]:
         """
         Get list of disabled agent paths.
 
@@ -692,7 +693,7 @@ class AgentService:
     def get_agent_info(
         self,
         path: str,
-    ) -> AgentCard | None:
+    ) -> Optional[AgentCard]:
         """
         Get agent by path (returns None if not found).
 
@@ -708,7 +709,7 @@ class AgentService:
             return None
 
 
-    def get_all_agents(self) -> list[AgentCard]:
+    def get_all_agents(self) -> List[AgentCard]:
         """
         Get all registered agents.
 

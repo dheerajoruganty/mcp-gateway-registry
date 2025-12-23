@@ -11,15 +11,18 @@ Handles:
 import json
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from ..schemas.federation_schema import (
+    AnthropicFederationConfig,
+    FederatedServer,
     FederationConfig,
 )
 from .federation.anthropic_client import AnthropicFederationClient
 from .federation.asor_client import AsorFederationClient
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,7 +37,7 @@ class FederationService:
 
     def __init__(
         self,
-        config_path: str | None = None
+        config_path: Optional[str] = None
     ):
         """
         Initialize federation service.
@@ -55,13 +58,13 @@ class FederationService:
         self.config = self._load_config()
 
         # Initialize clients
-        self.anthropic_client: AnthropicFederationClient | None = None
+        self.anthropic_client: Optional[AnthropicFederationClient] = None
         if self.config.anthropic.enabled:
             self.anthropic_client = AnthropicFederationClient(
                 endpoint=self.config.anthropic.endpoint
             )
 
-        self.asor_client: AsorFederationClient | None = None
+        self.asor_client: Optional[AsorFederationClient] = None
         if self.config.asor.enabled:
             # Extract tenant URL from endpoint or use default
             tenant_url = self.config.asor.endpoint.split("/api")[0] if "/api" in self.config.asor.endpoint else self.config.asor.endpoint
@@ -92,7 +95,7 @@ class FederationService:
             return FederationConfig()
 
         try:
-            with open(config_file) as f:
+            with open(config_file, "r") as f:
                 config_data = json.load(f)
 
             # Remove JSON comments if present
@@ -107,7 +110,7 @@ class FederationService:
             logger.error(f"Failed to load federation config: {e}")
             return FederationConfig()
 
-    def sync_all(self) -> dict[str, list[dict[str, Any]]]:
+    def sync_all(self) -> Dict[str, List[Dict[str, Any]]]:
         """
         Sync servers from all enabled federated registries.
 
@@ -130,7 +133,7 @@ class FederationService:
 
         return results
 
-    def _sync_anthropic(self) -> list[dict[str, Any]]:
+    def _sync_anthropic(self) -> List[Dict[str, Any]]:
         """
         Sync servers from Anthropic MCP Registry.
 
@@ -147,33 +150,33 @@ class FederationService:
         )
 
         # Save servers as files to external mount
+        from pathlib import Path
         import json
-
         from ..core.config import settings
-
+        
         for server_data in servers:
             try:
                 # Create filename from server name
                 server_name = server_data.get("server_name", "unknown-server")
                 filename = server_name.replace("/", "-").replace(".", "-") + ".json"
                 file_path = settings.servers_dir / filename
-
+                
                 # Save to file
                 with open(file_path, "w") as f:
                     json.dump(server_data, f, indent=2)
-
+                
                 # Update server_state.json to enable the server
                 server_path = server_data.get("path", f"/{server_name.replace('/', '-')}")
                 self._update_server_state(server_path, True)
-
+                
                 logger.info(f"Saved Anthropic server file: {server_name} -> {file_path}")
-
+                
             except Exception as e:
                 logger.error(f"Failed to save Anthropic server {server_data.get('server_name', 'unknown')}: {e}")
 
         return servers
 
-    def _sync_asor(self) -> list[dict[str, Any]]:
+    def _sync_asor(self) -> List[Dict[str, Any]]:
         """
         Sync agents from Workday ASOR.
 
@@ -190,9 +193,10 @@ class FederationService:
         )
 
         # Register agents with the agent service
-        from ..schemas.agent_models import AgentCard
         from ..services.agent_service import agent_service
-
+        from ..schemas.agent_models import AgentCard
+        from datetime import datetime, timezone
+        
         for agent_data in agents:
             # Extract agent info from ASOR data structure
             agent_name = agent_data.get("name", "Unknown ASOR Agent")
@@ -201,7 +205,7 @@ class FederationService:
             agent_description = agent_data.get("description", "Agent synced from ASOR")
             if agent_description == "None":
                 agent_description = f"ASOR agent: {agent_name}"
-
+            
             # Extract skills
             skills_data = agent_data.get("skills", [])
             skills = []
@@ -211,7 +215,7 @@ class FederationService:
                     "description": skill.get("description", ""),
                     "id": skill.get("id", "")
                 })
-
+            
             # Convert ASOR agent data to AgentCard format
             agent_card = AgentCard(
                 protocol_version="1.0",  # Required A2A field
@@ -227,19 +231,19 @@ class FederationService:
                 tags=["asor", "federated", "workday"],
                 visibility="public",
                 registered_by="asor-federation",
-                registered_at=datetime.now(UTC)
+                registered_at=datetime.now(timezone.utc)
             )
-
+            
             try:
                 # Check if agent already exists
                 if agent_path in agent_service.registered_agents:
                     logger.debug(f"ASOR agent {agent_path} already exists, skipping registration")
                     continue
-
+                
                 # Register the agent using the proper method
                 agent_service.register_agent(agent_card)
                 logger.info(f"Registered ASOR agent: {agent_card.name} at {agent_card.path}")
-
+                
             except Exception as e:
                 logger.error(f"Failed to register ASOR agent {agent_data.get('name', 'unknown')}: {e}")
 
@@ -247,9 +251,9 @@ class FederationService:
 
     def get_federated_servers(
         self,
-        source: str | None = None,
+        source: Optional[str] = None,
         force_refresh: bool = False
-    ) -> list[dict[str, Any]]:
+    ) -> List[Dict[str, Any]]:
         """
         Get federated servers by syncing from sources.
 
@@ -272,9 +276,9 @@ class FederationService:
 
     def get_federated_items(
         self,
-        source: str | None = None,
+        source: Optional[str] = None,
         force_refresh: bool = False
-    ) -> dict[str, list[dict[str, Any]]]:
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Get both federated servers and agents from specified source or all sources.
         
@@ -308,28 +312,28 @@ class FederationService:
         try:
             from ..core.config import settings
             state_file = settings.servers_dir / "server_state.json"
-
+            
             # Load existing state
             state = {}
             if state_file.exists():
-                with open(state_file) as f:
+                with open(state_file, "r") as f:
                     state = json.load(f)
-
+            
             # Update state
             state[server_path] = enabled
-
+            
             # Save state
             with open(state_file, "w") as f:
                 json.dump(state, f, indent=2)
-
+                
             logger.info(f"Updated server state: {server_path} = {enabled}")
-
+            
         except Exception as e:
             logger.error(f"Failed to update server state for {server_path}: {e}")
 
 
 # Global instance
-_federation_service: FederationService | None = None
+_federation_service: Optional[FederationService] = None
 
 
 def get_federation_service() -> FederationService:

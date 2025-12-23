@@ -1,6 +1,8 @@
 import json
 import logging
-from typing import Any
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+from datetime import datetime, timezone
 
 from ..core.config import settings
 
@@ -9,37 +11,37 @@ logger = logging.getLogger(__name__)
 
 class ServerService:
     """Service for managing server registration and state."""
-
+    
     def __init__(self):
-        self.registered_servers: dict[str, dict[str, Any]] = {}
-        self.service_state: dict[str, bool] = {}  # enabled/disabled state
-
+        self.registered_servers: Dict[str, Dict[str, Any]] = {}
+        self.service_state: Dict[str, bool] = {}  # enabled/disabled state
+        
     def load_servers_and_state(self):
         """Load server definitions and persisted state from disk."""
         logger.info(f"Loading server definitions from {settings.servers_dir}...")
-
+        
         # Create servers directory if it doesn't exist
         settings.servers_dir.mkdir(parents=True, exist_ok=True)
-
+        
         temp_servers = {}
         server_files = list(settings.servers_dir.glob("**/*.json"))
         logger.info(f"Found {len(server_files)} JSON files in {settings.servers_dir} and its subdirectories")
-
+        
         for file in server_files:
             logger.info(f"[DEBUG] - {file.relative_to(settings.servers_dir)}")
-
+        
         if not server_files:
             logger.warning(f"No server definition files found in {settings.servers_dir}. Initializing empty registry.")
             self.registered_servers = {}
-
+        
         for server_file in server_files:
             if server_file.name == settings.state_file_path.name:  # Skip the state file itself
                 continue
-
+                
             try:
-                with open(server_file) as f:
+                with open(server_file, "r") as f:
                     server_info = json.load(f)
-
+                    
                     if (
                         isinstance(server_info, dict)
                         and "path" in server_info
@@ -48,7 +50,7 @@ class ServerService:
                         server_path = server_info["path"]
                         if server_path in temp_servers:
                             logger.warning(f"Duplicate server path found in {server_file}: {server_path}. Overwriting previous definition.")
-
+                        
                         # Add default fields
                         server_info["description"] = server_info.get("description", "")
                         server_info["tags"] = server_info.get("tags", [])
@@ -58,7 +60,7 @@ class ServerService:
                         server_info["license"] = server_info.get("license", "N/A")
                         server_info["proxy_pass_url"] = server_info.get("proxy_pass_url", None)
                         server_info["tool_list"] = server_info.get("tool_list", [])
-
+                        
                         temp_servers[server_path] = server_info
                     else:
                         logger.warning(f"Invalid server entry format found in {server_file}. Skipping.")
@@ -68,21 +70,21 @@ class ServerService:
                 logger.error(f"Could not parse JSON from {server_file}: {e}.")
             except Exception as e:
                 logger.error(f"An unexpected error occurred loading {server_file}: {e}", exc_info=True)
-
+        
         self.registered_servers = temp_servers
         logger.info(f"Successfully loaded {len(self.registered_servers)} server definitions.")
-
+        
         # Load persisted service state
         self._load_service_state()
-
+        
     def _load_service_state(self):
         """Load persisted service state from disk."""
         logger.info(f"Attempting to load persisted state from {settings.state_file_path}...")
         loaded_state = {}
-
+        
         try:
             if settings.state_file_path.exists():
-                with open(settings.state_file_path) as f:
+                with open(settings.state_file_path, "r") as f:
                     loaded_state = json.load(f)
                 if not isinstance(loaded_state, dict):
                     logger.warning(f"Invalid state format in {settings.state_file_path}. Expected a dictionary. Resetting state.")
@@ -97,7 +99,7 @@ class ServerService:
         except Exception as e:
             logger.error(f"Failed to read state file {settings.state_file_path}: {e}. Initializing empty state.", exc_info=True)
             loaded_state = {}
-
+        
         # Initialize service state
         self.service_state = {}
         for path in self.registered_servers.keys():
@@ -111,9 +113,9 @@ class ServerService:
                     # Try with trailing slash
                     value = loaded_state.get(path + '/', False)
             self.service_state[path] = value
-
+        
         logger.info(f"Initial service state loaded: {self.service_state}")
-
+        
     def save_service_state(self):
         """Persist service state to disk."""
         try:
@@ -122,27 +124,27 @@ class ServerService:
             logger.info(f"Persisted state to {settings.state_file_path}")
         except Exception as e:
             logger.error(f"ERROR: Failed to persist state to {settings.state_file_path}: {e}")
-
-    def save_server_to_file(self, server_info: dict[str, Any]) -> bool:
+            
+    def save_server_to_file(self, server_info: Dict[str, Any]) -> bool:
         """Save server data to individual file."""
         try:
             # Create servers directory if it doesn't exist
             settings.servers_dir.mkdir(parents=True, exist_ok=True)
-
+            
             # Generate filename based on path
             path = server_info["path"]
             filename = self._path_to_filename(path)
             file_path = settings.servers_dir / filename
-
+            
             with open(file_path, "w") as f:
                 json.dump(server_info, f, indent=2)
-
+            
             logger.info(f"Successfully saved server '{server_info['server_name']}' to {file_path}")
             return True
         except Exception as e:
             logger.error(f"Failed to save server '{server_info.get('server_name', 'UNKNOWN')}' data to {filename}: {e}", exc_info=True)
             return False
-
+            
     def _path_to_filename(self, path: str) -> str:
         """Convert a path to a safe filename."""
         # Remove leading slash and replace remaining slashes with underscores
@@ -151,53 +153,52 @@ class ServerService:
         if not normalized.endswith(".json"):
             normalized += ".json"
         return normalized
-
-    def register_server(self, server_info: dict[str, Any]) -> bool:
+        
+    def register_server(self, server_info: Dict[str, Any]) -> bool:
         """Register a new server."""
         path = server_info["path"]
-
+        
         # Check if path already exists
         if path in self.registered_servers:
             logger.error(f"Service registration failed: path '{path}' already exists")
             return False
-
+            
         # Save to file
         if not self.save_server_to_file(server_info):
             return False
-
+            
         # Add to in-memory registry and default to disabled
         self.registered_servers[path] = server_info
         self.service_state[path] = False
-
+        
         # Persist state
         self.save_service_state()
-
+        
         logger.info(f"New service registered: '{server_info['server_name']}' at path '{path}'")
         return True
-
-    def update_server(self, path: str, server_info: dict[str, Any]) -> bool:
+        
+    def update_server(self, path: str, server_info: Dict[str, Any]) -> bool:
         """Update an existing server."""
         if path not in self.registered_servers:
             logger.error(f"Cannot update server at path '{path}': not found")
             return False
-
+            
         # Ensure path is consistent
         server_info["path"] = path
-
+        
         # Save to file
         if not self.save_server_to_file(server_info):
             return False
-
+            
                 # Update in-memory registry
         self.registered_servers[path] = server_info
-
+        
         logger.info(f"Server '{server_info['server_name']}' ({path}) updated")
 
         # Update FAISS index with new server information
         try:
-            import asyncio
-
             from ..search.service import faiss_service
+            import asyncio
 
             # Check if we're in an async context
             try:
@@ -227,34 +228,34 @@ class ServerService:
                 logger.error(f"Failed to regenerate nginx configuration after server update: {e}")
 
         return True
-
+        
     def toggle_service(self, path: str, enabled: bool) -> bool:
         """Toggle service enabled/disabled state."""
         if path not in self.registered_servers:
             logger.error(f"Cannot toggle service at path '{path}': not found")
             return False
-
+            
         self.service_state[path] = enabled
         self.save_service_state()
-
+        
         server_name = self.registered_servers[path]["server_name"]
         logger.info(f"Toggled '{server_name}' ({path}) to {enabled}")
-
+        
         # Trigger nginx config regeneration and reload
         try:
             from ..core.nginx_service import nginx_service
             enabled_servers = {
-                service_path: self.get_server_info(service_path)
+                service_path: self.get_server_info(service_path) 
                 for service_path in self.get_enabled_services()
             }
             nginx_service.generate_config(enabled_servers)
             nginx_service.reload_nginx()
         except Exception as e:
             logger.error(f"Failed to update nginx configuration after toggle: {e}")
-
+        
         return True
-
-    def get_server_info(self, path: str) -> dict[str, Any] | None:
+        
+    def get_server_info(self, path: str) -> Optional[Dict[str, Any]]:
         """
         Get server information by path.
 
@@ -279,8 +280,8 @@ class ServerService:
             alternate_path = path + '/'
 
         return self.registered_servers.get(alternate_path)
-
-    def get_all_servers(self, include_federated: bool = True) -> dict[str, dict[str, Any]]:
+        
+    def get_all_servers(self, include_federated: bool = True) -> Dict[str, Dict[str, Any]]:
         """
         Get all registered servers.
 
@@ -310,8 +311,8 @@ class ServerService:
                 logger.error(f"Failed to get federated servers: {e}")
 
         return all_servers
-
-    def get_filtered_servers(self, accessible_servers: list[str]) -> dict[str, dict[str, Any]]:
+        
+    def get_filtered_servers(self, accessible_servers: List[str]) -> Dict[str, Dict[str, Any]]:
         """
         Get servers filtered by user's accessible servers list.
         
@@ -324,32 +325,32 @@ class ServerService:
         if not accessible_servers:
             logger.debug("User has no accessible servers, returning empty dict")
             return {}
-
+        
         logger.info(f"DEBUG: get_filtered_servers called with accessible_servers: {accessible_servers}")
         logger.info(f"DEBUG: Available registered servers paths: {list(self.registered_servers.keys())}")
-
+        
         filtered_servers = {}
         for path, server_info in self.registered_servers.items():
             server_name = server_info.get("server_name", "")
             # Extract technical name from path (remove leading and trailing slashes)
             technical_name = path.strip('/')
             logger.info(f"DEBUG: Checking server path='{path}', server_name='{server_name}', technical_name='{technical_name}' against accessible_servers")
-
+            
             # Check if user has access to this server using technical name
             if technical_name in accessible_servers:
                 filtered_servers[path] = server_info
                 logger.info(f"DEBUG: ✓ User has access to server: {technical_name} ({server_name})")
             else:
                 logger.info(f"DEBUG: ✗ User does not have access to server: {technical_name} ({server_name})")
-
+        
         logger.info(f"Filtered {len(filtered_servers)} servers from {len(self.registered_servers)} total servers")
         return filtered_servers
 
     def get_all_servers_with_permissions(
         self,
-        accessible_servers: list[str] | None = None,
+        accessible_servers: Optional[List[str]] = None,
         include_federated: bool = True
-    ) -> dict[str, dict[str, Any]]:
+    ) -> Dict[str, Dict[str, Any]]:
         """
         Get servers with optional filtering based on user permissions.
 
@@ -383,7 +384,7 @@ class ServerService:
 
             return filtered_servers
 
-    def user_can_access_server_path(self, path: str, accessible_servers: list[str]) -> bool:
+    def user_can_access_server_path(self, path: str, accessible_servers: List[str]) -> bool:
         """
         Check if user can access a specific server by path.
         
@@ -406,7 +407,7 @@ class ServerService:
         """Check if a service is enabled."""
         # Try exact match first
         result = self.service_state.get(path, None)
-
+        
         # If no exact match, try with/without trailing slash
         if result is None:
             if path.endswith('/'):
@@ -415,37 +416,37 @@ class ServerService:
             else:
                 # Try with trailing slash
                 result = self.service_state.get(path + '/', False)
-
+        
         if result is None:
             result = False
-
+            
         logger.info(f"[SERVER_DEBUG] is_service_enabled({path}) -> service_state: {self.service_state}, result: {result}")
         return result
-
-    def get_enabled_services(self) -> list[str]:
+        
+    def get_enabled_services(self) -> List[str]:
         """Get list of enabled service paths."""
         return [path for path, enabled in self.service_state.items() if enabled]
 
     def reload_state_from_disk(self):
         """Reload service state from disk (useful when state file is modified externally)."""
         logger.info("Reloading service state from disk...")
-
+        
         # Store previous state to detect changes
         previous_enabled_services = set(self.get_enabled_services())
-
+        
         self._load_service_state()
-
+        
         # Check if enabled services changed
         current_enabled_services = set(self.get_enabled_services())
-
+        
         if previous_enabled_services != current_enabled_services:
             logger.info(f"Service state changes detected: {len(previous_enabled_services)} -> {len(current_enabled_services)} enabled services")
-
+            
             # Regenerate nginx configuration due to state changes
             try:
                 from ..core.nginx_service import nginx_service
                 enabled_servers = {
-                    service_path: self.get_server_info(service_path)
+                    service_path: self.get_server_info(service_path) 
                     for service_path in self.get_enabled_services()
                 }
                 nginx_service.generate_config(enabled_servers)
@@ -552,4 +553,4 @@ class ServerService:
 
 
 # Global service instance
-server_service = ServerService()
+server_service = ServerService() 

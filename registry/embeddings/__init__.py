@@ -2,8 +2,8 @@
 
 from .client import (
     EmbeddingsClient,
-    LiteLLMClient,
     SentenceTransformersClient,
+    LiteLLMClient,
     create_embeddings_client,
 )
 

@@ -4,7 +4,7 @@ Utility functions for metrics collection in the registry.
 
 import hashlib
 import logging
-from typing import Any
+from typing import Dict, Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ def extract_server_name_from_url(url: str) -> str:
     """Extract server name from MCP server URL."""
     if not url:
         return "unknown"
-
+    
     try:
         # URL format is typically http://host:port/server_name/
         parsed = urlparse(url)
@@ -35,9 +35,9 @@ def categorize_user_agent(user_agent: str) -> str:
     """Categorize user agent for metrics analysis."""
     if not user_agent:
         return "unknown"
-
+        
     user_agent_lower = user_agent.lower()
-
+    
     if 'curl' in user_agent_lower:
         return 'curl'
     elif 'postman' in user_agent_lower:
@@ -56,7 +56,7 @@ def categorize_user_agent(user_agent: str) -> str:
         return 'other'
 
 
-def extract_headers_for_analysis(headers: dict[str, str]) -> dict[str, Any]:
+def extract_headers_for_analysis(headers: Dict[str, str]) -> Dict[str, Any]:
     """Extract and categorize headers for nginx config analysis."""
     return {
         'user_agent_type': categorize_user_agent(headers.get('user-agent', '')),

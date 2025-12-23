@@ -13,11 +13,13 @@ import os
 import re
 import subprocess
 import tempfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from ..core.config import settings
-from ..schemas.agent_security import AgentSecurityScanConfig, AgentSecurityScanResult
+from ..schemas.agent_security import AgentSecurityScanResult, AgentSecurityScanConfig
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +56,9 @@ class AgentScannerService:
         self,
         agent_card: dict,
         agent_path: str,
-        analyzers: str | None = None,
-        api_key: str | None = None,
-        timeout: int | None = None,
+        analyzers: Optional[str] = None,
+        api_key: Optional[str] = None,
+        timeout: Optional[int] = None,
     ) -> AgentSecurityScanResult:
         """
         Scan an A2A agent for security vulnerabilities.
@@ -110,7 +112,7 @@ class AgentScannerService:
             result = AgentSecurityScanResult(
                 agent_path=agent_path,
                 agent_url=str(agent_url) if agent_url else None,
-                scan_timestamp=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                scan_timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 is_safe=is_safe,
                 critical_issues=critical,
                 high_severity=high,
@@ -146,7 +148,7 @@ class AgentScannerService:
             return AgentSecurityScanResult(
                 agent_path=agent_path,
                 agent_url=agent_card.get("url"),
-                scan_timestamp=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                scan_timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 is_safe=False,  # Treat scanner failures as unsafe
                 critical_issues=0,
                 high_severity=0,
@@ -164,8 +166,8 @@ class AgentScannerService:
         agent_card: dict,
         agent_path: str,
         analyzers: str,
-        api_key: str | None = None,
-        timeout: int | None = None,
+        api_key: Optional[str] = None,
+        timeout: Optional[int] = None,
     ) -> dict:
         """
         Run a2a-scanner command and return raw output.
@@ -308,7 +310,7 @@ class AgentScannerService:
         # Determine if safe: no critical or high severity issues
         is_safe = critical_count == 0 and high_count == 0
 
-        logger.info("Agent security analysis results:")
+        logger.info(f"Agent security analysis results:")
         logger.info(f"  Critical Issues: {critical_count}")
         logger.info(f"  High Severity: {high_count}")
         logger.info(f"  Medium Severity: {medium_count}")
@@ -334,7 +336,7 @@ class AgentScannerService:
         safe_path = agent_path.replace("/", "_").strip("_")
 
         # Create date-based subdirectory for archival
-        timestamp = datetime.now(UTC)
+        timestamp = datetime.now(timezone.utc)
         date_folder = timestamp.strftime("%Y-%m-%d")
         archive_dir = output_dir / date_folder
         archive_dir.mkdir(exist_ok=True)
@@ -360,7 +362,7 @@ class AgentScannerService:
 
         return str(latest_file)
 
-    def get_scan_result(self, agent_path: str) -> dict | None:
+    def get_scan_result(self, agent_path: str) -> Optional[dict]:
         """
         Get the latest scan result for an agent.
 
@@ -386,7 +388,7 @@ class AgentScannerService:
             return None
 
         try:
-            with open(latest_file) as f:
+            with open(latest_file, "r") as f:
                 scan_data = json.load(f)
             return scan_data
         except Exception as e:

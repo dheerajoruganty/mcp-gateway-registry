@@ -1,10 +1,11 @@
+import secrets
+from typing import Annotated, List, Dict, Any, Optional
 import logging
-from pathlib import Path
-from typing import Annotated, Any
-
 import yaml
-from fastapi import Cookie, Depends, Header, HTTPException, Request, status
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from pathlib import Path
+
+from fastapi import Depends, HTTPException, status, Cookie, Header, Request
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 
 from ..core.config import settings
 
@@ -32,24 +33,21 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required"
         )
-
+    
     try:
         data = signer.loads(session, max_age=settings.session_max_age_seconds)
         username = data.get('username')
-
+        
         if not username:
             logger.warning("No username found in session data")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid session data"
             )
-
+        
         logger.debug(f"Authentication successful for user: {username}")
         return username
-
-    except HTTPException:
-        # Re-raise HTTPException without modification
-        raise
+        
     except SignatureExpired:
         logger.warning("Session cookie has expired")
         raise HTTPException(
@@ -72,7 +70,7 @@ def get_current_user(
 
 def get_user_session_data(
     session: Annotated[str | None, Cookie(alias=settings.session_cookie_name)] = None,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Get the full session data for the authenticated user.
     
@@ -88,26 +86,26 @@ def get_user_session_data(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required"
         )
-
+    
     try:
         data = signer.loads(session, max_age=settings.session_max_age_seconds)
-
+        
         if not data.get('username'):
             logger.warning("No username found in session data")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid session data"
             )
-
+        
         # Set defaults for traditional auth users
         if data.get('auth_method') != 'oauth2':
             # Traditional users get admin privileges via registry-admins group
             data.setdefault('groups', ['registry-admins'])
             data.setdefault('scopes', ['registry-admins'])
-
+        
         logger.debug(f"Session data extracted for user: {data.get('username')}")
         return data
-
+        
     except SignatureExpired:
         logger.warning("Session cookie has expired")
         raise HTTPException(
@@ -128,7 +126,7 @@ def get_user_session_data(
         )
 
 
-def load_scopes_config() -> dict[str, Any]:
+def load_scopes_config() -> Dict[str, Any]:
     """Load the scopes configuration from auth_server/scopes.yml"""
     try:
         # Check for SCOPES_CONFIG_PATH environment variable first
@@ -163,7 +161,7 @@ def load_scopes_config() -> dict[str, Any]:
             logger.warning(f"Scopes config file not found at {scopes_file}")
             return {}
 
-        with open(scopes_file) as f:
+        with open(scopes_file, 'r') as f:
             config = yaml.safe_load(f)
             logger.info(f"Loaded scopes configuration with {len(config.get('group_mappings', {}))} group mappings")
             return config
@@ -176,7 +174,7 @@ def load_scopes_config() -> dict[str, Any]:
 SCOPES_CONFIG = load_scopes_config()
 
 
-def map_cognito_groups_to_scopes(groups: list[str]) -> list[str]:
+def map_cognito_groups_to_scopes(groups: List[str]) -> List[str]:
     """
     Map Cognito groups to MCP scopes using the scopes.yml configuration.
     
@@ -188,7 +186,7 @@ def map_cognito_groups_to_scopes(groups: list[str]) -> list[str]:
     """
     scopes = []
     group_mappings = SCOPES_CONFIG.get('group_mappings', {})
-
+    
     for group in groups:
         if group in group_mappings:
             group_scopes = group_mappings[group]
@@ -196,7 +194,7 @@ def map_cognito_groups_to_scopes(groups: list[str]) -> list[str]:
             logger.debug(f"Mapped group '{group}' to scopes: {group_scopes}")
         else:
             logger.debug(f"No scope mapping found for group: {group}")
-
+    
     # Remove duplicates while preserving order
     seen = set()
     unique_scopes = []
@@ -204,12 +202,12 @@ def map_cognito_groups_to_scopes(groups: list[str]) -> list[str]:
         if scope not in seen:
             seen.add(scope)
             unique_scopes.append(scope)
-
+    
     logger.info(f"Final mapped scopes: {unique_scopes}")
     return unique_scopes
 
 
-def get_ui_permissions_for_user(user_scopes: list[str]) -> dict[str, list[str]]:
+def get_ui_permissions_for_user(user_scopes: List[str]) -> Dict[str, List[str]]:
     """
     Get UI permissions for a user based on their scopes.
 
@@ -249,7 +247,7 @@ def get_ui_permissions_for_user(user_scopes: list[str]) -> dict[str, list[str]]:
     return result
 
 
-def user_has_ui_permission_for_service(permission: str, service_name: str, user_ui_permissions: dict[str, list[str]]) -> bool:
+def user_has_ui_permission_for_service(permission: str, service_name: str, user_ui_permissions: Dict[str, List[str]]) -> bool:
     """
     Check if user has a specific UI permission for a specific service.
     
@@ -263,17 +261,17 @@ def user_has_ui_permission_for_service(permission: str, service_name: str, user_
     """
     if permission not in user_ui_permissions:
         return False
-
+    
     allowed_services = user_ui_permissions[permission]
-
+    
     # Check if user has permission for all services or the specific service
     has_permission = 'all' in allowed_services or service_name in allowed_services
-
+    
     logger.debug(f"Permission check: {permission} for {service_name} = {has_permission} (allowed: {allowed_services})")
     return has_permission
 
 
-def get_accessible_services_for_user(user_ui_permissions: dict[str, list[str]]) -> list[str]:
+def get_accessible_services_for_user(user_ui_permissions: Dict[str, List[str]]) -> List[str]:
     """
     Get list of services the user can see based on their list_service permission.
 
@@ -291,7 +289,7 @@ def get_accessible_services_for_user(user_ui_permissions: dict[str, list[str]]) 
     return list_permissions
 
 
-def get_accessible_agents_for_user(user_ui_permissions: dict[str, list[str]]) -> list[str]:
+def get_accessible_agents_for_user(user_ui_permissions: Dict[str, List[str]]) -> List[str]:
     """
     Get list of agents the user can see based on their list_agents permission.
 
@@ -309,7 +307,7 @@ def get_accessible_agents_for_user(user_ui_permissions: dict[str, list[str]]) ->
     return list_permissions
 
 
-def get_servers_for_scope(scope: str) -> list[str]:
+def get_servers_for_scope(scope: str) -> List[str]:
     """
     Get list of server names that a scope provides access to.
 
@@ -329,7 +327,7 @@ def get_servers_for_scope(scope: str) -> list[str]:
     return list(set(server_names))  # Remove duplicates
 
 
-def user_has_wildcard_access(user_scopes: list[str]) -> bool:
+def user_has_wildcard_access(user_scopes: List[str]) -> bool:
     """
     Check if user has wildcard access to all servers via their scopes.
 
@@ -351,7 +349,7 @@ def user_has_wildcard_access(user_scopes: list[str]) -> bool:
     return False
 
 
-def get_user_accessible_servers(user_scopes: list[str]) -> list[str]:
+def get_user_accessible_servers(user_scopes: List[str]) -> List[str]:
     """
     Get list of all servers the user has access to based on their scopes.
     
@@ -362,22 +360,22 @@ def get_user_accessible_servers(user_scopes: list[str]) -> list[str]:
         List of server names the user can access
     """
     accessible_servers = set()
-
+    
     logger.info(f"DEBUG: get_user_accessible_servers called with scopes: {user_scopes}")
     logger.info(f"DEBUG: Available scope configs: {list(SCOPES_CONFIG.keys())}")
-
+    
     for scope in user_scopes:
         logger.info(f"DEBUG: Processing scope: {scope}")
         server_names = get_servers_for_scope(scope)
         logger.info(f"DEBUG: Scope {scope} maps to servers: {server_names}")
         accessible_servers.update(server_names)
-
+    
     logger.info(f"DEBUG: Final accessible servers: {list(accessible_servers)}")
     logger.debug(f"User with scopes {user_scopes} has access to servers: {list(accessible_servers)}")
     return list(accessible_servers)
 
 
-def user_can_modify_servers(user_groups: list[str], user_scopes: list[str]) -> bool:
+def user_can_modify_servers(user_groups: List[str], user_scopes: List[str]) -> bool:
     """
     Check if user can modify servers (toggle, edit).
     
@@ -391,21 +389,21 @@ def user_can_modify_servers(user_groups: list[str], user_scopes: list[str]) -> b
     # Admin users can always modify
     if 'mcp-registry-admin' in user_groups:
         return True
-
+    
     # Users with unrestricted execute access can modify
     if 'mcp-servers-unrestricted/execute' in user_scopes:
         return True
-
+    
     # mcp-registry-user group cannot modify servers
     if 'mcp-registry-user' in user_groups and 'mcp-registry-admin' not in user_groups:
         return False
-
+    
     # For other cases, check if they have any execute permissions
     execute_scopes = [scope for scope in user_scopes if '/execute' in scope]
     return len(execute_scopes) > 0
 
 
-def user_can_access_server(server_name: str, user_scopes: list[str]) -> bool:
+def user_can_access_server(server_name: str, user_scopes: List[str]) -> bool:
     """
     Check if user can access a specific server.
     
@@ -442,19 +440,19 @@ def web_auth(
 
 def enhanced_auth(
     session: Annotated[str | None, Cookie(alias=settings.session_cookie_name)] = None,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Enhanced authentication dependency that returns full user context.
     Returns username, groups, scopes, and permission flags.
     """
     session_data = get_user_session_data(session)
-
+    
     username = session_data['username']
     groups = session_data.get('groups', [])
     auth_method = session_data.get('auth_method', 'traditional')
-
+    
     logger.info(f"Enhanced auth debug for {username}: groups={groups}, auth_method={auth_method}")
-
+    
     # Map groups to scopes for OAuth2 users
     if auth_method == 'oauth2':
         scopes = map_cognito_groups_to_scopes(groups)
@@ -472,7 +470,7 @@ def enhanced_auth(
             # Fallback for traditional users if no mapping exists
             scopes = ['registry-admins']
         logger.info(f"Traditional user {username} with groups {groups} mapped to scopes: {scopes}")
-
+    
     # Get UI permissions
     ui_permissions = get_ui_permissions_for_user(scopes)
 
@@ -513,7 +511,7 @@ def nginx_proxied_auth(
     x_username: Annotated[str | None, Header(alias="X-Username", include_in_schema=False)] = None,
     x_scopes: Annotated[str | None, Header(alias="X-Scopes", include_in_schema=False)] = None,
     x_auth_method: Annotated[str | None, Header(alias="X-Auth-Method", include_in_schema=False)] = None,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Authentication dependency that works with both nginx-proxied requests and direct requests.
 
@@ -631,9 +629,9 @@ def ui_permission_required(permission: str, service_name: str = None):
     Returns:
         Dependency function that checks the permission
     """
-    def check_permission(user_context: dict[str, Any] = Depends(enhanced_auth)) -> dict[str, Any]:
+    def check_permission(user_context: Dict[str, Any] = Depends(enhanced_auth)) -> Dict[str, Any]:
         ui_permissions = user_context.get('ui_permissions', {})
-
+        
         if service_name:
             # Check permission for specific service
             if not user_has_ui_permission_for_service(permission, service_name, ui_permissions):
@@ -650,7 +648,7 @@ def ui_permission_required(permission: str, service_name: str = None):
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"Insufficient permissions. Required: {permission}"
                 )
-
+        
         return user_context
-
-    return check_permission
+    
+    return check_permission 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import List, Optional
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -7,8 +9,8 @@ class M2MAccountRequest(BaseModel):
     """Payload for creating a Keycloak service account client."""
 
     name: str = Field(..., min_length=1)
-    groups: list[str] = Field(..., min_length=1)
-    description: str | None = None
+    groups: List[str] = Field(..., min_length=1)
+    description: Optional[str] = None
 
 
 class HumanUserRequest(BaseModel):
@@ -18,8 +20,8 @@ class HumanUserRequest(BaseModel):
     email: EmailStr
     first_name: str = Field(..., min_length=1, alias="firstname")
     last_name: str = Field(..., min_length=1, alias="lastname")
-    groups: list[str] = Field(..., min_length=1)
-    password: str | None = Field(
+    groups: List[str] = Field(..., min_length=1)
+    password: Optional[str] = Field(
         None, description="Initial password (optional, generated elsewhere)"
     )
 
@@ -38,17 +40,17 @@ class KeycloakUserSummary(BaseModel):
 
     id: str
     username: str
-    email: str | None = None
-    firstName: str | None = None
-    lastName: str | None = None
+    email: Optional[str] = None
+    firstName: Optional[str] = None
+    lastName: Optional[str] = None
     enabled: bool = True
-    groups: list[str] = Field(default_factory=list)
+    groups: List[str] = Field(default_factory=list)
 
 
 class UserListResponse(BaseModel):
     """Wrapper for list users endpoint."""
 
-    users: list[KeycloakUserSummary] = Field(default_factory=list)
+    users: List[KeycloakUserSummary] = Field(default_factory=list)
     total: int
 
 
@@ -56,7 +58,7 @@ class GroupCreateRequest(BaseModel):
     """Payload for creating a Keycloak group."""
 
     name: str = Field(..., min_length=1)
-    description: str | None = None
+    description: Optional[str] = None
 
 
 class KeycloakGroupSummary(BaseModel):
@@ -65,13 +67,13 @@ class KeycloakGroupSummary(BaseModel):
     id: str
     name: str
     path: str
-    attributes: dict | None = None
+    attributes: Optional[dict] = None
 
 
 class GroupListResponse(BaseModel):
     """Response for listing Keycloak groups."""
 
-    groups: list[KeycloakGroupSummary] = Field(default_factory=list)
+    groups: List[KeycloakGroupSummary] = Field(default_factory=list)
     total: int
 
 

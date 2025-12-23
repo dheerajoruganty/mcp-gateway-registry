@@ -5,7 +5,7 @@ This bridges our internal data model with the external Anthropic API format.
 """
 
 import logging
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from ..constants import REGISTRY_CONSTANTS
 from ..schemas.anthropic_schema import (
@@ -17,6 +17,7 @@ from ..schemas.anthropic_schema import (
     ServerResponse,
 )
 
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s,p%(process)s,{%(filename)s:%(lineno)d},%(levelname)s,%(message)s",
@@ -25,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _create_transport_config(server_info: dict[str, Any]) -> dict[str, Any]:
+def _create_transport_config(server_info: Dict[str, Any]) -> Dict[str, Any]:
     """
     Create transport configuration from internal server info.
 
@@ -40,7 +41,7 @@ def _create_transport_config(server_info: dict[str, Any]) -> dict[str, Any]:
     return {"type": "streamable-http", "url": proxy_pass_url}
 
 
-def _extract_repository_from_description(description: str) -> Repository | None:
+def _extract_repository_from_description(description: str) -> Optional[Repository]:
     """
     Extract repository info from description or tags if available.
 
@@ -57,7 +58,7 @@ def _extract_repository_from_description(description: str) -> Repository | None:
     return None
 
 
-def _determine_version(server_info: dict[str, Any]) -> str:
+def _determine_version(server_info: Dict[str, Any]) -> str:
     """
     Determine server version.
 
@@ -77,7 +78,7 @@ def _determine_version(server_info: dict[str, Any]) -> str:
     return "1.0.0"
 
 
-def _create_server_name(server_info: dict[str, Any]) -> str:
+def _create_server_name(server_info: Dict[str, Any]) -> str:
     """
     Create reverse-DNS style server name.
 
@@ -100,7 +101,7 @@ def _create_server_name(server_info: dict[str, Any]) -> str:
     return f"{namespace}/{clean_path}"
 
 
-def transform_to_server_detail(server_info: dict[str, Any]) -> ServerDetail:
+def transform_to_server_detail(server_info: Dict[str, Any]) -> ServerDetail:
     """
     Transform internal server info to Anthropic ServerDetail format.
 
@@ -162,7 +163,7 @@ def transform_to_server_detail(server_info: dict[str, Any]) -> ServerDetail:
 
 
 def transform_to_server_response(
-    server_info: dict[str, Any],
+    server_info: Dict[str, Any],
     include_registry_meta: bool = True,
 ) -> ServerResponse:
     """
@@ -191,9 +192,9 @@ def transform_to_server_response(
 
 
 def transform_to_server_list(
-    servers_data: list[dict[str, Any]],
-    cursor: str | None = None,
-    limit: int | None = None,
+    servers_data: List[Dict[str, Any]],
+    cursor: Optional[str] = None,
+    limit: Optional[int] = None,
 ) -> ServerList:
     """
     Transform list of internal servers to Anthropic ServerList format.
