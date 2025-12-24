@@ -242,7 +242,7 @@ class SecurityScannerService:
             )
 
             # Save scan result via repository
-            await self._scan_repo.create(result)
+            await self._scan_repo.create(result.model_dump())
 
             logger.info(
                 f"Security scan completed for {server_url}. "
