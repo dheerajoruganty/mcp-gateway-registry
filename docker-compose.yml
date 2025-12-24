@@ -211,7 +211,10 @@ services:
       - ${HOME}/mcp-gateway/logs:/app/logs
       # - ${HOME}/mcp-gateway/auth_server/scopes.yml:/app/scopes.yml
     depends_on:
-      - opensearch
+      opensearch:
+        condition: service_healthy
+      metrics-service:
+        condition: service_healthy
     restart: unless-stopped
 
   # Current Time MCP Server
