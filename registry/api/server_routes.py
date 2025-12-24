@@ -3676,7 +3676,7 @@ async def get_server_security_scan(
             )
 
     # Get scan results
-    scan_result = security_scanner_service.get_scan_result(path)
+    scan_result = await security_scanner_service.get_scan_result(path)
     if not scan_result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

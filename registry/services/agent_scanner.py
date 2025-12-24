@@ -19,6 +19,7 @@ from typing import Optional
 
 from ..core.config import settings
 from ..schemas.agent_security import AgentSecurityScanResult, AgentSecurityScanConfig
+from ..repositories.factory import get_security_scan_repository
 
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class AgentScannerService:
     def __init__(self):
         """Initialize the agent scanner service."""
         self._ensure_output_directory()
+        self._scan_repo = get_security_scan_repository()
 
     def _ensure_output_directory(self) -> Path:
         """Ensure output directory exists."""
@@ -102,9 +104,6 @@ class AgentScannerService:
             # Analyze results
             is_safe, critical, high, medium, low = self._analyze_scan_results(raw_output)
 
-            # Save detailed output
-            output_file = self._save_scan_output(agent_path, raw_output)
-
             # Get agent URL if available
             agent_url = agent_card.get("url")
 
@@ -120,9 +119,12 @@ class AgentScannerService:
                 low_severity=low,
                 analyzers_used=analyzers.split(","),
                 raw_output=raw_output,
-                output_file=output_file,
+                output_file="",  # Repository handles storage
                 scan_failed=False,
             )
+
+            # Save scan result via repository
+            await self._scan_repo.create(result)
 
             logger.info(
                 f"Agent security scan completed for {agent_path}. "
@@ -141,11 +143,8 @@ class AgentScannerService:
                 "scan_failed": True,
             }
 
-            # Save error output
-            output_file = self._save_scan_output(agent_path, raw_output)
-
             # Return error result
-            return AgentSecurityScanResult(
+            result = AgentSecurityScanResult(
                 agent_path=agent_path,
                 agent_url=agent_card.get("url"),
                 scan_timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -156,10 +155,15 @@ class AgentScannerService:
                 low_severity=0,
                 analyzers_used=analyzers.split(",") if analyzers else [],
                 raw_output=raw_output,
-                output_file=output_file,
+                output_file="",  # Repository handles storage
                 scan_failed=True,
                 error_message=str(e),
             )
+
+            # Save error result via repository
+            await self._scan_repo.create(result)
+
+            return result
 
     def _run_a2a_scanner(
         self,
@@ -319,55 +323,9 @@ class AgentScannerService:
 
         return is_safe, critical_count, high_count, medium_count, low_count
 
-    def _save_scan_output(self, agent_path: str, raw_output: dict) -> str:
-        """
-        Save detailed scan output to JSON file.
-
-        Saves in two locations:
-        1. agent_security_scans/YYYY-MM-DD/scan_<agent>_<timestamp>.json (archived)
-        2. agent_security_scans/scan_<agent>_latest.json (always current)
-
-        Returns:
-            Path to saved output file (latest version)
-        """
-        output_dir = self._ensure_output_directory()
-
-        # Generate safe filename from agent path
-        safe_path = agent_path.replace("/", "_").strip("_")
-
-        # Create date-based subdirectory for archival
-        timestamp = datetime.now(timezone.utc)
-        date_folder = timestamp.strftime("%Y-%m-%d")
-        archive_dir = output_dir / date_folder
-        archive_dir.mkdir(exist_ok=True)
-
-        # Save timestamped version in date folder (archived)
-        timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S")
-        archived_filename = f"scan_{safe_path}_{timestamp_str}.json"
-        archived_file = archive_dir / archived_filename
-
-        with open(archived_file, "w") as f:
-            json.dump(raw_output, f, indent=2, default=str)
-
-        logger.info(f"Archived agent scan output saved to: {archived_file}")
-
-        # Save latest version in root agent_security_scans folder (always current)
-        latest_filename = f"{safe_path}.json"
-        latest_file = output_dir / latest_filename
-
-        with open(latest_file, "w") as f:
-            json.dump(raw_output, f, indent=2, default=str)
-
-        logger.info(f"Latest agent scan output saved to: {latest_file}")
-
-        return str(latest_file)
-
-    def get_scan_result(self, agent_path: str) -> Optional[dict]:
+    async def get_scan_result(self, agent_path: str) -> Optional[dict]:
         """
         Get the latest scan result for an agent.
-
-        Looks for scan files in the agent_security_scans directory using
-        the agent path to locate the latest scan file.
 
         Args:
             agent_path: Agent path (e.g., /code-reviewer)
@@ -375,24 +333,24 @@ class AgentScannerService:
         Returns:
             Dictionary containing scan results, or None if no scan found
         """
-        output_dir = self._ensure_output_directory()
+        try:
+            # Get latest scan from repository
+            scan_result = await self._scan_repo.get_latest(agent_path)
 
-        # Generate safe filename from agent path
-        safe_path = agent_path.replace("/", "_").strip("_")
-        latest_filename = f"{safe_path}.json"
-        latest_file = output_dir / latest_filename
+            if scan_result:
+                logger.info(f"Loaded agent scan results for {agent_path} from repository")
+                # Convert to dict if needed
+                if hasattr(scan_result, 'model_dump'):
+                    return scan_result.model_dump()
+                return scan_result
 
-        # Check if file exists
-        if not latest_file.exists():
             logger.warning(f"No scan results found for agent: {agent_path}")
             return None
 
-        try:
-            with open(latest_file, "r") as f:
-                scan_data = json.load(f)
-            return scan_data
         except Exception as e:
-            logger.error(f"Failed to read scan results for agent {agent_path}: {e}")
+            logger.exception(
+                f"Unexpected error loading agent scan results for {agent_path}"
+            )
             return None
 
 

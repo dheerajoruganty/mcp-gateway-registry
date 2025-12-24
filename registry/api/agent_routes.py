@@ -1189,7 +1189,7 @@ async def get_agent_security_scan(
     # Get scan results
     from ..services.agent_scanner import agent_scanner_service
 
-    scan_result = agent_scanner_service.get_scan_result(path)
+    scan_result = await agent_scanner_service.get_scan_result(path)
     if not scan_result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
