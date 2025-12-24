@@ -164,6 +164,7 @@ class SecurityScannerService:
     async def scan_server(
         self,
         server_url: str,
+        server_path: Optional[str] = None,
         analyzers: Optional[str] = None,
         api_key: Optional[str] = None,
         headers: Optional[str] = None,
@@ -225,6 +226,7 @@ class SecurityScannerService:
             # Create result object
             result = SecurityScanResult(
                 server_url=server_url,
+                server_path=server_path or server_url,  # Use server_path if provided, fallback to URL
                 scan_timestamp=datetime.now(timezone.utc)
                 .isoformat()
                 .replace("+00:00", "Z"),

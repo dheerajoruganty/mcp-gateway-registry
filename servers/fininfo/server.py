@@ -19,7 +19,7 @@ from secrets_manager import SecretsManager
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s,p%(process)s,{%(filename)s:%(lineno)d},%(levelname)s,%(message)s'
 )
 logger = logging.getLogger(__name__)
