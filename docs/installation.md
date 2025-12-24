@@ -62,9 +62,14 @@ cp .env.example .env
 # 5. Deploy with Podman
 ./build_and_run.sh --prebuilt --podman
 
+# Apple Silicon: Use without --prebuilt
+# ./build_and_run.sh --podman
+
 # 6. Access registry (note the different port for Podman)
 open http://localhost:8080
 ```
+
+> **Note for Apple Silicon:** Don't use `--prebuilt` with Podman on ARM64. Use `./build_and_run.sh --podman` instead. See [Podman on Apple Silicon Guide](podman-apple-silicon.md).
 
 **Podman Port Mapping:**
 - Main interface: `http://localhost:8080` (HTTP) or `https://localhost:8443` (HTTPS)
@@ -206,9 +211,14 @@ nano .env  # Configure required values
 # Deploy with Podman (explicit)
 ./build_and_run.sh --prebuilt --podman
 
+# Apple Silicon: Use without --prebuilt
+# ./build_and_run.sh --podman
+
 # Or let the script auto-detect (will use Podman if Docker not available)
 ./build_and_run.sh --prebuilt
 ```
+
+> **Apple Silicon Warning:** Don't use `--prebuilt` with Podman on Apple Silicon Macs. Use `./build_and_run.sh --podman` instead. See [Podman on Apple Silicon Guide](podman-apple-silicon.md).
 
 ### Accessing Services with Podman
 

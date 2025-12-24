@@ -1,14 +1,14 @@
-# Podman on Apple Silicon (M1/M2/M3) - Known Issues & Solutions
+# Podman on Apple Silicon - Known Issues & Solutions
 
 ## TL;DR - Quick Solution
 
 **Don't use `--prebuilt` with Podman on Apple Silicon. Build locally instead:**
 
 ```bash
-# ✅ CORRECT - Build for ARM64
+# CORRECT - Build for ARM64
 ./build_and_run.sh --podman
 
-# ❌ WRONG - Causes "proxy already running" error
+# WRONG - Causes "proxy already running" error
 ./build_and_run.sh --prebuilt --podman
 ```
 
@@ -44,14 +44,13 @@ podman machine init --cpus 4 --memory 8192 --disk-size 50
 podman machine start
 
 # Build for ARM64 (takes 10-15 minutes first time)
-cd /Users/gabe/git/mcp-gateway-registry
 ./build_and_run.sh --podman
 ```
 
 **Pros:**
-- ✅ Native ARM64 images (better performance)
-- ✅ No architecture warnings
-- ✅ Reliable container startup
+- Native ARM64 images (better performance)
+- No architecture warnings
+- Reliable container startup
 
 **Cons:**
 - ⏱️ Slower first build (10-15 minutes)
@@ -74,13 +73,13 @@ podman machine stop
 ```
 
 **Pros:**
-- ✅ Fast deployment (2-3 minutes)
-- ✅ Pre-built images work reliably
-- ✅ Better multi-arch support
+- Fast deployment (2-3 minutes)
+- Pre-built images work reliably
+- Better multi-arch support
 
 **Cons:**
-- ⚠️ Requires Docker Desktop
-- ⚠️ Uses privileged ports (80/443)
+- Requires Docker Desktop
+- Uses privileged ports (80/443)
 
 ### Option 3: Fix Stuck Proxy Manually
 

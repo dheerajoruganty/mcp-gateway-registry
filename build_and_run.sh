@@ -79,8 +79,8 @@ if [ "$USE_PODMAN" = true ]; then
         COMPOSE_CMD="podman compose"
         # Use standalone Podman compose file to avoid port merge issues
         COMPOSE_FILES="-f $PODMAN_COMPOSE_FILE"
-        log "🐋 Using Podman (rootless mode)"
-        log "📍 Services will be available at:"
+        log "Using Podman (rootless mode)"
+        log "Services will be available at:"
         log "   - HTTP:  http://localhost:8080"
         log "   - HTTPS: https://localhost:8443"
     else
@@ -93,17 +93,17 @@ else
     if command -v docker &> /dev/null && docker compose version &> /dev/null; then
         COMPOSE_CMD="docker compose"
         COMPOSE_FILES="-f $DOCKER_COMPOSE_FILE"
-        log "🐳 Using Docker"
-        log "📍 Services will be available at:"
+        log "Using Docker"
+        log "Services will be available at:"
         log "   - HTTP:  http://localhost"
         log "   - HTTPS: https://localhost"
     elif command -v podman &> /dev/null; then
-        log "⚠️  Docker not found, automatically using Podman (rootless mode)"
-        log "💡 To suppress this message, use --podman flag explicitly"
+        log "WARNING: Docker not found, automatically using Podman (rootless mode)"
+        log "To suppress this message, use --podman flag explicitly"
         COMPOSE_CMD="podman compose"
         # Use standalone Podman compose file to avoid port merge issues
         COMPOSE_FILES="-f $PODMAN_COMPOSE_FILE"
-        log "📍 Services will be available at:"
+        log "Services will be available at:"
         log "   - HTTP:  http://localhost:8080"
         log "   - HTTPS: https://localhost:8443"
     else
@@ -116,19 +116,19 @@ else
 fi
 
 if [ "$USE_PREBUILT" = true ]; then
-    log "🚀 Using pre-built container images for fast deployment"
-    log "📥 Will pull latest images from container registry during startup..."
-    
+    log "Using pre-built container images for fast deployment"
+    log "Will pull latest images from container registry during startup..."
+
     # Warn about ARM64 compatibility with Podman
     if [[ "$COMPOSE_CMD" == "podman compose" ]] && [[ $(uname -m) == "arm64" ]]; then
-        log "⚠️  WARNING: Pre-built images are amd64. On Apple Silicon, consider:"
+        log "WARNING: Pre-built images are amd64. On Apple Silicon, consider:"
         log "   - Building locally: ./build_and_run.sh --podman"
         log "   - Or using Docker Desktop: ./build_and_run.sh --prebuilt"
         log "   Continuing in 5 seconds... (Ctrl+C to cancel)"
         sleep 5
     fi
 else
-    log "🔨 Building containers locally (this may take several minutes)"
+    log "Building containers locally (this may take several minutes)"
 fi
 
 log "Using compose files: $COMPOSE_FILES"
@@ -217,7 +217,7 @@ done
 if [ "$FAISS_EXISTS" = true ]; then
     echo ""
     echo "╔════════════════════════════════════════════════════════════════════════════╗"
-    echo "║                       ⚠️  FAISS INDEX FILES EXIST  ⚠️                       ║"
+    echo "║                         FAISS INDEX FILES EXIST                            ║"
     echo "╠════════════════════════════════════════════════════════════════════════════╣"
     echo "║                                                                            ║"
     echo "║  Existing FAISS index files were found in:                                ║"
@@ -310,7 +310,7 @@ if [ -f "auth_server/scopes.yml" ]; then
     if [ -f "$TARGET_SCOPES_FILE" ]; then
         echo ""
         echo "╔════════════════════════════════════════════════════════════════════════════╗"
-        echo "║                          ⚠️  SCOPES.YML EXISTS  ⚠️                          ║"
+        echo "║                            SCOPES.YML EXISTS                               ║"
         echo "╠════════════════════════════════════════════════════════════════════════════╣"
         echo "║                                                                            ║"
         echo "║  An existing scopes.yml file was found at:                                ║"

@@ -114,7 +114,12 @@ podman compose version
 **With Podman:**
 ```bash
 ./build_and_run.sh --prebuilt --podman
+
+# Apple Silicon: Build locally instead
+# ./build_and_run.sh --podman
 ```
+
+> **Apple Silicon:** Don't use `--prebuilt` with Podman on ARM64. Use `./build_and_run.sh --podman` instead. This will take 10-15 minutes for first build. See [Podman on Apple Silicon Guide](podman-apple-silicon.md).
 
 ⏱️ **This takes about 2-3 minutes** - Container images will be pulled and services started.
 

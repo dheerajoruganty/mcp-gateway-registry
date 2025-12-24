@@ -654,12 +654,14 @@ cd ../..
 **4. Deploy All Services with Podman**
 
 ```bash
-# Deploy using pre-built images (recommended)
+# Deploy using pre-built images (recommended for Intel Macs)
 ./build_and_run.sh --prebuilt --podman
 
-# Or build locally
+# For Apple Silicon, build locally instead
 ./build_and_run.sh --podman
 ```
+
+> **Apple Silicon Users:** Don't use `--prebuilt` with Podman on ARM64. The pre-built images are amd64 and will cause errors. Use `./build_and_run.sh --podman` to build natively. See [Podman on Apple Silicon Guide](podman-apple-silicon.md).
 
 **The script automatically:**
 - Detects Podman usage
@@ -841,13 +843,18 @@ You can switch between Docker and Podman without changing configurations:
 # Stop Docker services
 docker compose down
 
-# Start with Podman
+# Start with Podman (Intel Mac)
 ./build_and_run.sh --prebuilt --podman
+
+# Start with Podman (Apple Silicon - omit --prebuilt)
+# ./build_and_run.sh --podman
 
 # Or vice versa:
 podman compose down
 ./build_and_run.sh --prebuilt
 ```
+
+> **Apple Silicon Note:** When switching to Podman on Apple Silicon, use `./build_and_run.sh --podman` (without `--prebuilt`).
 
 **Note**: Database volumes and configurations are separate between Docker and Podman. You'll need to reconfigure Keycloak when switching.
 
