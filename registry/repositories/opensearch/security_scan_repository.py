@@ -83,12 +83,18 @@ class OpenSearchSecurityScanRepository(SecurityScanRepositoryBase):
     ) -> bool:
         """Create/update a security scan result."""
         try:
-            if "server_path" not in scan_result:
-                logger.error("Scan result must contain 'server_path' field")
+            # Support both server_path (for servers) and agent_path (for agents)
+            path = scan_result.get("server_path") or scan_result.get("agent_path")
+            if not path:
+                logger.error("Scan result must contain either 'server_path' or 'agent_path' field")
                 return False
 
             client = await self._get_client()
-            server_path = scan_result["server_path"]
+            server_path = path
+
+            # Normalize to server_path for storage consistency
+            if "agent_path" in scan_result and "server_path" not in scan_result:
+                scan_result["server_path"] = scan_result["agent_path"]
 
             if "scan_timestamp" not in scan_result:
                 scan_result["scan_timestamp"] = datetime.utcnow().isoformat()

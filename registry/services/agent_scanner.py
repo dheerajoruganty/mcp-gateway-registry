@@ -124,7 +124,7 @@ class AgentScannerService:
             )
 
             # Save scan result via repository
-            await self._scan_repo.create(result)
+            await self._scan_repo.create(result.model_dump())
 
             logger.info(
                 f"Agent security scan completed for {agent_path}. "
@@ -161,7 +161,7 @@ class AgentScannerService:
             )
 
             # Save error result via repository
-            await self._scan_repo.create(result)
+            await self._scan_repo.create(result.model_dump())
 
             return result
 
