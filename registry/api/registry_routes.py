@@ -71,11 +71,11 @@ async def list_servers(
     # Get servers based on user permissions (same logic as existing /servers endpoint)
     if user_context["is_admin"]:
         # Admin sees all servers
-        all_servers = server_service.get_all_servers()
+        all_servers = await server_service.get_all_servers()
         logger.debug(f"Admin user accessing all {len(all_servers)} servers")
     else:
         # Regular user sees only accessible servers
-        all_servers = server_service.get_all_servers_with_permissions(
+        all_servers = await server_service.get_all_servers_with_permissions(
             user_context["accessible_servers"]
         )
         logger.debug(f"User accessing {len(all_servers)} accessible servers")

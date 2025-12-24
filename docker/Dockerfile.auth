@@ -13,8 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy only auth server files
+# Copy auth server files and registry module (needed for OpenSearch scopes loading)
 COPY auth_server/ /app/
+COPY registry/ /app/registry/
 
 # Install uv and setup Python environment
 RUN pip install uv && \

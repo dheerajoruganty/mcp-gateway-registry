@@ -102,10 +102,10 @@ async def websocket_endpoint(websocket: WebSocket):
 @router.get("/ws/health_status")
 async def health_status_http():
     """HTTP endpoint that returns the same health status data as the WebSocket endpoint.
-    
+
     This handles cases where health checks are done via HTTP GET instead of WebSocket.
     """
-    return health_service.get_all_health_status()
+    return await health_service.get_all_health_status()
 
 
 @router.get("/ws/stats")

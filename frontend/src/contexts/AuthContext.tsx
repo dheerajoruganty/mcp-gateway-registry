@@ -4,6 +4,14 @@ import axios from 'axios';
 // Configure axios to include credentials (cookies) with all requests
 axios.defaults.withCredentials = true;
 
+interface UIPermissions {
+  list_service?: string[];
+  health_check_service?: string[];
+  toggle_service?: string[];
+  list_agents?: string[];
+  [key: string]: string[] | undefined;
+}
+
 interface User {
   username: string;
   email?: string;
@@ -13,6 +21,7 @@ interface User {
   provider?: string;
   can_modify_servers?: boolean;
   is_admin?: boolean;
+  ui_permissions?: UIPermissions;
 }
 
 interface AuthContextType {

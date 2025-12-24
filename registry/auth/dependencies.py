@@ -126,52 +126,36 @@ def get_user_session_data(
         )
 
 
-def load_scopes_config() -> Dict[str, Any]:
-    """Load the scopes configuration from auth_server/scopes.yml"""
+# Global scopes configuration - will be loaded during app startup
+SCOPES_CONFIG = {}
+
+
+async def reload_scopes_from_repository():
+    """
+    Async function to reload scopes from repository during app startup.
+    Uses shared scopes loader from common module.
+    """
+    global SCOPES_CONFIG
+
     try:
-        # Check for SCOPES_CONFIG_PATH environment variable first
-        import os
-        scopes_path = os.getenv("SCOPES_CONFIG_PATH")
+        from ..common.scopes_loader import reload_scopes_config
 
-        # Print to stderr for immediate visibility before logging is configured
-        print(f"[SCOPES_INIT] SCOPES_CONFIG_PATH env var: {scopes_path}", flush=True)
+        config = await reload_scopes_config()
 
-        # Fall back to default location if env var not set
-        if not scopes_path:
-            scopes_file = Path(__file__).parent.parent.parent / "auth_server" / "scopes.yml"
-        else:
-            scopes_file = Path(scopes_path)
+        SCOPES_CONFIG.clear()
+        SCOPES_CONFIG.update(config)
 
-        # If file doesn't exist, try the EFS mounted location (auth_config subdirectory)
-        if not scopes_file.exists():
-            alt_scopes_file = Path(__file__).parent.parent.parent / "auth_server" / "auth_config" / "scopes.yml"
-            if alt_scopes_file.exists():
-                scopes_file = alt_scopes_file
-                print(f"[SCOPES_INIT] File not found at primary location, using EFS mount location: {scopes_file}", flush=True)
+        group_mappings = config.get("group_mappings", {})
+        ui_scopes = config.get("UI-Scopes", {})
+        scope_defs = len([k for k in config.keys() if k not in ["group_mappings", "UI-Scopes"]])
 
-        print(f"[SCOPES_INIT] Looking for scopes config at: {scopes_file}", flush=True)
-        print(f"[SCOPES_INIT] Scopes file exists: {scopes_file.exists()}", flush=True)
+        logger.info(
+            f"Loaded scopes configuration: {len(group_mappings)} group mappings, "
+            f"{scope_defs} scope definitions, {len(ui_scopes)} UI scopes"
+        )
 
-        if not scopes_file.exists():
-            print(f"[SCOPES_INIT] ERROR: Scopes config file not found at {scopes_file}", flush=True)
-            auth_server_dir = scopes_file.parent
-            print(f"[SCOPES_INIT] Auth server directory exists: {auth_server_dir.exists()}", flush=True)
-            if auth_server_dir.exists():
-                print(f"[SCOPES_INIT] Auth server directory contents: {list(auth_server_dir.iterdir())}", flush=True)
-            logger.warning(f"Scopes config file not found at {scopes_file}")
-            return {}
-
-        with open(scopes_file, 'r') as f:
-            config = yaml.safe_load(f)
-            logger.info(f"Loaded scopes configuration with {len(config.get('group_mappings', {}))} group mappings")
-            return config
     except Exception as e:
-        logger.error(f"Failed to load scopes configuration: {e}", exc_info=True)
-        return {}
-
-
-# Global scopes configuration
-SCOPES_CONFIG = load_scopes_config()
+        logger.error(f"Failed to reload scopes from repository: {e}", exc_info=True)
 
 
 def map_cognito_groups_to_scopes(groups: List[str]) -> List[str]:

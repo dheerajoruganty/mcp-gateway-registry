@@ -9,6 +9,8 @@ from ..core.config import settings
 from .interfaces import (
     ServerRepositoryBase,
     AgentRepositoryBase,
+    ScopeRepositoryBase,
+    SecurityScanRepositoryBase,
     SearchRepositoryBase,
 )
 
@@ -17,6 +19,8 @@ logger = logging.getLogger(__name__)
 # Singleton instances
 _server_repo: Optional[ServerRepositoryBase] = None
 _agent_repo: Optional[AgentRepositoryBase] = None
+_scope_repo: Optional[ScopeRepositoryBase] = None
+_security_scan_repo: Optional[SecurityScanRepositoryBase] = None
 _search_repo: Optional[SearchRepositoryBase] = None
 
 
@@ -60,6 +64,46 @@ def get_agent_repository() -> AgentRepositoryBase:
     return _agent_repo
 
 
+def get_scope_repository() -> ScopeRepositoryBase:
+    """Get scope repository singleton."""
+    global _scope_repo
+
+    if _scope_repo is not None:
+        return _scope_repo
+
+    backend = settings.storage_backend
+    logger.info(f"Creating scope repository with backend: {backend}")
+
+    if backend == "opensearch":
+        from .opensearch.scope_repository import OpenSearchScopeRepository
+        _scope_repo = OpenSearchScopeRepository()
+    else:
+        from .file.scope_repository import FileScopeRepository
+        _scope_repo = FileScopeRepository()
+
+    return _scope_repo
+
+
+def get_security_scan_repository() -> SecurityScanRepositoryBase:
+    """Get security scan repository singleton."""
+    global _security_scan_repo
+
+    if _security_scan_repo is not None:
+        return _security_scan_repo
+
+    backend = settings.storage_backend
+    logger.info(f"Creating security scan repository with backend: {backend}")
+
+    if backend == "opensearch":
+        from .opensearch.security_scan_repository import OpenSearchSecurityScanRepository
+        _security_scan_repo = OpenSearchSecurityScanRepository()
+    else:
+        from .file.security_scan_repository import FileSecurityScanRepository
+        _security_scan_repo = FileSecurityScanRepository()
+
+    return _security_scan_repo
+
+
 def get_search_repository() -> SearchRepositoryBase:
     """Get search repository singleton."""
     global _search_repo
@@ -82,7 +126,9 @@ def get_search_repository() -> SearchRepositoryBase:
 
 def reset_repositories() -> None:
     """Reset all repository singletons. USE ONLY IN TESTS."""
-    global _server_repo, _agent_repo, _search_repo
+    global _server_repo, _agent_repo, _scope_repo, _security_scan_repo, _search_repo
     _server_repo = None
     _agent_repo = None
+    _scope_repo = None
+    _security_scan_repo = None
     _search_repo = None

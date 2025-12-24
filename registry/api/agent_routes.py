@@ -107,12 +107,12 @@ async def _perform_agent_security_scan_on_registration(
                         updated_card["tags"] = current_tags
                         from ..schemas.agent_models import AgentCard as AgentCardModel
 
-                        agent_service.register_agent(AgentCardModel(**updated_card))
+                        await agent_service.register_agent(AgentCardModel(**updated_card))
                     logger.info(f"Added 'security-pending' tag to agent {path}")
 
             # Disable agent if configured
             if scan_config.block_unsafe_agents:
-                agent_service.toggle_agent(path, False)
+                await agent_service.toggle_agent(path, False)
                 logger.warning(f"Disabled agent {path} due to failed security scan")
 
                 # Update FAISS with disabled state
@@ -356,7 +356,7 @@ async def register_agent(
             detail=f"Invalid agent card: {str(e)}",
         )
 
-    success = agent_service.register_agent(agent_card)
+    success = await agent_service.register_agent(agent_card)
 
     if not success:
         return JSONResponse(
@@ -677,7 +677,7 @@ async def toggle_agent(
 
     _check_agent_permission("toggle_service", agent_card.name, user_context)
 
-    success = agent_service.toggle_agent(path, enabled)
+    success = await agent_service.toggle_agent(path, enabled)
 
     if not success:
         return JSONResponse(
@@ -848,7 +848,7 @@ async def update_agent(
             detail=f"Invalid agent card: {str(e)}",
         )
 
-    success = agent_service.update_agent(path, updated_agent)
+    success = await agent_service.update_agent(path, updated_agent)
 
     if not success:
         return JSONResponse(
@@ -915,7 +915,7 @@ async def delete_agent(
             detail="Only admins or agent owners can delete agents",
         )
 
-    success = agent_service.remove_agent(path)
+    success = await agent_service.remove_agent(path)
 
     if not success:
         return JSONResponse(

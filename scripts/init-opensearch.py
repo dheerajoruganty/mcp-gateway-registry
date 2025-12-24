@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SCHEMAS_DIR = Path(__file__).parent / "opensearch-schemas"
-INDEX_BASE_NAMES = ["mcp-servers", "mcp-agents", "mcp-scopes", "mcp-embeddings"]
+INDEX_BASE_NAMES = ["mcp-servers", "mcp-agents", "mcp-scopes", "mcp-embeddings", "mcp-security-scans"]
 
 
 def main():

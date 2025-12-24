@@ -1,0 +1,22 @@
+{
+  "scope_name": "currenttime-users",
+  "description": "Users with access to currenttime server",
+  "server_access": [
+    {
+      "server": "currenttime",
+      "methods": ["initialize", "tools/list", "tools/call"],
+      "tools": ["current_time_by_timezone"]
+    },
+    {
+      "server": "api",
+      "methods": ["initialize", "GET"],
+      "tools": []
+    }
+  ],
+  "group_mappings": ["currenttime-users"],
+  "ui_permissions": {
+    "list_service": ["currenttime"],
+    "health_check_service": ["currenttime"]
+  },
+  "create_in_keycloak": true
+}

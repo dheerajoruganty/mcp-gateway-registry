@@ -560,6 +560,62 @@ You can now:
 
 For advanced usage, see the [Operations and Maintenance](#operations-and-maintenance) section below.
 
+### Optional: OpenSearch Backend Setup
+
+The MCP Gateway Registry supports two storage backends: **file-based** (default) and **OpenSearch** (for production/scale).
+
+**When to use OpenSearch:**
+- Multi-instance deployments (horizontal scaling)
+- High concurrent write operations
+- Distributed storage requirements
+- Advanced search capabilities
+
+**Setup OpenSearch backend:**
+
+```bash
+# 1. Deploy OpenSearch infrastructure (add to terraform if not already present)
+# Or use AWS OpenSearch Service
+
+# 2. SSH into a registry task
+./scripts/ecs-ssh.sh registry
+
+# 3. Create OpenSearch indices
+uv run python scripts/init-opensearch.py
+
+# 4. Import existing scopes.yml to OpenSearch (one-time migration)
+uv run python scripts/import-scopes-to-opensearch.py
+
+# 5. Exit the SSH session
+exit
+
+# 6. Update environment variable in ECS task definition
+# Add: STORAGE_BACKEND=opensearch
+# Then force new deployment:
+aws ecs update-service \
+  --cluster mcp-gateway-ecs-cluster \
+  --service mcp-gateway-v2-registry \
+  --force-new-deployment \
+  --region $AWS_REGION
+```
+
+**Verify OpenSearch is working:**
+
+```bash
+# Check indices created
+curl "https://your-opensearch-endpoint/mcp-scopes-default/_count?pretty"
+
+# View registry logs
+./scripts/view-cloudwatch-logs.sh --component registry --minutes 5 --filter "opensearch"
+```
+
+**Important Notes:**
+- The `import-scopes-to-opensearch.py` script is for **one-time migration only**
+- After switching to OpenSearch, all scopes changes are made via API and stored in OpenSearch
+- `auth_server/scopes.yml` is no longer the source of truth with OpenSearch backend
+- You can switch back to file backend by changing `STORAGE_BACKEND=file`
+
+See [docs/configuration.md](../../docs/configuration.md#storage-backend-configuration) for detailed backend configuration options.
+
 ## Operations and Maintenance
 
 See [OPERATIONS.md](OPERATIONS.md) for detailed operations and maintenance documentation, including:

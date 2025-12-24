@@ -204,17 +204,22 @@ class OpenSearchAgentRepository(AgentRepositoryBase):
             logger.error(f"Failed to delete agent from OpenSearch: {e}", exc_info=True)
             return False
 
-    async def get_state(self, path: str) -> bool:
-        """Get agent enabled/disabled state."""
+    async def get_state(self, path: str = None) -> Dict[str, List[str]] | bool:
+        """Get agent state - all state if no path, individual state if path provided."""
+        if path is None:
+            # Return all state (for service initialization)
+            return self._state
+
+        # Return individual agent state
         if path in self._state["enabled"]:
             return True
-        
+
         # Try alternate form
         if path.endswith('/'):
             alternate_path = path.rstrip('/')
         else:
             alternate_path = path + '/'
-        
+
         return alternate_path in self._state["enabled"]
 
     async def set_state(self, path: str, enabled: bool) -> bool:
@@ -253,3 +258,11 @@ class OpenSearchAgentRepository(AgentRepositoryBase):
         except Exception as e:
             logger.error(f"Failed to update agent state in OpenSearch: {e}", exc_info=True)
             return False
+
+
+    async def save_state(self, state: Dict[str, List[str]]) -> None:
+        """Save agent state (compatibility method for file repository interface)."""
+        # For OpenSearch, state is managed per-agent via set_state()
+        # This method updates internal state cache
+        self._state = state
+        logger.debug(f"Updated agent state cache: {len(state['enabled'])} enabled, {len(state['disabled'])} disabled")

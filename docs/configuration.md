@@ -169,6 +169,98 @@ SESSION_COOKIE_DOMAIN=  # Empty string or unset
 | `SRE_GATEWAY_AUTH_TOKEN` | SRE Gateway auth token | Auto-populated from credentials | - |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude models | `sk-ant-api03-...` | For AI functionality |
 
+### Storage Backend Configuration
+
+The MCP Gateway Registry supports two storage backends for servers, agents, and scopes management. Choose based on your deployment requirements:
+
+| Variable | Description | Values | Default |
+|----------|-------------|--------|---------|
+| `STORAGE_BACKEND` | Storage backend for registry data | `file` or `opensearch` | `file` |
+
+**Backend Options:**
+
+#### File Backend (Default)
+- **Best for**: Development, small deployments, single-instance setups
+- **Pros**: Simple, no external dependencies, human-readable YAML files
+- **Cons**: Limited concurrent writes, no distributed access
+
+```bash
+STORAGE_BACKEND=file
+```
+
+**Data stored in:**
+- Servers: `~/mcp-gateway/servers/*.json`
+- Agents: `~/mcp-gateway/agents/*.json`
+- Scopes: `auth_server/scopes.yml`
+- Security scans: `~/mcp-gateway/security_scans/*.json`
+
+#### OpenSearch Backend
+- **Best for**: Production, multi-instance deployments, high concurrency
+- **Pros**: Distributed storage, atomic operations, indexed queries, scalability
+- **Cons**: Requires OpenSearch infrastructure, additional setup
+
+```bash
+STORAGE_BACKEND=opensearch
+OPENSEARCH_HOST=localhost  # Default
+OPENSEARCH_PORT=9200       # Default
+```
+
+**OpenSearch Indices Created:**
+- `mcp-servers-{namespace}` - Server definitions
+- `mcp-agents-{namespace}` - A2A agent cards
+- `mcp-scopes-{namespace}` - Authorization scopes
+- `mcp-embeddings-{namespace}` - Semantic search vectors
+- `mcp-security-scans-{namespace}` - Security scan results
+
+**First-Time OpenSearch Setup:**
+
+When switching to OpenSearch backend for the first time, you must import existing data:
+
+```bash
+# 1. Start OpenSearch
+docker-compose up -d opensearch
+sleep 10
+
+# 2. Create indices
+uv run python scripts/init-opensearch.py
+
+# 3. Import existing scopes from scopes.yml (one-time migration)
+uv run python scripts/import-scopes-to-opensearch.py
+
+# 4. Optional: Import security scan results
+uv run python scripts/import-security-scans-to-opensearch.py
+
+# 5. Verify imports
+curl "http://localhost:9200/mcp-scopes-default/_count?pretty"
+
+# 6. Switch backend and restart
+export STORAGE_BACKEND=opensearch
+docker-compose restart registry
+```
+
+**Important Notes:**
+- The import scripts are designed for **one-time migration only**
+- Running them multiple times will overwrite existing OpenSearch data
+- Use `--recreate` flag to force reimport: `python scripts/import-scopes-to-opensearch.py --recreate`
+- After import, all changes are made via API endpoints and stored in OpenSearch
+- `auth_server/scopes.yml` is no longer the source of truth when using OpenSearch backend
+
+**Switching Between Backends:**
+
+You can switch between backends at any time by changing `STORAGE_BACKEND`:
+
+```bash
+# Switch to file backend
+export STORAGE_BACKEND=file
+docker-compose restart registry
+
+# Switch to OpenSearch backend
+export STORAGE_BACKEND=opensearch
+docker-compose restart registry
+```
+
+**For AWS ECS Deployments:** See [terraform/aws-ecs/README.md](#post-deployment-opensearch-setup) for automated post-deployment setup instructions.
+
 ### Container Registry Configuration (Optional - for CI/CD and local builds)
 
 | Variable | Description | Example | Required |

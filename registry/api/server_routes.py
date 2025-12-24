@@ -83,7 +83,7 @@ async def _perform_security_scan_on_registration(
                 if "security-pending" not in current_tags:
                     current_tags.append("security-pending")
                     server_entry["tags"] = current_tags
-                    server_service.update_server(path, server_entry)
+                    await server_service.update_server(path, server_entry)
                     logger.info(f"Added 'security-pending' tag to {path}")
 
             # Disable server if configured
@@ -91,7 +91,7 @@ async def _perform_security_scan_on_registration(
                 from ..search.service import faiss_service
                 from ..core.nginx_service import nginx_service
 
-                server_service.toggle_service(path, False)
+                await server_service.toggle_service(path, False)
                 logger.warning(f"Disabled server {path} due to failed security scan")
 
                 # Update FAISS with disabled state
@@ -147,17 +147,18 @@ async def read_root(
     # Get servers based on user permissions
     if user_context["is_admin"]:
         # Admin users see all servers
-        all_servers = server_service.get_all_servers()
+        all_servers = await server_service.get_all_servers()
         logger.info(
             f"Admin user {user_context['username']} accessing all {len(all_servers)} servers"
         )
     else:
         # Filtered users see only accessible servers
-        all_servers = server_service.get_all_servers_with_permissions(
+        all_servers = await server_service.get_all_servers_with_permissions(
             user_context["accessible_servers"]
         )
+        all_servers_count = await server_service.get_all_servers()
         logger.info(
-            f"User {user_context['username']} accessing {len(all_servers)} of {len(server_service.get_all_servers())} total servers"
+            f"User {user_context['username']} accessing {len(all_servers)} of {len(all_servers_count)} total servers"
         )
 
     sorted_server_paths = sorted(
@@ -249,9 +250,9 @@ async def get_servers_json(
 
     # Get servers based on user permissions (same logic as root route)
     if user_context["is_admin"]:
-        all_servers = server_service.get_all_servers()
+        all_servers = await server_service.get_all_servers()
     else:
-        all_servers = server_service.get_all_servers_with_permissions(
+        all_servers = await server_service.get_all_servers_with_permissions(
             user_context["accessible_servers"]
         )
 
@@ -777,7 +778,7 @@ async def internal_register_service(
     )  # TODO: replace with debug
 
     # Update scopes.yml with the new server's tools
-    from ..utils.scopes_manager import update_server_scopes
+    from ..services.scope_service import update_server_scopes
 
     # Get the tool list from the server entry
     tool_names = []
@@ -972,7 +973,7 @@ async def internal_remove_service(
     )  # TODO: replace with debug
 
     # Remove server from scopes.yml and reload auth server
-    from ..utils.scopes_manager import remove_server_scopes
+    from ..services.scope_service import remove_server_scopes
 
     try:
         await remove_server_scopes(service_path)
@@ -1247,7 +1248,7 @@ async def internal_healthcheck(request: Request):
 
     # Get health status for all servers
     try:
-        health_data = health_service.get_all_health_status()
+        health_data = await health_service.get_all_health_status()
         logger.info(f"Retrieved health status for {len(health_data)} servers")
 
         return JSONResponse(status_code=200, content=health_data)
@@ -1443,9 +1444,9 @@ async def get_server_details(
     # Special case: if path is 'all' or '/all', return details for all accessible servers
     if service_path == "/all":
         if user_context["is_admin"]:
-            return server_service.get_all_servers()
+            return await server_service.get_all_servers()
         else:
-            return server_service.get_all_servers_with_permissions(
+            return await server_service.get_all_servers_with_permissions(
                 user_context["accessible_servers"]
             )
 
@@ -1488,9 +1489,9 @@ async def get_service_tools(
 
         # Get servers based on user permissions
         if user_context["is_admin"]:
-            all_servers = server_service.get_all_servers()
+            all_servers = await server_service.get_all_servers()
         else:
-            all_servers = server_service.get_all_servers_with_permissions(
+            all_servers = await server_service.get_all_servers_with_permissions(
                 user_context["accessible_servers"]
             )
 
@@ -1721,6 +1722,57 @@ async def refresh_service(
     }
 
 
+async def _add_server_to_groups_impl(
+    server_name: str,
+    group_names: str,
+) -> JSONResponse:
+    """
+    Internal implementation for adding server to groups.
+
+    This function contains the business logic for adding a server to groups
+    and can be called from both Basic Auth and JWT endpoints.
+    """
+    from ..services.scope_service import add_server_to_groups
+
+    # Parse group names from comma-separated string
+    groups = [group.strip() for group in group_names.split(",") if group.strip()]
+    if not groups:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid group names provided",
+        )
+
+    # Convert server name to path format
+    server_path = f"/{server_name}" if not server_name.startswith("/") else server_name
+
+    try:
+        success = await add_server_to_groups(server_path, groups)
+
+        if success:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "Server successfully added to groups",
+                    "server_path": server_path,
+                    "groups": groups,
+                },
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to add server to groups",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding server {server_path} to groups {groups}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal error: {str(e)}",
+        )
+
+
 @router.post("/internal/add-to-groups")
 async def internal_add_server_to_groups(
     request: Request,
@@ -1730,7 +1782,6 @@ async def internal_add_server_to_groups(
     """Internal endpoint to add a server to specific scopes groups (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-    from ..utils.scopes_manager import add_server_to_groups
 
     # Extract and validate Basic Auth
     auth_header = request.headers.get("Authorization")
@@ -1773,6 +1824,26 @@ async def internal_add_server_to_groups(
             headers={"WWW-Authenticate": "Basic"},
         )
 
+    logger.info(
+        f"Adding server to groups via internal endpoint by admin '{username}'"
+    )
+
+    # Call the shared implementation
+    return await _add_server_to_groups_impl(server_name, group_names)
+
+
+async def _remove_server_from_groups_impl(
+    server_name: str,
+    group_names: str,
+) -> JSONResponse:
+    """
+    Internal implementation for removing server from groups.
+
+    This function contains the business logic for removing a server from groups
+    and can be called from both Basic Auth and JWT endpoints.
+    """
+    from ..services.scope_service import remove_server_from_groups
+
     # Parse group names from comma-separated string
     groups = [group.strip() for group in group_names.split(",") if group.strip()]
     if not groups:
@@ -1784,18 +1855,14 @@ async def internal_add_server_to_groups(
     # Convert server name to path format
     server_path = f"/{server_name}" if not server_name.startswith("/") else server_name
 
-    logger.info(
-        f"Adding server {server_path} to groups {groups} via internal endpoint by admin '{username}'"
-    )
-
     try:
-        success = await add_server_to_groups(server_path, groups)
+        success = await remove_server_from_groups(server_path, groups)
 
         if success:
             return JSONResponse(
                 status_code=200,
                 content={
-                    "message": "Server successfully added to groups",
+                    "message": "Server successfully removed from groups",
                     "server_path": server_path,
                     "groups": groups,
                 },
@@ -1803,11 +1870,13 @@ async def internal_add_server_to_groups(
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to add server to groups",
+                detail="Failed to remove server from groups",
             )
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error adding server {server_path} to groups {groups}: {e}")
+        logger.error(f"Error removing server {server_path} from groups {groups}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal error: {str(e)}",
@@ -1823,7 +1892,6 @@ async def internal_remove_server_from_groups(
     """Internal endpoint to remove a server from specific scopes groups (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-    from ..utils.scopes_manager import remove_server_from_groups
 
     # Extract and validate Basic Auth
     auth_header = request.headers.get("Authorization")
@@ -1866,45 +1934,12 @@ async def internal_remove_server_from_groups(
             headers={"WWW-Authenticate": "Basic"},
         )
 
-    # Parse group names from comma-separated string
-    groups = [group.strip() for group in group_names.split(",") if group.strip()]
-    if not groups:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No valid group names provided",
-        )
-
-    # Convert server name to path format
-    server_path = f"/{server_name}" if not server_name.startswith("/") else server_name
-
     logger.info(
-        f"Removing server {server_path} from groups {groups} via internal endpoint by admin '{username}'"
+        f"Removing server from groups via internal endpoint by admin '{username}'"
     )
 
-    try:
-        success = await remove_server_from_groups(server_path, groups)
-
-        if success:
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "message": "Server successfully removed from groups",
-                    "server_path": server_path,
-                    "groups": groups,
-                },
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to remove server from groups",
-            )
-
-    except Exception as e:
-        logger.error(f"Error removing server {server_path} from groups {groups}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal error: {str(e)}",
-        )
+    # Call the shared implementation
+    return await _remove_server_from_groups_impl(server_name, group_names)
 
 
 @router.get("/internal/list")
@@ -1984,7 +2019,7 @@ async def internal_list_services(
     logger.info(f"Internal service list request from admin user '{username}'")
 
     # Get all servers (admin access - no permission filtering)
-    all_servers = server_service.get_all_servers()
+    all_servers = await server_service.get_all_servers()
 
     logger.warning(
         f"INTERNAL LIST: Found {len(all_servers)} servers"
@@ -2038,8 +2073,6 @@ async def internal_create_group(
     """Internal endpoint to create a new group in both Keycloak and scopes.yml (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-    from ..utils.scopes_manager import create_group_in_scopes
-    from ..utils.keycloak_manager import create_keycloak_group, group_exists_in_keycloak
 
     # Extract and validate Basic Auth
     auth_header = request.headers.get("Authorization")
@@ -2082,62 +2115,12 @@ async def internal_create_group(
             headers={"WWW-Authenticate": "Basic"},
         )
 
-    # Validate group name
-    if not group_name or not group_name.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Group name is required"
-        )
-
     logger.info(
         f"Creating group '{group_name}' via internal endpoint by admin '{username}'"
     )
 
-    try:
-        # Create in Keycloak first if requested
-        keycloak_created = False
-        if create_in_keycloak:
-            try:
-                # Check if group already exists in Keycloak
-                if await group_exists_in_keycloak(group_name):
-                    logger.warning(f"Group '{group_name}' already exists in Keycloak")
-                else:
-                    await create_keycloak_group(group_name, description)
-                    keycloak_created = True
-                    logger.info(f"Group '{group_name}' created in Keycloak")
-            except Exception as e:
-                logger.error(f"Failed to create group in Keycloak: {e}")
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to create group in Keycloak: {str(e)}",
-                )
-
-        # Create in scopes.yml
-        scopes_success = await create_group_in_scopes(group_name, description)
-
-        if scopes_success:
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "message": "Group successfully created",
-                    "group_name": group_name,
-                    "created_in_keycloak": keycloak_created,
-                    "created_in_scopes": True,
-                },
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to create group in scopes.yml (may already exist)",
-            )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error creating group '{group_name}': {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal error: {str(e)}",
-        )
+    # Call the shared implementation
+    return await _create_group_impl(group_name, description, create_in_keycloak)
 
 
 @router.post("/internal/delete-group")
@@ -2147,11 +2130,9 @@ async def internal_delete_group(
     delete_from_keycloak: Annotated[bool, Form()] = True,
     force: Annotated[bool, Form()] = False,
 ):
-    """Internal endpoint to delete a group from both Keycloak and scopes.yml (requires HTTP Basic Authentication with admin credentials)."""
+    """Internal endpoint to delete a group from both Keycloak and scopes (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-    from ..utils.scopes_manager import delete_group_from_scopes
-    from ..utils.keycloak_manager import delete_keycloak_group, group_exists_in_keycloak
 
     # Extract and validate Basic Auth
     auth_header = request.headers.get("Authorization")
@@ -2194,80 +2175,77 @@ async def internal_delete_group(
             headers={"WWW-Authenticate": "Basic"},
         )
 
-    # Validate group name
-    if not group_name or not group_name.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Group name is required"
-        )
-
-    # Prevent deletion of system groups
-    system_groups = [
-        "UI-Scopes",
-        "group_mappings",
-        "mcp-registry-admin",
-        "mcp-registry-user",
-        "mcp-registry-developer",
-        "mcp-registry-operator",
-    ]
-
-    if group_name in system_groups:
-        logger.warning(
-            f"Attempt to delete system group '{group_name}' by admin '{username}'"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Cannot delete system group '{group_name}'",
-        )
-
     logger.info(
         f"Deleting group '{group_name}' via internal endpoint by admin '{username}'"
     )
 
+    # Call the shared implementation
+    return await _delete_group_impl(group_name, delete_from_keycloak, force)
+
+
+async def _list_groups_impl(
+    include_keycloak: bool = True,
+    include_scopes: bool = True,
+) -> JSONResponse:
+    """
+    Internal implementation for listing groups.
+
+    This function contains the business logic for listing groups
+    and can be called from both Basic Auth and JWT endpoints.
+    """
+    from ..services.scope_service import list_groups
+    from ..utils.keycloak_manager import list_keycloak_groups
+
     try:
-        # Delete from scopes.yml first
-        scopes_success = await delete_group_from_scopes(
-            group_name, remove_from_mappings=True
-        )
+        result = {
+            "keycloak_groups": [],
+            "scopes_groups": {},
+            "synchronized": [],
+            "keycloak_only": [],
+            "scopes_only": [],
+        }
 
-        if not scopes_success:
-            logger.warning(
-                f"Group '{group_name}' not found in scopes.yml or deletion failed"
-            )
-
-        # Delete from Keycloak if requested
-        keycloak_deleted = False
-        if delete_from_keycloak:
+        # Get groups from Keycloak
+        keycloak_group_names = set()
+        if include_keycloak:
             try:
-                if await group_exists_in_keycloak(group_name):
-                    await delete_keycloak_group(group_name)
-                    keycloak_deleted = True
-                    logger.info(f"Group '{group_name}' deleted from Keycloak")
-                else:
-                    logger.warning(f"Group '{group_name}' not found in Keycloak")
+                keycloak_groups = await list_keycloak_groups()
+                result["keycloak_groups"] = [
+                    {
+                        "name": group.get("name"),
+                        "id": group.get("id"),
+                        "path": group.get("path", ""),
+                    }
+                    for group in keycloak_groups
+                ]
+                keycloak_group_names = {group.get("name") for group in keycloak_groups}
+                logger.info(f"Found {len(keycloak_groups)} groups in Keycloak")
             except Exception as e:
-                logger.error(f"Failed to delete group from Keycloak: {e}")
-                # Continue anyway - scopes deletion might have succeeded
+                logger.error(f"Failed to list Keycloak groups: {e}")
+                result["keycloak_error"] = str(e)
 
-        if scopes_success or keycloak_deleted:
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "message": "Group deletion completed",
-                    "group_name": group_name,
-                    "deleted_from_keycloak": keycloak_deleted,
-                    "deleted_from_scopes": scopes_success,
-                },
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Group '{group_name}' not found in either Keycloak or scopes.yml",
-            )
+        # Get groups from scopes (file or OpenSearch based on STORAGE_BACKEND)
+        scopes_group_names = set()
+        if include_scopes:
+            try:
+                scopes_data = await list_groups()
+                result["scopes_groups"] = scopes_data.get("groups", {})
+                scopes_group_names = set(scopes_data.get("groups", {}).keys())
+                logger.info(f"Found {len(scopes_group_names)} groups in scopes")
+            except Exception as e:
+                logger.error(f"Failed to list scopes groups: {e}")
+                result["scopes_error"] = str(e)
 
-    except HTTPException:
-        raise
+        # Find synchronized and out-of-sync groups
+        if include_keycloak and include_scopes:
+            result["synchronized"] = list(keycloak_group_names & scopes_group_names)
+            result["keycloak_only"] = list(keycloak_group_names - scopes_group_names)
+            result["scopes_only"] = list(scopes_group_names - keycloak_group_names)
+
+        return JSONResponse(status_code=200, content=result)
+
     except Exception as e:
-        logger.error(f"Error deleting group '{group_name}': {e}")
+        logger.error(f"Error listing groups: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal error: {str(e)}",
@@ -2280,11 +2258,9 @@ async def internal_list_groups(
     include_keycloak: bool = True,
     include_scopes: bool = True,
 ):
-    """Internal endpoint to list groups from Keycloak and/or scopes.yml (requires HTTP Basic Authentication with admin credentials)."""
+    """Internal endpoint to list groups from Keycloak and/or scopes (requires HTTP Basic Authentication with admin credentials)."""
     import base64
     import os
-    from ..utils.scopes_manager import list_groups_from_scopes
-    from ..utils.keycloak_manager import list_keycloak_groups
 
     # Extract and validate Basic Auth
     auth_header = request.headers.get("Authorization")
@@ -2329,60 +2305,8 @@ async def internal_list_groups(
 
     logger.info(f"Listing groups via internal endpoint by admin '{username}'")
 
-    try:
-        result = {
-            "keycloak_groups": [],
-            "scopes_groups": {},
-            "synchronized": [],
-            "keycloak_only": [],
-            "scopes_only": [],
-        }
-
-        # Get groups from Keycloak
-        keycloak_group_names = set()
-        if include_keycloak:
-            try:
-                keycloak_groups = await list_keycloak_groups()
-                result["keycloak_groups"] = [
-                    {
-                        "name": group.get("name"),
-                        "id": group.get("id"),
-                        "path": group.get("path", ""),
-                    }
-                    for group in keycloak_groups
-                ]
-                keycloak_group_names = {group.get("name") for group in keycloak_groups}
-                logger.info(f"Found {len(keycloak_groups)} groups in Keycloak")
-            except Exception as e:
-                logger.error(f"Failed to list Keycloak groups: {e}")
-                result["keycloak_error"] = str(e)
-
-        # Get groups from scopes.yml
-        scopes_group_names = set()
-        if include_scopes:
-            try:
-                scopes_data = await list_groups_from_scopes()
-                result["scopes_groups"] = scopes_data.get("groups", {})
-                scopes_group_names = set(scopes_data.get("groups", {}).keys())
-                logger.info(f"Found {len(scopes_group_names)} groups in scopes.yml")
-            except Exception as e:
-                logger.error(f"Failed to list scopes groups: {e}")
-                result["scopes_error"] = str(e)
-
-        # Find synchronized and out-of-sync groups
-        if include_keycloak and include_scopes:
-            result["synchronized"] = list(keycloak_group_names & scopes_group_names)
-            result["keycloak_only"] = list(keycloak_group_names - scopes_group_names)
-            result["scopes_only"] = list(scopes_group_names - keycloak_group_names)
-
-        return JSONResponse(status_code=200, content=result)
-
-    except Exception as e:
-        logger.error(f"Error listing groups: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal error: {str(e)}",
-        )
+    # Call the shared implementation
+    return await _list_groups_impl(include_keycloak, include_scopes)
 
 
 @router.post("/tokens/generate")
@@ -2959,7 +2883,7 @@ async def remove_service_api(
     from ..search.service import faiss_service
     from ..health.service import health_service
     from ..core.nginx_service import nginx_service
-    from ..utils.scopes_manager import remove_server_scopes
+    from ..services.scope_service import remove_server_scopes
 
     logger.info(
         f"API remove service request from user '{user_context.get('username')}' for path '{path}'"
@@ -3060,7 +2984,7 @@ async def healthcheck_api(
 
     # Get health status for all servers using JWT authentication
     try:
-        health_data = health_service.get_all_health_status()
+        health_data = await health_service.get_all_health_status()
         logger.info(f"Retrieved health status for {len(health_data)} servers")
 
         return JSONResponse(
@@ -3111,8 +3035,8 @@ async def add_server_to_groups_api(
         f"API add to groups request from user '{user_context.get('username')}' for server '{server_name}'"
     )
 
-    # Call the existing internal_add_server_to_groups function
-    return await internal_add_server_to_groups(request, server_name, group_names)
+    # Call the shared implementation
+    return await _add_server_to_groups_impl(server_name, group_names)
 
 
 @router.post("/servers/groups/remove")
@@ -3150,8 +3074,76 @@ async def remove_server_from_groups_api(
         f"API remove from groups request from user '{user_context.get('username')}' for server '{server_name}'"
     )
 
-    # Call the existing internal_remove_server_from_groups function
-    return await internal_remove_server_from_groups(request, server_name, group_names)
+    # Call the shared implementation
+    return await _remove_server_from_groups_impl(server_name, group_names)
+
+
+async def _create_group_impl(
+    group_name: str,
+    description: str = "",
+    create_in_keycloak: bool = True,
+) -> JSONResponse:
+    """
+    Internal implementation for group creation.
+
+    This function contains the business logic for creating a group
+    and can be called from both Basic Auth and JWT endpoints.
+    """
+    from ..services.scope_service import create_group
+    from ..utils.keycloak_manager import create_keycloak_group, group_exists_in_keycloak
+
+    # Validate group name
+    if not group_name or not group_name.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Group name is required"
+        )
+
+    try:
+        # Create in Keycloak first if requested
+        keycloak_created = False
+        if create_in_keycloak:
+            try:
+                # Check if group already exists in Keycloak
+                if await group_exists_in_keycloak(group_name):
+                    logger.warning(f"Group '{group_name}' already exists in Keycloak")
+                else:
+                    await create_keycloak_group(group_name, description)
+                    keycloak_created = True
+                    logger.info(f"Group '{group_name}' created in Keycloak")
+            except Exception as e:
+                logger.error(f"Failed to create group in Keycloak: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to create group in Keycloak: {str(e)}",
+                )
+
+        # Create in scopes (file or OpenSearch based on STORAGE_BACKEND)
+        scopes_success = await create_group(group_name, description)
+
+        if scopes_success:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "Group successfully created",
+                    "group_name": group_name,
+                    "created_in_keycloak": keycloak_created,
+                    "created_in_scopes": True,
+                },
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to create group in scopes.yml (may already exist)",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating group '{group_name}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal error: {str(e)}",
+        )
 
 
 @router.post("/servers/groups/create")
@@ -3192,10 +3184,96 @@ async def create_group_api(
         f"API create group request from user '{user_context.get('username')}' for group '{group_name}'"
     )
 
-    # Call the existing internal_create_group function
-    return await internal_create_group(
-        request, group_name, description, create_in_keycloak
-    )
+    # Call the shared implementation
+    return await _create_group_impl(group_name, description, create_in_keycloak)
+
+
+async def _delete_group_impl(
+    group_name: str,
+    delete_from_keycloak: bool = True,
+    force: bool = False,
+) -> JSONResponse:
+    """
+    Internal implementation for group deletion.
+
+    This function contains the business logic for deleting a group
+    and can be called from both Basic Auth and JWT endpoints.
+    """
+    from ..services.scope_service import delete_group
+    from ..utils.keycloak_manager import delete_keycloak_group, group_exists_in_keycloak
+
+    # Validate group name
+    if not group_name or not group_name.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Group name is required"
+        )
+
+    # Prevent deletion of system groups unless force=True
+    if not force:
+        system_groups = [
+            "UI-Scopes",
+            "group_mappings",
+            "mcp-registry-admin",
+            "mcp-registry-user",
+            "mcp-registry-developer",
+            "mcp-registry-operator",
+        ]
+
+        if group_name in system_groups:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cannot delete system group '{group_name}'. Use force=true to override.",
+            )
+
+    try:
+        # Delete from scopes (file or OpenSearch)
+        scopes_success = await delete_group(
+            group_name, remove_from_mappings=True
+        )
+
+        if not scopes_success:
+            logger.warning(
+                f"Group '{group_name}' not found in scopes or deletion failed"
+            )
+
+        # Delete from Keycloak if requested
+        keycloak_deleted = False
+        if delete_from_keycloak:
+            try:
+                if await group_exists_in_keycloak(group_name):
+                    await delete_keycloak_group(group_name)
+                    keycloak_deleted = True
+                    logger.info(f"Group '{group_name}' deleted from Keycloak")
+                else:
+                    logger.warning(f"Group '{group_name}' not found in Keycloak")
+            except Exception as e:
+                logger.error(f"Failed to delete group from Keycloak: {e}")
+                # Continue anyway - scopes deletion might have succeeded
+
+        if scopes_success or keycloak_deleted:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "Group deletion completed",
+                    "group_name": group_name,
+                    "deleted_from_keycloak": keycloak_deleted,
+                    "deleted_from_scopes": scopes_success,
+                },
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Group '{group_name}' not found in either Keycloak or scopes",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting group '{group_name}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal error: {str(e)}",
+        )
 
 
 @router.post("/servers/groups/delete")
@@ -3236,8 +3314,8 @@ async def delete_group_api(
         f"API delete group request from user '{user_context.get('username')}' for group '{group_name}'"
     )
 
-    # Call the existing internal_delete_group function
-    return await internal_delete_group(request, group_name, delete_from_keycloak, force)
+    # Call the shared implementation
+    return await _delete_group_impl(group_name, delete_from_keycloak, force)
 
 
 @router.get("/servers/groups")
@@ -3269,8 +3347,207 @@ async def list_groups_api(
         f"API list groups request from user '{user_context.get('username') if user_context else 'unknown'}'"
     )
 
-    # Call the existing internal_list_groups function
-    return await internal_list_groups(request, include_keycloak, include_scopes)
+    # Call the shared implementation
+    return await _list_groups_impl(include_keycloak, include_scopes)
+
+
+@router.get("/servers/groups/{group_name}")
+async def get_group_api(
+    group_name: str,
+    request: Request,
+    user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
+):
+    """
+    Get full details of a specific group via JWT Bearer Token authentication (External API).
+
+    This endpoint retrieves complete information about a group including server_access,
+    group_mappings, and ui_permissions from the scopes storage backend.
+
+    **Authentication:** JWT Bearer token (via nginx X-User header)
+    **Authorization:** Requires valid JWT token from auth system
+
+    **Response:**
+    Returns complete group definition including:
+    - scope_name: Name of the scope/group
+    - scope_type: Type of scope (e.g., "server_scope")
+    - description: Description of the group
+    - server_access: List of server access definitions
+    - group_mappings: List of group mappings
+    - ui_permissions: UI permissions configuration
+    - created_at: Creation timestamp
+    - updated_at: Last update timestamp
+
+    **Example:**
+    ```bash
+    curl -X GET https://registry.example.com/api/servers/groups/currenttime-users \\
+      -H "Authorization: Bearer $JWT_TOKEN"
+    ```
+    """
+    from ..services.scope_service import get_group
+
+    logger.info(
+        f"API get group request from user '{user_context.get('username') if user_context else 'unknown'}' "
+        f"for group '{group_name}'"
+    )
+
+    try:
+        group_data = await get_group(group_name)
+
+        if not group_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Group '{group_name}' not found",
+            )
+
+        return JSONResponse(status_code=200, content=group_data)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting group {group_name}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal error: {str(e)}",
+        )
+
+
+@router.post("/servers/groups/import")
+async def import_group_definition(
+    request: Request,
+    user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
+):
+    """
+    Import a complete group definition via JSON (External API).
+
+    This endpoint accepts a complete group definition including all three document types
+    (server_scope, group_mapping, ui_scope) and creates/updates them in the storage backend.
+
+    **Authentication:** JWT Bearer token (via nginx X-User header)
+    **Authorization:** Requires valid JWT token from auth system
+
+    **Request Body:**
+    ```json
+    {
+      "scope_name": "group-name",
+      "scope_type": "server_scope",
+      "description": "Group description",
+      "server_access": [
+        {
+          "server": "currenttime",
+          "methods": ["initialize", "tools/list", "tools/call"],
+          "tools": ["current_time_by_timezone"]
+        }
+      ],
+      "group_mappings": ["group-name", "other-group"],
+      "ui_permissions": {
+        "list_service": ["currenttime", "mcpgw"],
+        "list_agents": ["/code-reviewer"],
+        "health_check_service": ["currenttime"]
+      },
+      "create_in_keycloak": true
+    }
+    ```
+
+    **Required Fields:**
+    - `scope_name`: Name of the scope/group
+
+    **Optional Fields:**
+    - `scope_type`: Type of scope (default: "server_scope")
+    - `description`: Description of the group
+    - `server_access`: List of server access definitions
+    - `group_mappings`: List of group names this group maps to
+    - `ui_permissions`: Dictionary of UI permissions
+    - `create_in_keycloak`: Whether to create the group in Keycloak (default: true)
+
+    **Example:**
+    ```bash
+    curl -X POST https://registry.example.com/api/servers/groups/import \\
+      -H "Authorization: Bearer $JWT_TOKEN" \\
+      -H "Content-Type: application/json" \\
+      -d @group-definition.json
+    ```
+    """
+    from ..services.scope_service import import_group
+    from ..utils.keycloak_manager import create_keycloak_group
+
+    try:
+        # Parse request body
+        body = await request.json()
+
+        # Required field
+        scope_name = body.get("scope_name")
+        if not scope_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="scope_name is required",
+            )
+
+        # Optional fields
+        scope_type = body.get("scope_type", "server_scope")
+        description = body.get("description", "")
+        server_access = body.get("server_access")
+        group_mappings = body.get("group_mappings")
+        ui_permissions = body.get("ui_permissions")
+        create_in_keycloak = body.get("create_in_keycloak", True)
+
+        logger.info(
+            f"API import group request from user '{user_context.get('username') if user_context else 'unknown'}' "
+            f"for group '{scope_name}'"
+        )
+
+        # Import group definition
+        success = await import_group(
+            scope_name=scope_name,
+            scope_type=scope_type,
+            description=description,
+            server_access=server_access,
+            group_mappings=group_mappings,
+            ui_permissions=ui_permissions,
+        )
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to import group {scope_name}",
+            )
+
+        # Create in Keycloak if requested
+        keycloak_created = False
+        if create_in_keycloak:
+            try:
+                keycloak_created = await create_keycloak_group(scope_name)
+                if keycloak_created:
+                    logger.info(f"Created group {scope_name} in Keycloak")
+                else:
+                    logger.warning(
+                        f"Failed to create group {scope_name} in Keycloak (may already exist)"
+                    )
+            except Exception as e:
+                logger.error(f"Error creating Keycloak group {scope_name}: {e}")
+
+        # Trigger auth server reload
+        from ..services.scope_service import trigger_auth_server_reload
+
+        reload_success = await trigger_auth_server_reload()
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": f"Group {scope_name} imported successfully",
+                "group_name": scope_name,
+                "keycloak_created": keycloak_created,
+                "auth_server_reloaded": reload_success,
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error importing group definition: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal error: {str(e)}",
+        )
 
 
 @router.post("/servers/{path:path}/rate")
@@ -3553,9 +3830,9 @@ async def get_servers_json(
 
     # Get servers based on user permissions (same logic as root route)
     if user_context['is_admin']:
-        all_servers = server_service.get_all_servers()
+        all_servers = await server_service.get_all_servers()
     else:
-        all_servers = server_service.get_all_servers_with_permissions(user_context['accessible_servers'])
+        all_servers = await server_service.get_all_servers_with_permissions(user_context['accessible_servers'])
     
     sorted_server_paths = sorted(
         all_servers.keys(), 

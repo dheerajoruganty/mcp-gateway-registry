@@ -29,7 +29,10 @@ from registry.api.management_routes import router as management_router
 from registry.health.routes import router as health_router
 
 # Import auth dependencies
-from registry.auth.dependencies import enhanced_auth
+from registry.auth.dependencies import (
+    enhanced_auth,
+    get_ui_permissions_for_user,
+)
 
 # Import services for initialization
 from registry.services.server_service import server_service
@@ -98,8 +101,13 @@ logger.info(f"Logging configured. Writing to file: {log_file_path}")
 async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle management."""
     logger.info("🚀 Starting MCP Gateway Registry...")
-    
+
     try:
+        # Load scopes configuration from repository
+        logger.info("🔐 Loading scopes configuration from repository...")
+        from registry.auth.dependencies import reload_scopes_from_repository
+        await reload_scopes_from_repository()
+
         # Initialize services in order
         logger.info("📚 Loading server definitions and state...")
         await server_service.load_servers_and_state()
@@ -108,7 +116,7 @@ async def lifespan(app: FastAPI):
         await faiss_service.initialize()
         
         logger.info("📊 Updating FAISS index with all registered services...")
-        all_servers = server_service.get_all_servers()
+        all_servers = await server_service.get_all_servers()
         for service_path, server_info in all_servers.items():
             is_enabled = await server_service.is_service_enabled(service_path)
             try:
@@ -120,7 +128,7 @@ async def lifespan(app: FastAPI):
         logger.info(f"✅ FAISS index updated with {len(all_servers)} services")
 
         logger.info("📋 Loading agent cards and state...")
-        agent_service.load_agents_and_state()
+        await agent_service.load_agents_and_state()
 
         logger.info("📊 Updating FAISS index with all registered agents...")
         all_agents = agent_service.list_agents()
@@ -151,7 +159,7 @@ async def lifespan(app: FastAPI):
             if sync_on_startup:
                 logger.info("🔄 Syncing servers from federated registries on startup...")
                 try:
-                    sync_results = federation_service.sync_all()
+                    sync_results = await federation_service.sync_all()
                     for source, servers in sync_results.items():
                         logger.info(f"✅ Synced {len(servers)} servers from {source}")
                 except Exception as e:
@@ -296,15 +304,22 @@ app.openapi = custom_openapi
 @app.get("/api/auth/me")
 async def get_current_user(user_context: Dict[str, Any] = Depends(enhanced_auth)):
     """Get current user information for React auth context"""
-    # Return user info with scopes for token generation
+    # Get user's scopes
+    user_scopes = user_context.get("scopes", [])
+
+    # Get UI permissions for the user based on their scopes
+    ui_permissions = get_ui_permissions_for_user(user_scopes)
+
+    # Return user info with scopes and UI permissions for token generation
     return {
         "username": user_context["username"],
         "auth_method": user_context.get("auth_method", "basic"),
         "provider": user_context.get("provider"),
-        "scopes": user_context.get("scopes", []),
+        "scopes": user_scopes,
         "groups": user_context.get("groups", []),
         "can_modify_servers": user_context.get("can_modify_servers", False),
-        "is_admin": user_context.get("is_admin", False)
+        "is_admin": user_context.get("is_admin", False),
+        "ui_permissions": ui_permissions
     }
 
 # Basic health check endpoint

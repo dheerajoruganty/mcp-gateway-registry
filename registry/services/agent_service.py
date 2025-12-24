@@ -33,10 +33,15 @@ class AgentService:
     async def load_agents_and_state(self) -> None:
         """Load agent cards and persisted state from repository."""
         logger.info("Loading agent cards from repository...")
-        
-        self.registered_agents = await self._repo.get_all()
+
+        # Load agents from storage first (OpenSearch, file, etc.)
+        await self._repo.load_all()
+
+        # Now get the list of loaded agents
+        agents_list = await self._repo.list_all()
+        self.registered_agents = {agent.path: agent for agent in agents_list}
         logger.info(f"Successfully loaded {len(self.registered_agents)} agent cards")
-        
+
         await self._load_agent_state()
 
 
@@ -85,7 +90,7 @@ class AgentService:
             raise ValueError(f"Agent path '{path}' already exists")
 
         # Save to repository
-        agent_card = await self._repo.save(agent_card)
+        agent_card = await self._repo.create(agent_card)
         
         # Add to in-memory registry and default to disabled
         self.registered_agents[path] = agent_card

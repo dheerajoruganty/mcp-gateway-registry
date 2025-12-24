@@ -26,7 +26,7 @@ async def get_wellknown_mcp_servers(
         raise HTTPException(status_code=404, detail="Well-known discovery is disabled")
 
     # Step 2: Get all servers from server_service
-    all_servers = server_service.get_all_servers()
+    all_servers = await server_service.get_all_servers()
 
     # Step 3: Filter based on discoverability and permissions
     discoverable_servers = []

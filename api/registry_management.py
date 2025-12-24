@@ -723,6 +723,46 @@ def cmd_delete_group(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_import_group(args: argparse.Namespace) -> int:
+    """
+    Import a complete group definition from JSON file.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    import json
+
+    try:
+        # Read JSON file
+        with open(args.file, 'r') as f:
+            group_definition = json.load(f)
+
+        # Validate required field
+        if "scope_name" not in group_definition:
+            logger.error("JSON file must contain 'scope_name' field")
+            return 1
+
+        client = _create_client(args)
+        response = client.import_group(group_definition)
+
+        logger.info(f"Group imported successfully: {group_definition['scope_name']}")
+        logger.info(f"Response: {json.dumps(response, indent=2)}")
+        return 0
+
+    except FileNotFoundError:
+        logger.error(f"File not found: {args.file}")
+        return 1
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in file: {e}")
+        return 1
+    except Exception as e:
+        logger.error(f"Import group failed: {e}")
+        return 1
+
+
 def cmd_list_groups(args: argparse.Namespace) -> int:
     """
     List all user groups.
@@ -733,6 +773,8 @@ def cmd_list_groups(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success, 1 for failure)
     """
+    import json
+
     try:
         client = _create_client(args)
         response = client.list_groups(
@@ -740,24 +782,136 @@ def cmd_list_groups(args: argparse.Namespace) -> int:
             include_scopes=not args.no_scopes
         )
 
-        if not response.groups:
-            logger.info("No groups found")
+        # If JSON output requested, print raw response and exit
+        if hasattr(args, 'json') and args.json:
+            print(json.dumps(response.model_dump(), indent=2, default=str))
             return 0
 
-        logger.info(f"Found {len(response.groups)} groups:\n")
+        # Display synchronized groups
+        if response.synchronized:
+            print("\n=== Synchronized Groups (in both Keycloak and Scopes) ===")
+            for group_name in response.synchronized:
+                print(f"  - {group_name}")
+                # Show details from scopes if available
+                if group_name in response.scopes_groups:
+                    group_info = response.scopes_groups[group_name]
+                    if 'description' in group_info:
+                        print(f"    Description: {group_info['description']}")
+                    if 'server_count' in group_info:
+                        print(f"    Servers: {group_info['server_count']}")
 
-        for group in response.groups:
-            print(f"Group: {group.get('name', 'Unknown')}")
-            if 'description' in group:
-                print(f"  Description: {group['description']}")
-            if 'servers' in group:
-                print(f"  Servers: {', '.join(group['servers']) if group['servers'] else 'None'}")
-            print()
+        # Display Keycloak-only groups
+        if response.keycloak_only:
+            print("\n=== Keycloak-Only Groups (not in Scopes) ===")
+            for group_name in response.keycloak_only:
+                print(f"  - {group_name}")
+
+        # Display Scopes-only groups
+        if response.scopes_only:
+            print("\n=== Scopes-Only Groups (not in Keycloak) ===")
+            for group_name in response.scopes_only:
+                print(f"  - {group_name}")
+                if group_name in response.scopes_groups:
+                    group_info = response.scopes_groups[group_name]
+                    if 'description' in group_info:
+                        print(f"    Description: {group_info['description']}")
+
+        # Summary
+        total_keycloak = len(response.keycloak_groups)
+        total_scopes = len(response.scopes_groups)
+        print(f"\n=== Summary ===")
+        print(f"Total Keycloak groups: {total_keycloak}")
+        print(f"Total Scopes groups: {total_scopes}")
+        print(f"Synchronized: {len(response.synchronized)}")
+        print(f"Keycloak-only: {len(response.keycloak_only)}")
+        print(f"Scopes-only: {len(response.scopes_only)}")
 
         return 0
 
     except Exception as e:
         logger.error(f"List groups failed: {e}")
+        return 1
+
+
+def cmd_describe_group(args: argparse.Namespace) -> int:
+    """
+    Describe a specific group with all details.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    import json
+
+    try:
+        client = _create_client(args)
+        group_name = args.name
+
+        # Get full group details from scopes storage
+        try:
+            group_data = client.get_group(group_name)
+        except Exception as e:
+            if "404" in str(e):
+                logger.error(f"Group '{group_name}' not found in scopes storage")
+                group_data = None
+            else:
+                raise
+
+        # If JSON output requested
+        if hasattr(args, 'json') and args.json:
+            if group_data:
+                print(json.dumps(group_data, indent=2, default=str))
+                return 0
+            else:
+                print(json.dumps({"error": "Group not found", "group_name": group_name}, indent=2))
+                return 1
+
+        # Human-readable output
+        if not group_data:
+            print(f"\nGroup '{group_name}' not found in scopes storage\n")
+            return 1
+
+        print(f"\n=== Group: {group_name} ===\n")
+        print(f"Scope Type: {group_data.get('scope_type', 'N/A')}")
+        print(f"Description: {group_data.get('description', 'N/A')}")
+        print(f"Created: {group_data.get('created_at', 'N/A')}")
+        print(f"Updated: {group_data.get('updated_at', 'N/A')}")
+
+        print("\nServer Access:")
+        server_access = group_data.get('server_access', [])
+        if server_access:
+            for idx, access in enumerate(server_access, 1):
+                print(f"  {idx}. Server: {access.get('server', 'N/A')}")
+                if 'methods' in access:
+                    print(f"     Methods: {', '.join(access['methods'])}")
+                if 'tools' in access:
+                    print(f"     Tools: {', '.join(access['tools'])}")
+                if 'agents' in access:
+                    print(f"     Agents: {json.dumps(access['agents'], indent=6)}")
+        else:
+            print("  None")
+
+        print("\nGroup Mappings:")
+        group_mappings = group_data.get('group_mappings', [])
+        if group_mappings:
+            for mapping in group_mappings:
+                print(f"  - {mapping}")
+        else:
+            print("  None")
+
+        print("\nUI Permissions:")
+        ui_permissions = group_data.get('ui_permissions', {})
+        if ui_permissions:
+            print(json.dumps(ui_permissions, indent=2))
+        else:
+            print("  None")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Describe group failed: {e}")
         return 1
 
 
@@ -2033,6 +2187,17 @@ Examples:
         help="Force deletion of system groups and skip confirmation"
     )
 
+    # Import group command
+    import_group_parser = subparsers.add_parser(
+        "import-group",
+        help="Import a complete group definition from JSON file"
+    )
+    import_group_parser.add_argument(
+        "--file",
+        required=True,
+        help="Path to JSON file containing group definition"
+    )
+
     # List groups command
     list_groups_parser = subparsers.add_parser("list-groups", help="List all groups")
     list_groups_parser.add_argument(
@@ -2044,6 +2209,27 @@ Examples:
         "--no-scopes",
         action="store_true",
         help="Exclude scope information"
+    )
+    list_groups_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON response"
+    )
+
+    # Describe group command
+    describe_group_parser = subparsers.add_parser(
+        "describe-group",
+        help="Show detailed information about a specific group"
+    )
+    describe_group_parser.add_argument(
+        "--name",
+        required=True,
+        help="Group name to describe"
+    )
+    describe_group_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON response"
     )
 
     # Server rate command
@@ -2433,7 +2619,9 @@ Examples:
         "remove-from-groups": cmd_remove_from_groups,
         "create-group": cmd_create_group,
         "delete-group": cmd_delete_group,
+        "import-group": cmd_import_group,
         "list-groups": cmd_list_groups,
+        "describe-group": cmd_describe_group,
         "server-rate": cmd_server_rate,
         "server-rating": cmd_server_rating,
         "security-scan": cmd_security_scan,

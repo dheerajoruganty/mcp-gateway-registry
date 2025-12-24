@@ -74,7 +74,7 @@ class HighPerformanceWebSocketManager:
         """Send initial status using cached data to avoid blocking."""
         try:
             # Use cached health data to avoid blocking on service calls
-            cached_data = health_service._get_cached_health_data()
+            cached_data = await health_service._get_cached_health_data()
             if cached_data:
                 await websocket.send_text(json.dumps(cached_data))
         except Exception as e:
@@ -110,7 +110,7 @@ class HighPerformanceWebSocketManager:
                     self.pending_updates.pop(key, None)
             else:
                 # Full status update (avoid this when possible)
-                broadcast_data = health_service._get_cached_health_data()
+                broadcast_data = await health_service._get_cached_health_data()
         
         if broadcast_data:
             await self._send_to_connections_optimized(broadcast_data)
@@ -264,7 +264,7 @@ class HealthMonitoringService:
             # Full update - use cached data
             await self.websocket_manager.broadcast_update()
             
-    def _get_cached_health_data(self) -> Dict:
+    async def _get_cached_health_data(self) -> Dict:
         """Get cached health data to avoid expensive operations during WebSocket sends."""
         current_time = time()
         
@@ -274,7 +274,7 @@ class HealthMonitoringService:
             
         # Rebuild cache
         from ..services.server_service import server_service
-        all_servers = server_service.get_all_servers()
+        all_servers = await server_service.get_all_servers()
         
         data = {}
         for path, server_info in all_servers.items():
@@ -912,12 +912,12 @@ class HealthMonitoringService:
                         updated_server_info = current_server_info.copy()
                         updated_server_info["tool_list"] = tool_list
                         updated_server_info["num_tools"] = new_tool_count
-                        
-                        server_service.update_server(service_path, updated_server_info)
+
+                        await server_service.update_server(service_path, updated_server_info)
 
                         # Update scopes.yml with newly discovered tools
                         try:
-                            from ..utils.scopes_manager import update_server_scopes
+                            from ..services.scope_service import update_server_scopes
                             tool_names = [tool["name"] for tool in tool_list if "name" in tool]
                             await update_server_scopes(service_path, current_server_info.get("server_name", "Unknown"), tool_names)
                             logger.info(f"Updated scopes for {service_path} with {len(tool_names)} discovered tools")
@@ -930,11 +930,11 @@ class HealthMonitoringService:
         except Exception as e:
             logger.warning(f"Failed to fetch tools for {service_path}: {e}")
         
-    def get_all_health_status(self) -> Dict:
+    async def get_all_health_status(self) -> Dict:
         """Get health status for all services."""
         from ..services.server_service import server_service
-        
-        all_servers = server_service.get_all_servers()
+
+        all_servers = await server_service.get_all_servers()
         
         data = {}
         for path, server_info in all_servers.items():

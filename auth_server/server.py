@@ -36,6 +36,11 @@ from metrics_middleware import add_auth_metrics_middleware
 # Import provider factory
 from providers.factory import get_auth_provider
 
+# Import shared scopes loader from registry common module
+import sys
+sys.path.insert(0, '/app')
+from registry.common.scopes_loader import reload_scopes_config
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,  # Set the log level to INFO
@@ -54,28 +59,8 @@ DEFAULT_TOKEN_LIFETIME_HOURS = 8
 user_token_generation_counts = {}
 MAX_TOKENS_PER_USER_PER_HOUR = int(os.environ.get('MAX_TOKENS_PER_USER_PER_HOUR', '100'))
 
-# Load scopes configuration
-def load_scopes_config():
-    """Load the scopes configuration from scopes.yml"""
-    try:
-        # Check for environment variable first (for EFS-mounted config)
-        scopes_path = os.environ.get('SCOPES_CONFIG_PATH')
-        if scopes_path:
-            scopes_file = Path(scopes_path)
-        else:
-            # Fall back to default location (baked into image)
-            scopes_file = Path(__file__).parent / "scopes.yml"
-
-        with open(scopes_file, 'r') as f:
-            config = yaml.safe_load(f)
-            logger.info(f"Loaded scopes configuration from {scopes_file} with {len(config.get('group_mappings', {}))} group mappings")
-            return config
-    except Exception as e:
-        logger.error(f"Failed to load scopes configuration: {e}")
-        return {}
-
-# Global scopes configuration (will be reloaded dynamically)
-SCOPES_CONFIG = load_scopes_config()
+# Global scopes configuration (will be loaded during FastAPI startup)
+SCOPES_CONFIG = {}
 
 # Utility functions for GDPR/SOX compliance
 def mask_sensitive_id(value: str) -> str:
@@ -458,6 +443,19 @@ app = FastAPI(
     description="Authentication server for validating JWT tokens against Amazon Cognito with header-based configuration",
     version="0.1.0"
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Load scopes configuration on startup."""
+    global SCOPES_CONFIG
+    try:
+        SCOPES_CONFIG = await reload_scopes_config()
+        logger.info(f"Loaded scopes configuration on startup with {len(SCOPES_CONFIG.get('group_mappings', {}))} group mappings")
+    except Exception as e:
+        logger.error(f"Failed to load scopes configuration on startup: {e}", exc_info=True)
+        # Fall back to empty config
+        SCOPES_CONFIG = {"group_mappings": {}}
 
 # Add metrics collection middleware
 add_auth_metrics_middleware(app)
@@ -1347,7 +1345,7 @@ async def reload_scopes(
     # Reload the scopes configuration
     global SCOPES_CONFIG
     try:
-        SCOPES_CONFIG = load_scopes_config()
+        SCOPES_CONFIG = await reload_scopes_config()
         logger.info(f"Successfully reloaded scopes configuration by admin '{username}'")
 
         return JSONResponse(

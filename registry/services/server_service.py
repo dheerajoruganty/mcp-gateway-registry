@@ -104,7 +104,7 @@ class ServerService:
         """Get server information by path."""
         return self.registered_servers.get(path)
         
-    def get_all_servers(self, include_federated: bool = True) -> Dict[str, Dict[str, Any]]:
+    async def get_all_servers(self, include_federated: bool = True) -> Dict[str, Dict[str, Any]]:
         """
         Get all registered servers.
 
@@ -121,7 +121,7 @@ class ServerService:
             try:
                 from .federation_service import get_federation_service
                 federation_service = get_federation_service()
-                federated_servers = federation_service.get_federated_servers()
+                federated_servers = await federation_service.get_federated_servers()
 
                 # Add federated servers with their paths as keys
                 for fed_server in federated_servers:
@@ -169,7 +169,7 @@ class ServerService:
         logger.info(f"Filtered {len(filtered_servers)} servers from {len(self.registered_servers)} total servers")
         return filtered_servers
 
-    def get_all_servers_with_permissions(
+    async def get_all_servers_with_permissions(
         self,
         accessible_servers: Optional[List[str]] = None,
         include_federated: bool = True
@@ -188,12 +188,12 @@ class ServerService:
         if accessible_servers is None:
             # Admin access - return all servers (including federated)
             logger.debug("Admin access - returning all servers")
-            return self.get_all_servers(include_federated=include_federated)
+            return await self.get_all_servers(include_federated=include_federated)
         else:
             # Filtered access - return only accessible servers
             logger.debug(f"Filtered access - returning servers accessible to user: {accessible_servers}")
             # Note: Federated servers are read-only, so we include them in filtered results too
-            all_servers = self.get_all_servers(include_federated=include_federated)
+            all_servers = await self.get_all_servers(include_federated=include_federated)
 
             # Filter based on accessible_servers
             filtered_servers = {}

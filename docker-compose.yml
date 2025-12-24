@@ -32,12 +32,10 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # OpenSearch Dashboards (optional - for debugging)
+  # OpenSearch Dashboards
   opensearch-dashboards:
     image: opensearchproject/opensearch-dashboards:2.11.0
     container_name: mcp-opensearch-dashboards
-    profiles:
-      - debug
     environment:
       - OPENSEARCH_HOSTS=["http://opensearch:9200"]
       - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
@@ -123,9 +121,12 @@ services:
       - ${HOME}/mcp-gateway/federation.json:/app/config/federation.json
       - ${HOME}/mcp-gateway/ssl:/etc/ssl:ro
     depends_on:
-      - auth-server
-      - metrics-service
-      - opensearch
+      auth-server:
+        condition: service_started
+      metrics-service:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
     restart: unless-stopped
 
   # Metrics Collection Service
@@ -197,11 +198,20 @@ services:
       - ENTRA_CLIENT_ID=${ENTRA_CLIENT_ID}
       - ENTRA_CLIENT_SECRET=${ENTRA_CLIENT_SECRET}
       - ENTRA_ENABLED=${ENTRA_ENABLED:-false}
+      # OpenSearch Configuration
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-file}
+      - OPENSEARCH_HOST=opensearch
+      - OPENSEARCH_PORT=9200
+      - OPENSEARCH_INDEX_PREFIX=${OPENSEARCH_INDEX_PREFIX:-mcp}
+      - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD:-admin}
     ports:
       - "8888:8888"
     volumes:
       - ${HOME}/mcp-gateway/logs:/app/logs
       # - ${HOME}/mcp-gateway/auth_server/scopes.yml:/app/scopes.yml
+    depends_on:
+      - opensearch
     restart: unless-stopped
 
   # Current Time MCP Server

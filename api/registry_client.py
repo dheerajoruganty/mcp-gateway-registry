@@ -326,7 +326,7 @@ class AgentCard(BaseModel):
     path: str = Field(..., description="Agent path")
     url: str = Field(..., description="Agent URL")
     num_skills: int = Field(..., description="Number of skills")
-    registered_at: datetime = Field(..., description="Registration timestamp")
+    registered_at: Optional[datetime] = Field(None, description="Registration timestamp")
     is_enabled: bool = Field(..., description="Whether agent is enabled")
 
 
@@ -681,8 +681,11 @@ class KeycloakGroupSummary(BaseModel):
 class GroupListResponse(BaseModel):
     """Response model for list groups endpoint."""
 
-    groups: List[KeycloakGroupSummary] = Field(default_factory=list, description="List of groups")
-    total: int = Field(..., description="Total number of groups")
+    keycloak_groups: List[Dict[str, Any]] = Field(default_factory=list, description="Groups from Keycloak")
+    scopes_groups: Dict[str, Any] = Field(default_factory=dict, description="Groups from scopes storage")
+    synchronized: List[str] = Field(default_factory=list, description="Groups in both Keycloak and scopes")
+    keycloak_only: List[str] = Field(default_factory=list, description="Groups only in Keycloak")
+    scopes_only: List[str] = Field(default_factory=list, description="Groups only in scopes")
 
 
 class GroupDeleteResponse(BaseModel):
@@ -763,9 +766,11 @@ class RegistryClient:
         logger.debug(f"{method} {url}")
 
         # Determine content type based on endpoint
-        # Agent and Management API endpoints use JSON, server registration uses form data
-        if endpoint.startswith("/api/agents") or endpoint.startswith("/api/management"):
-            # Send as JSON for agent and management endpoints
+        # Agent, Management, and group import endpoints use JSON, server registration uses form data
+        if (endpoint.startswith("/api/agents") or
+            endpoint.startswith("/api/management") or
+            endpoint == "/api/servers/groups/import"):
+            # Send as JSON for agent, management, and import endpoints
             response = requests.request(
                 method=method,
                 url=url,
@@ -1062,6 +1067,46 @@ class RegistryClient:
         logger.info(f"Group deleted successfully: {group_name}")
         return response.json()
 
+
+    def import_group(
+        self,
+        group_definition: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Import a complete group definition.
+
+        Args:
+            group_definition: Complete group definition including:
+                - scope_name (required): Name of the scope/group
+                - scope_type (optional): Type of scope (default: "server_scope")
+                - description (optional): Description of the group
+                - server_access (optional): List of server access definitions
+                - group_mappings (optional): List of group mappings
+                - ui_permissions (optional): Dictionary of UI permissions
+                - create_in_keycloak (optional): Whether to create in Keycloak (default: true)
+
+        Returns:
+            Response data
+
+        Raises:
+            requests.HTTPError: If import fails
+        """
+        scope_name = group_definition.get("scope_name")
+        if not scope_name:
+            raise ValueError("scope_name is required in group_definition")
+
+        logger.info(f"Importing group definition: {scope_name}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint="/api/servers/groups/import",
+            data=group_definition
+        )
+
+        logger.info(f"Group imported successfully: {scope_name}")
+        return response.json()
+
+
     def list_groups(
         self,
         include_keycloak: bool = True,
@@ -1094,8 +1139,33 @@ class RegistryClient:
         )
 
         result = GroupListResponse(**response.json())
-        logger.info(f"Retrieved {len(result.groups)} groups")
+        total_groups = len(result.scopes_groups) + len(result.keycloak_groups)
+        logger.info(f"Retrieved {total_groups} groups ({len(result.keycloak_groups)} from Keycloak, {len(result.scopes_groups)} from scopes)")
         return result
+
+
+    def get_group(self, group_name: str) -> Dict[str, Any]:
+        """
+        Get full details of a specific group.
+
+        Args:
+            group_name: Name of the group
+
+        Returns:
+            Complete group definition with server_access, group_mappings, and ui_permissions
+
+        Raises:
+            requests.HTTPError: If get operation fails (404 if group not found)
+        """
+        logger.info(f"Getting group details: {group_name}")
+
+        response = self._make_request(
+            method="GET",
+            endpoint=f"/api/servers/groups/{group_name}"
+        )
+
+        logger.info(f"Retrieved group details for {group_name}")
+        return response.json()
 
     # Agent Management Methods
 
