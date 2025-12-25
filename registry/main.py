@@ -26,6 +26,7 @@ from registry.api.wellknown_routes import router as wellknown_router
 from registry.api.registry_routes import router as registry_router
 from registry.api.agent_routes import router as agent_router
 from registry.api.management_routes import router as management_router
+from registry.api.federation_export_routes import router as federation_export_router
 from registry.health.routes import router as health_router
 
 # Import auth dependencies
@@ -222,6 +223,10 @@ app = FastAPI(
         {
             "name": "Anthropic Registry API",
             "description": "Anthropic-compatible registry API (v0.1) for MCP server discovery"
+        },
+        {
+            "name": "federation",
+            "description": "Federation export API for peer-to-peer registry synchronization. Requires JWT with federation-service scope."
         }
     ]
 )
@@ -242,6 +247,7 @@ app.include_router(agent_router, prefix="/api", tags=["Agent Management"])
 app.include_router(management_router, prefix="/api")
 app.include_router(search_router, prefix="/api/search", tags=["Semantic Search"])
 app.include_router(health_router, prefix="/api/health", tags=["Health Monitoring"])
+app.include_router(federation_export_router)
 
 # Register Anthropic MCP Registry API (public API for MCP servers only)
 app.include_router(registry_router, tags=["Anthropic Registry API"])
