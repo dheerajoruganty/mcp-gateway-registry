@@ -1158,3 +1158,27 @@ gh issue comment 123 --body "Suggest adding 'agentcore' label for AgentCore-rela
 
 ## Summary
 These guidelines ensure consistent, maintainable, and modern Python code. Always prioritize simplicity and clarity over cleverness.
+## Federated Registry Implementation Workflow
+
+When implementing the federated registry feature, follow this 3-agent workflow for each sub-feature:
+
+### Agent Roles
+1. **Writer Agent** - Implement code following CLAUDE.md standards
+2. **Reviewer Agent** - Analyze time/space complexity, evaluate trade-offs, check production readiness
+3. **Tester Agent** - Write property-based tests, integration tests, validate acceptance criteria
+
+### Workflow Per Sub-Feature
+1. Writer Agent implements all tasks
+2. Reviewer Agent analyzes and suggests improvements
+3. Writer Agent addresses reviewer suggestions
+4. Tester Agent writes tests and validates
+5. Update plan if new scope discovered
+6. Final validation before marking complete
+
+### Quality Gates
+- All acceptance criteria verified with tests
+- Reviewer approved production readiness
+- Property-based tests cover invariants
+- No TODO or FIXME left unaddressed
+- Code compiles without warnings
+- Existing tests still pass
