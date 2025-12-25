@@ -1090,6 +1090,11 @@ def cmd_server_search(args: argparse.Namespace) -> int:
             max_results=args.max_results
         )
 
+        if args.json:
+            # Output raw JSON
+            print(json.dumps(response.model_dump(), indent=2, default=str))
+            return 0
+
         if not response.servers:
             logger.info("No servers found matching the query")
             return 0
@@ -2331,6 +2336,11 @@ Examples:
         type=int,
         default=10,
         help="Maximum number of results (default: 10)"
+    )
+    server_search_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON"
     )
 
     # Agent Management Commands
