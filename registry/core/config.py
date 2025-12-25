@@ -1,4 +1,3 @@
-import os
 import secrets
 from pathlib import Path
 from typing import Optional
@@ -30,7 +29,7 @@ class Settings(BaseSettings):
     # Embeddings settings [Default]
     embeddings_provider: str = "sentence-transformers"  # 'sentence-transformers' or 'litellm'
     embeddings_model_name: str = "all-MiniLM-L6-v2"
-    embeddings_model_dimensions: int = 384 # 384 for default and 1024 for bedrock titan v2
+    embeddings_model_dimensions: int = 384  # 384 for default and 1024 for bedrock titan v2
 
     # HNSW vector search tuning (only used with DocumentDB backend)
     # Higher efSearch improves recall at the cost of query latency.
@@ -184,6 +183,18 @@ class Settings(BaseSettings):
     def agent_state_file_path(self) -> Path:
         """Path to agent state file (enabled/disabled tracking)."""
         return self.agents_dir / "agent_state.json"
+
+    @property
+    def peers_dir(self) -> Path:
+        """Directory for peer federation config storage."""
+        home_dir = Path.home()
+        return home_dir / "mcp-gateway" / "peers"
+
+    @property
+    def peer_sync_state_file_path(self) -> Path:
+        """Path to peer sync state file."""
+        home_dir = Path.home()
+        return home_dir / "mcp-gateway" / "peer_sync_state.json"
 
 
 class EmbeddingConfig:
