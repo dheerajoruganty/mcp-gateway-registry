@@ -27,6 +27,7 @@ from registry.api.registry_routes import router as registry_router
 from registry.api.agent_routes import router as agent_router
 from registry.api.management_routes import router as management_router
 from registry.api.federation_export_routes import router as federation_export_router
+from registry.api.peer_management_routes import router as peer_management_router
 from registry.health.routes import router as health_router
 
 # Import auth dependencies
@@ -39,6 +40,7 @@ from registry.search.service import faiss_service
 from registry.health.service import health_service
 from registry.core.nginx_service import nginx_service
 from registry.services.federation_service import get_federation_service
+from registry.services.peer_federation_service import get_peer_federation_service
 
 # Import core configuration
 from registry.core.config import settings
@@ -148,7 +150,7 @@ async def lifespan(app: FastAPI):
                 (federation_service.config.anthropic.enabled and federation_service.config.anthropic.sync_on_startup) or
                 (federation_service.config.asor.enabled and federation_service.config.asor.sync_on_startup)
             )
-            
+
             if sync_on_startup:
                 logger.info("🔄 Syncing servers from federated registries on startup...")
                 try:
@@ -159,6 +161,11 @@ async def lifespan(app: FastAPI):
                     logger.error(f"⚠️ Federation sync failed (continuing with startup): {e}", exc_info=True)
         else:
             logger.info("Federation is disabled")
+
+        logger.info("🤝 Initializing peer federation service...")
+        peer_federation_service = get_peer_federation_service()
+        peer_federation_service.load_peers_and_state()
+        logger.info(f"✅ Loaded {len(peer_federation_service.registered_peers)} peer registries")
 
         logger.info("🌐 Generating initial Nginx configuration...")
         enabled_servers = {
@@ -227,6 +234,10 @@ app = FastAPI(
         {
             "name": "federation",
             "description": "Federation export API for peer-to-peer registry synchronization. Requires JWT with federation-service scope."
+        },
+        {
+            "name": "peer-management",
+            "description": "Peer registry management API for configuring and synchronizing with peer registries. Requires JWT Bearer token authentication."
         }
     ]
 )
@@ -248,6 +259,7 @@ app.include_router(management_router, prefix="/api")
 app.include_router(search_router, prefix="/api/search", tags=["Semantic Search"])
 app.include_router(health_router, prefix="/api/health", tags=["Health Monitoring"])
 app.include_router(federation_export_router)
+app.include_router(peer_management_router)
 
 # Register Anthropic MCP Registry API (public API for MCP servers only)
 app.include_router(registry_router, tags=["Anthropic Registry API"])
