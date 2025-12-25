@@ -786,11 +786,12 @@ class RegistryClient:
         logger.debug(f"{method} {url}")
 
         # Determine content type based on endpoint
-        # Agent, Management, and group import endpoints use JSON, server registration uses form data
+        # Agent, Management, Search, and group import endpoints use JSON, server registration uses form data
         if (endpoint.startswith("/api/agents") or
             endpoint.startswith("/api/management") or
+            endpoint.startswith("/api/search") or
             endpoint == "/api/servers/groups/import"):
-            # Send as JSON for agent, management, and import endpoints
+            # Send as JSON for agent, management, search, and import endpoints
             response = requests.request(
                 method=method,
                 url=url,
