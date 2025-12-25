@@ -5,7 +5,7 @@
   "proxy_pass_url": "http://mcpgw-server:8003/",
   "supported_transports": ["streamable-http"],
   "auth_type": "none",
-  "tags": ["registry", "management"],
+  "tags": ["registry", "management", "admin", "gateway", "mcp-tools", "server-management"],
   "num_tools": 11,
   "num_stars": 0,
   "is_python": true,

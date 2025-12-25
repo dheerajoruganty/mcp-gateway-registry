@@ -75,12 +75,17 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
             server_info.get("server_name", ""),
             server_info.get("description", ""),
         ]
-        
+
+        # Add tags
+        tags = server_info.get("tags", [])
+        if tags:
+            text_parts.append("Tags: " + ", ".join(tags))
+
         # Add tool names and descriptions
         for tool in server_info.get("tool_list", []):
             text_parts.append(tool.get("name", ""))
             text_parts.append(tool.get("description", ""))
-        
+
         text_for_embedding = " ".join(filter(None, text_parts))
 
         # Generate embedding
@@ -131,12 +136,17 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
             agent_card.name,
             agent_card.description or "",
         ]
-        
+
+        # Add tags
+        tags = agent_card.tags or []
+        if tags:
+            text_parts.append("Tags: " + ", ".join(tags))
+
         # Add skill names and descriptions
         for skill in agent_card.skills or []:
             text_parts.append(skill.name)
             text_parts.append(skill.description or "")
-        
+
         text_for_embedding = " ".join(filter(None, text_parts))
 
         # Generate embedding
@@ -214,7 +224,7 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
                         {
                             "multi_match": {
                                 "query": query,
-                                "fields": ["name^3", "description^2", "text_for_embedding"],
+                                "fields": ["name^3", "tags^2.5", "description^2", "text_for_embedding"],
                                 "type": "best_fields"
                             }
                         },

@@ -64,7 +64,7 @@ async def _perform_security_scan_on_registration(
         # Run the security scan
         scan_result = await security_scanner_service.scan_server(
             server_url=proxy_pass_url,
-            server_path=request.path,
+            server_path=path,
             analyzers=scan_config.analyzers,
             api_key=scan_config.llm_api_key,
             headers=headers_json,

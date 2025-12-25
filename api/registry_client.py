@@ -64,6 +64,7 @@ class InternalServiceRegistration(BaseModel):
     supported_transports: Optional[List[str]] = Field(None, description="Supported transports")
     headers: Optional[Dict[str, str]] = Field(None, description="Custom headers")
     tool_list_json: Optional[str] = Field(None, description="Tool list as JSON string")
+    tags: Optional[List[str]] = Field(None, description="Categorization tags")
     overwrite: Optional[bool] = Field(False, description="Overwrite if exists")
 
     model_config = ConfigDict(populate_by_name=True)
@@ -821,10 +822,17 @@ class RegistryClient:
         """
         logger.info(f"Registering service: {registration.service_path}")
 
+        # Convert model to dict
+        data = registration.model_dump(exclude_none=True, by_alias=True)
+
+        # Convert tags list to comma-separated string for form encoding
+        if "tags" in data and isinstance(data["tags"], list):
+            data["tags"] = ",".join(data["tags"])
+
         response = self._make_request(
             method="POST",
             endpoint="/api/servers/register",
-            data=registration.model_dump(exclude_none=True, by_alias=True)
+            data=data
         )
 
         logger.info(f"Service registered successfully: {registration.service_path}")

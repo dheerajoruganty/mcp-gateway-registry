@@ -39,5 +39,7 @@
     }
   ],
   "url": "http://travel-assistant-agent:9000/",
-  "version": "0.0.1"
+  "version": "0.0.1",
+  "tags": ["travel", "flight-search", "trip-planning", "booking"],
+  "path": "/travel-assistant-agent"
 }

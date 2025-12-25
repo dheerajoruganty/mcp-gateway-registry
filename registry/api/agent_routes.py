@@ -31,6 +31,13 @@ from ..schemas.agent_models import (
 )
 from pydantic import BaseModel
 from ..core.config import settings
+from ..repositories.factory import get_search_repository
+from ..repositories.interfaces import SearchRepositoryBase
+
+
+def get_search_repo() -> SearchRepositoryBase:
+    """Get search repository instance."""
+    return get_search_repository()
 
 
 # Configure logging with basicConfig
@@ -1052,16 +1059,18 @@ async def discover_agents_semantic(
     query: str,
     max_results: int = Query(10, ge=1, le=100),
     user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
+    search_repo: SearchRepositoryBase = Depends(get_search_repo),
 ):
     """
     Discover agents using natural language semantic search.
 
-    Uses FAISS vector search to find agents matching the query intent.
+    Uses search repository (FAISS or OpenSearch) to find agents matching the query intent.
 
     Args:
         query: Natural language query describing needed capabilities
         max_results: Maximum number of results
         user_context: Authenticated user context
+        search_repo: Search repository dependency
 
     Returns:
         List of matching agents with relevance scores
@@ -1079,10 +1088,8 @@ async def discover_agents_semantic(
         f"User {user_context['username']} semantic search for agents: {query}"
     )
 
-    from ..search.service import faiss_service
-
     try:
-        results = await faiss_service.search_entities(
+        results = await search_repo.search_entities(
             query=query,
             entity_types=["a2a_agent"],
             enabled_only=True,

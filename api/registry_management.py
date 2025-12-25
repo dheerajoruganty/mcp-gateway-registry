@@ -473,6 +473,7 @@ def cmd_register(args: argparse.Namespace) -> int:
             supported_transports=config.get("supported_transports"),
             headers=config.get("headers"),
             tool_list_json=config.get("tool_list_json"),
+            tags=config.get("tags"),
             overwrite=args.overwrite
         )
 

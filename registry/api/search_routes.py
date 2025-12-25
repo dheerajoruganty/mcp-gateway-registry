@@ -25,7 +25,7 @@ def get_search_repo() -> SearchRepositoryBase:
 class MatchingToolResult(BaseModel):
     tool_name: str
     description: Optional[str] = None
-    relevance_score: float = Field(0.0, ge=0.0, le=1.0)
+    relevance_score: float = Field(0.0, ge=0.0)
     match_context: Optional[str] = None
 
 
@@ -36,7 +36,7 @@ class ServerSearchResult(BaseModel):
     tags: List[str] = Field(default_factory=list)
     num_tools: int = 0
     is_enabled: bool = False
-    relevance_score: float = Field(..., ge=0.0, le=1.0)
+    relevance_score: float = Field(..., ge=0.0)
     match_context: Optional[str] = None
     matching_tools: List[MatchingToolResult] = Field(default_factory=list)
 
@@ -46,7 +46,7 @@ class ToolSearchResult(BaseModel):
     server_name: str
     tool_name: str
     description: Optional[str] = None
-    relevance_score: float = Field(..., ge=0.0, le=1.0)
+    relevance_score: float = Field(..., ge=0.0)
     match_context: Optional[str] = None
 
 
@@ -59,7 +59,7 @@ class AgentSearchResult(BaseModel):
     trust_level: Optional[str] = None
     visibility: Optional[str] = None
     is_enabled: bool = False
-    relevance_score: float = Field(..., ge=0.0, le=1.0)
+    relevance_score: float = Field(..., ge=0.0)
     match_context: Optional[str] = None
 
 
