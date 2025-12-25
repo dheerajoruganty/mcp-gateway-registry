@@ -1,4 +1,3 @@
-import os
 import secrets
 from pathlib import Path
 from typing import Optional
@@ -30,8 +29,7 @@ class Settings(BaseSettings):
     # Embeddings settings [Default]
     embeddings_provider: str = "sentence-transformers"  # 'sentence-transformers' or 'litellm'
     embeddings_model_name: str = "all-MiniLM-L6-v2"
-    embeddings_model_dimensions: int = 384 # 384 for default and 1024 for bedrock titan v2
-    print(embeddings_provider, embeddings_model_name, embeddings_model_dimensions)
+    embeddings_model_dimensions: int = 384  # 384 for default and 1024 for bedrock titan v2
 
     # LiteLLM-specific settings (only used when embeddings_provider='litellm')
     # For Bedrock: Set to None and configure AWS credentials via standard methods
@@ -187,6 +185,18 @@ class Settings(BaseSettings):
     def agent_state_file_path(self) -> Path:
         """Path to agent state file (enabled/disabled tracking)."""
         return self.agents_dir / "agent_state.json"
+
+    @property
+    def peers_dir(self) -> Path:
+        """Directory for peer federation config storage."""
+        home_dir = Path.home()
+        return home_dir / "mcp-gateway" / "peers"
+
+    @property
+    def peer_sync_state_file_path(self) -> Path:
+        """Path to peer sync state file."""
+        home_dir = Path.home()
+        return home_dir / "mcp-gateway" / "peer_sync_state.json"
 
 
 # Global settings instance
