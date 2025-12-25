@@ -465,12 +465,35 @@ class AgentDiscoveryResponse(BaseModel):
 
 
 class SemanticDiscoveredAgent(BaseModel):
-    """Semantically discovered agent model."""
+    """Semantically discovered agent model with full AgentCard fields."""
 
+    # Core identification
     path: str = Field(..., description="Agent path")
     name: str = Field(..., description="Agent name")
-    relevance_score: float = Field(..., description="Semantic similarity score (0.0 to 1.0)")
     description: str = Field(..., description="Agent description")
+    url: str = Field(..., description="Agent endpoint URL")
+
+    # Semantic search relevance
+    relevance_score: float = Field(..., description="Semantic similarity score")
+
+    # Agent metadata
+    tags: List[str] = Field(default_factory=list, description="Agent tags")
+    skills: List[Dict[str, Any]] = Field(default_factory=list, description="Agent skills")
+    provider: Optional[Dict[str, str]] = Field(None, description="Provider information")
+    capabilities: Dict[str, Any] = Field(default_factory=dict, description="Agent capabilities")
+    trust_level: str = Field("unverified", description="Trust level")
+    num_stars: float = Field(0.0, description="Average rating")
+    version: Optional[str] = Field(None, description="Agent version")
+
+    # Security and authentication
+    security_schemes: Dict[str, Any] = Field(default_factory=dict, description="Security schemes")
+
+    # Timestamps
+    created_at: Optional[str] = Field(None, description="Creation timestamp")
+    updated_at: Optional[str] = Field(None, description="Last update timestamp")
+
+    class Config:
+        extra = "allow"  # Allow additional fields from API
 
 
 class AgentSemanticDiscoveryResponse(BaseModel):
