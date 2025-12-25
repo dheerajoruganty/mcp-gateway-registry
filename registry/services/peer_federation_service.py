@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from ..core.config import settings
 from ..schemas.peer_federation_schema import (
@@ -697,6 +697,21 @@ class PeerFederationService:
             servers_stored = self._store_synced_servers(peer_id, servers)
             agents_stored = self._store_synced_agents(peer_id, agents)
 
+            # Extract paths from fetched items for orphan detection
+            fetched_server_paths = [s.get("path", "") for s in servers]
+            fetched_agent_paths = [a.get("path", "") for a in agents]
+
+            # Detect orphaned items
+            orphaned_servers, orphaned_agents = self.detect_orphaned_items(
+                peer_id, fetched_server_paths, fetched_agent_paths
+            )
+
+            # Handle orphaned items (mark by default)
+            if orphaned_servers or orphaned_agents:
+                self.handle_orphaned_items(
+                    peer_id, orphaned_servers, orphaned_agents, action="mark"
+                )
+
             # Calculate duration
             duration_seconds = time.time() - start_time
 
@@ -723,8 +738,8 @@ class PeerFederationService:
                 success=True,
                 servers_synced=servers_stored,
                 agents_synced=agents_stored,
-                servers_orphaned=0,
-                agents_orphaned=0,
+                servers_orphaned=len(orphaned_servers),
+                agents_orphaned=len(orphaned_agents),
                 sync_generation=sync_status.current_generation,
                 full_sync=(since_generation == 0),
             )
@@ -735,7 +750,8 @@ class PeerFederationService:
 
             logger.info(
                 f"Successfully synced peer '{peer_id}': "
-                f"{servers_stored} servers, {agents_stored} agents "
+                f"{servers_stored} servers, {agents_stored} agents, "
+                f"{len(orphaned_servers)} orphaned servers, {len(orphaned_agents)} orphaned agents "
                 f"in {duration_seconds:.2f} seconds"
             )
 
@@ -744,8 +760,8 @@ class PeerFederationService:
                 peer_id=peer_id,
                 servers_synced=servers_stored,
                 agents_synced=agents_stored,
-                servers_orphaned=0,
-                agents_orphaned=0,
+                servers_orphaned=len(orphaned_servers),
+                agents_orphaned=len(orphaned_agents),
                 duration_seconds=duration_seconds,
                 new_generation=sync_status.current_generation,
             )
@@ -1042,6 +1058,335 @@ class PeerFederationService:
         return False
 
 
+    def detect_orphaned_items(
+        self,
+        peer_id: str,
+        current_server_paths: List[str],
+        current_agent_paths: List[str],
+    ) -> Tuple[List[str], List[str]]:
+        """
+        Detect items that exist locally but no longer exist in peer.
+
+        Args:
+            peer_id: Peer identifier
+            current_server_paths: Paths of servers currently in peer
+            current_agent_paths: Paths of agents currently in peer
+
+        Returns:
+            Tuple of (orphaned_server_paths, orphaned_agent_paths)
+        """
+        orphaned_servers = []
+        orphaned_agents = []
+
+        # Normalize current paths for comparison (ensure leading slash)
+        normalized_server_paths = {
+            p if p.startswith('/') else f'/{p}' for p in current_server_paths if p
+        }
+        normalized_agent_paths = {
+            p if p.startswith('/') else f'/{p}' for p in current_agent_paths if p
+        }
+
+        # Find all local servers with sync_metadata.source_peer_id == peer_id
+        for path, server in server_service.registered_servers.items():
+            server_dict = server if isinstance(server, dict) else server.model_dump()
+            sync_metadata = server_dict.get("sync_metadata", {})
+
+            if sync_metadata.get("source_peer_id") == peer_id:
+                # Extract and normalize original path for comparison
+                original_path = sync_metadata.get("original_path", "")
+                normalized_original = original_path if original_path.startswith('/') else f'/{original_path}'
+
+                # Check if normalized original path is in current peer paths
+                if normalized_original not in normalized_server_paths:
+                    orphaned_servers.append(path)
+                    logger.debug(
+                        f"Detected orphaned server: {path} (original: {original_path})"
+                    )
+
+        # Find all local agents with sync_metadata.source_peer_id == peer_id
+        for path, agent in agent_service.registered_agents.items():
+            agent_dict = agent if isinstance(agent, dict) else agent.model_dump()
+            sync_metadata = agent_dict.get("sync_metadata", {})
+
+            if sync_metadata.get("source_peer_id") == peer_id:
+                # Extract and normalize original path for comparison
+                original_path = sync_metadata.get("original_path", "")
+                normalized_original = original_path if original_path.startswith('/') else f'/{original_path}'
+
+                # Check if normalized original path is in current peer paths
+                if normalized_original not in normalized_agent_paths:
+                    orphaned_agents.append(path)
+                    logger.debug(
+                        f"Detected orphaned agent: {path} (original: {original_path})"
+                    )
+
+        logger.info(
+            f"Detected {len(orphaned_servers)} orphaned servers and "
+            f"{len(orphaned_agents)} orphaned agents from peer '{peer_id}'"
+        )
+
+        return orphaned_servers, orphaned_agents
+
+
+    def mark_item_as_orphaned(
+        self,
+        item_path: str,
+        item_type: Literal["server", "agent"],
+    ) -> bool:
+        """
+        Mark a synced item as orphaned.
+
+        Args:
+            item_path: Path of the item (prefixed)
+            item_type: "server" or "agent"
+
+        Returns:
+            True if marked successfully
+        """
+        try:
+            if item_type == "server":
+                existing_server = server_service.registered_servers.get(item_path)
+                if not existing_server:
+                    logger.warning(f"Server not found for orphan marking: {item_path}")
+                    return False
+
+                # Convert to dict if needed
+                server_dict = (
+                    existing_server
+                    if isinstance(existing_server, dict)
+                    else existing_server.model_dump()
+                )
+
+                # Update sync_metadata
+                sync_metadata = server_dict.get("sync_metadata", {})
+                sync_metadata["is_orphaned"] = True
+                sync_metadata["orphaned_at"] = datetime.now(timezone.utc).isoformat()
+
+                server_dict["sync_metadata"] = sync_metadata
+
+                # Update server
+                success = server_service.update_server(item_path, server_dict)
+                if success:
+                    logger.info(f"Marked server as orphaned: {item_path}")
+                return success
+
+            elif item_type == "agent":
+                existing_agent = agent_service.registered_agents.get(item_path)
+                if not existing_agent:
+                    logger.warning(f"Agent not found for orphan marking: {item_path}")
+                    return False
+
+                # Convert to dict if needed
+                agent_dict = (
+                    existing_agent
+                    if isinstance(existing_agent, dict)
+                    else existing_agent.model_dump()
+                )
+
+                # Update sync_metadata
+                sync_metadata = agent_dict.get("sync_metadata", {})
+                sync_metadata["is_orphaned"] = True
+                sync_metadata["orphaned_at"] = datetime.now(timezone.utc).isoformat()
+
+                agent_dict["sync_metadata"] = sync_metadata
+
+                # Update agent
+                updated_agent = agent_service.update_agent(item_path, agent_dict)
+                if updated_agent:
+                    logger.info(f"Marked agent as orphaned: {item_path}")
+                    return True
+                return False
+
+            else:
+                logger.error(f"Invalid item_type: {item_type}")
+                return False
+
+        except Exception as e:
+            logger.error(
+                f"Failed to mark item as orphaned: {item_path} ({item_type}): {e}",
+                exc_info=True,
+            )
+            return False
+
+
+    def handle_orphaned_items(
+        self,
+        peer_id: str,
+        orphaned_servers: List[str],
+        orphaned_agents: List[str],
+        action: Literal["mark", "delete"] = "mark",
+    ) -> int:
+        """
+        Handle orphaned items by marking or deleting them.
+
+        Args:
+            peer_id: Source peer ID
+            orphaned_servers: List of orphaned server paths
+            orphaned_agents: List of orphaned agent paths
+            action: "mark" to mark as orphaned, "delete" to remove
+
+        Returns:
+            Number of items handled
+        """
+        handled_count = 0
+
+        logger.info(
+            f"Handling {len(orphaned_servers)} orphaned servers and "
+            f"{len(orphaned_agents)} orphaned agents from peer '{peer_id}' "
+            f"(action: {action})"
+        )
+
+        # Handle orphaned servers
+        for server_path in orphaned_servers:
+            try:
+                if action == "mark":
+                    if self.mark_item_as_orphaned(server_path, "server"):
+                        handled_count += 1
+                elif action == "delete":
+                    success = server_service.remove_server(server_path)
+                    if success:
+                        logger.info(f"Deleted orphaned server: {server_path}")
+                        handled_count += 1
+                    else:
+                        logger.error(f"Failed to delete orphaned server: {server_path}")
+            except Exception as e:
+                logger.error(
+                    f"Failed to handle orphaned server {server_path}: {e}",
+                    exc_info=True,
+                )
+
+        # Handle orphaned agents
+        for agent_path in orphaned_agents:
+            try:
+                if action == "mark":
+                    if self.mark_item_as_orphaned(agent_path, "agent"):
+                        handled_count += 1
+                elif action == "delete":
+                    success = agent_service.remove_agent(agent_path)
+                    if success:
+                        logger.info(f"Deleted orphaned agent: {agent_path}")
+                        handled_count += 1
+                    else:
+                        logger.error(f"Failed to delete orphaned agent: {agent_path}")
+            except Exception as e:
+                logger.error(
+                    f"Failed to handle orphaned agent {agent_path}: {e}", exc_info=True
+                )
+
+        logger.info(
+            f"Successfully handled {handled_count}/{len(orphaned_servers) + len(orphaned_agents)} "
+            f"orphaned items from peer '{peer_id}'"
+        )
+
+        return handled_count
+
+
+    def set_local_override(
+        self,
+        item_path: str,
+        item_type: Literal["server", "agent"],
+        override: bool = True,
+    ) -> bool:
+        """
+        Set or clear local override flag for a synced item.
+
+        When override=True, sync will skip this item to preserve local changes.
+
+        Args:
+            item_path: Path of the item
+            item_type: "server" or "agent"
+            override: True to set override, False to clear
+
+        Returns:
+            True if set successfully
+        """
+        try:
+            if item_type == "server":
+                existing_server = server_service.registered_servers.get(item_path)
+                if not existing_server:
+                    logger.warning(
+                        f"Server not found for local override: {item_path}"
+                    )
+                    return False
+
+                # Convert to dict if needed
+                server_dict = (
+                    existing_server
+                    if isinstance(existing_server, dict)
+                    else existing_server.model_dump()
+                )
+
+                # Update sync_metadata
+                sync_metadata = server_dict.get("sync_metadata", {})
+                sync_metadata["local_overrides"] = override
+
+                server_dict["sync_metadata"] = sync_metadata
+
+                # Update server
+                success = server_service.update_server(item_path, server_dict)
+                if success:
+                    logger.info(
+                        f"Set local override to {override} for server: {item_path}"
+                    )
+                return success
+
+            elif item_type == "agent":
+                existing_agent = agent_service.registered_agents.get(item_path)
+                if not existing_agent:
+                    logger.warning(f"Agent not found for local override: {item_path}")
+                    return False
+
+                # Convert to dict if needed
+                agent_dict = (
+                    existing_agent
+                    if isinstance(existing_agent, dict)
+                    else existing_agent.model_dump()
+                )
+
+                # Update sync_metadata
+                sync_metadata = agent_dict.get("sync_metadata", {})
+                sync_metadata["local_overrides"] = override
+
+                agent_dict["sync_metadata"] = sync_metadata
+
+                # Update agent
+                updated_agent = agent_service.update_agent(item_path, agent_dict)
+                if updated_agent:
+                    logger.info(
+                        f"Set local override to {override} for agent: {item_path}"
+                    )
+                    return True
+                return False
+
+            else:
+                logger.error(f"Invalid item_type: {item_type}")
+                return False
+
+        except Exception as e:
+            logger.error(
+                f"Failed to set local override for item: {item_path} ({item_type}): {e}",
+                exc_info=True,
+            )
+            return False
+
+
+    def is_locally_overridden(
+        self,
+        item: Dict[str, Any],
+    ) -> bool:
+        """
+        Check if an item has local override flag set.
+
+        Args:
+            item: Server or agent data dict
+
+        Returns:
+            True if item has local override
+        """
+        sync_metadata = item.get("sync_metadata", {})
+        return sync_metadata.get("local_overrides", False)
+
+
     def _store_synced_servers(
         self,
         peer_id: str,
@@ -1094,6 +1439,18 @@ class PeerFederationService:
                         prefixed_path
                     )
                     if existing_server:
+                        # Check if locally overridden - if so, skip update
+                        existing_dict = (
+                            existing_server
+                            if isinstance(existing_server, dict)
+                            else existing_server.model_dump()
+                        )
+                        if self.is_locally_overridden(existing_dict):
+                            logger.debug(
+                                f"Skipping update for locally overridden server: {prefixed_path}"
+                            )
+                            continue
+
                         # Update existing server - returns bool
                         success = server_service.update_server(prefixed_path, server_data)
                         if success:
@@ -1177,6 +1534,18 @@ class PeerFederationService:
                     existing_agent = agent_service.registered_agents.get(prefixed_path)
 
                     if existing_agent:
+                        # Check if locally overridden - if so, skip update
+                        existing_dict = (
+                            existing_agent
+                            if isinstance(existing_agent, dict)
+                            else existing_agent.model_dump()
+                        )
+                        if self.is_locally_overridden(existing_dict):
+                            logger.debug(
+                                f"Skipping update for locally overridden agent: {prefixed_path}"
+                            )
+                            continue
+
                         # Update existing agent - returns AgentCard on success
                         updated_agent = agent_service.update_agent(prefixed_path, agent_data)
                         if updated_agent:
