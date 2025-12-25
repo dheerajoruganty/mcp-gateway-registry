@@ -1515,15 +1515,27 @@ def cmd_agent_search(args: argparse.Namespace) -> int:
         )
 
         if not response.agents:
-            logger.info("No agents found matching the query")
+            if args.json:
+                print(json.dumps({"agents": [], "query": args.query}, indent=2))
+            else:
+                logger.info("No agents found matching the query")
             return 0
 
-        logger.info(f"Found {len(response.agents)} matching agents:\n")
-        for agent in response.agents:
-            print(f"{agent.name} ({agent.path})")
-            print(f"  Relevance: {agent.relevance_score:.2%}")
-            print(f"  {agent.description[:100]}...")
-            print()
+        if args.json:
+            # Output full JSON response
+            output = {
+                "query": args.query,
+                "agents": [agent.model_dump() for agent in response.agents]
+            }
+            print(json.dumps(output, indent=2, default=str))
+        else:
+            # Human-readable output
+            logger.info(f"Found {len(response.agents)} matching agents:\n")
+            for agent in response.agents:
+                print(f"{agent.name} ({agent.path})")
+                print(f"  Relevance: {agent.relevance_score:.2%}")
+                print(f"  {agent.description[:100]}...")
+                print()
 
         return 0
 
@@ -2448,6 +2460,11 @@ Examples:
         type=int,
         default=10,
         help="Maximum number of results (default: 10)"
+    )
+    agent_search_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON"
     )
 
     # Agent rate command
