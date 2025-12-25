@@ -1110,27 +1110,11 @@ async def discover_agents_semantic(
             if not _filter_agents_by_access([agent_card], user_context):
                 continue
 
-            agent_info = AgentInfo(
-                name=agent_card.name,
-                description=agent_card.description,
-                path=agent_card.path,
-                url=str(agent_card.url),
-                tags=agent_card.tags,
-                skills=[s.name for s in agent_card.skills],
-                num_skills=len(agent_card.skills),
-                num_stars=agent_card.num_stars,
-                is_enabled=True,
-                provider=agent_card.provider.organization if agent_card.provider else None,
-                streaming=agent_card.capabilities.get("streaming", False),
-                trust_level=agent_card.trust_level,
-            )
+            # Return full agent card with relevance score
+            agent_data = agent_card.model_dump()
+            agent_data["relevance_score"] = result.get("relevance_score", 0.0)
 
-            accessible_results.append(
-                {
-                    **agent_info.model_dump(),
-                    "relevance_score": result.get("relevance_score", 0.0),
-                }
-            )
+            accessible_results.append(agent_data)
 
         logger.info(
             f"Semantic search returned {len(accessible_results)} agents for query: {query}"
