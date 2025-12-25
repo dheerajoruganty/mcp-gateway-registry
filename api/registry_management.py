@@ -1073,6 +1073,43 @@ def cmd_rescan(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_server_search(args: argparse.Namespace) -> int:
+    """
+    Perform semantic search for servers.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.semantic_search_servers(
+            query=args.query,
+            max_results=args.max_results
+        )
+
+        if not response.servers:
+            logger.info("No servers found matching the query")
+            return 0
+
+        logger.info(f"Found {len(response.servers)} matching servers:\n")
+        for server in response.servers:
+            print(f"{server.server_name} ({server.path})")
+            print(f"  Relevance: {server.relevance_score:.2%}")
+            if server.tags:
+                print(f"  Tags: {', '.join(server.tags)}")
+            print(f"  {server.description[:100]}...")
+            print()
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Semantic search failed: {e}")
+        return 1
+
+
 # Agent Management Command Handlers
 
 
@@ -2282,6 +2319,20 @@ Examples:
         help="Output raw JSON"
     )
 
+    # Server search command
+    server_search_parser = subparsers.add_parser("server-search", help="Semantic search for servers")
+    server_search_parser.add_argument(
+        "--query",
+        required=True,
+        help="Natural language search query"
+    )
+    server_search_parser.add_argument(
+        "--max-results",
+        type=int,
+        default=10,
+        help="Maximum number of results (default: 10)"
+    )
+
     # Agent Management Commands
 
     # Agent register command
@@ -2627,6 +2678,7 @@ Examples:
         "server-rating": cmd_server_rating,
         "security-scan": cmd_security_scan,
         "rescan": cmd_rescan,
+        "server-search": cmd_server_search,
         "agent-register": cmd_agent_register,
         "agent-list": cmd_agent_list,
         "agent-get": cmd_agent_get,

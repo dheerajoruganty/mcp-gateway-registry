@@ -479,6 +479,25 @@ class AgentSemanticDiscoveryResponse(BaseModel):
     agents: List[SemanticDiscoveredAgent] = Field(..., description="Semantically discovered agents")
 
 
+class SemanticDiscoveredServer(BaseModel):
+    """Semantically discovered server model."""
+
+    path: str = Field(..., description="Server path")
+    server_name: str = Field(..., description="Server name")
+    relevance_score: float = Field(..., description="Semantic similarity score")
+    description: str = Field(..., description="Server description")
+    tags: List[str] = Field(default_factory=list, description="Server tags")
+    num_tools: int = Field(..., description="Number of tools")
+    is_enabled: bool = Field(..., description="Whether server is enabled")
+
+
+class ServerSemanticSearchResponse(BaseModel):
+    """Server semantic search response model."""
+
+    query: str = Field(..., description="Search query")
+    servers: List[SemanticDiscoveredServer] = Field(..., description="Matching servers")
+
+
 class RatingDetail(BaseModel):
     """Individual rating detail."""
 
@@ -1428,6 +1447,43 @@ class RegistryClient:
 
         result = AgentSemanticDiscoveryResponse(**response.json())
         logger.info(f"Discovered {len(result.agents)} agents via semantic search")
+        return result
+
+
+    def semantic_search_servers(
+        self,
+        query: str,
+        max_results: int = 10
+    ) -> ServerSemanticSearchResponse:
+        """
+        Search for servers using semantic search (vector search).
+
+        Args:
+            query: Natural language query (e.g., "time and date services")
+            max_results: Maximum number of results (default: 10, max: 100)
+
+        Returns:
+            Server semantic search response
+
+        Raises:
+            requests.HTTPError: If search fails (400 for bad request, 500 for search error)
+        """
+        logger.info(f"Searching servers semantically: {query}")
+
+        request_data = {
+            "query": query,
+            "entity_types": ["mcp_server"],
+            "max_results": max_results
+        }
+
+        response = self._make_request(
+            method="POST",
+            endpoint="/api/search/semantic",
+            json_data=request_data
+        )
+
+        result = ServerSemanticSearchResponse(**response.json())
+        logger.info(f"Found {len(result.servers)} servers via semantic search")
         return result
 
 
