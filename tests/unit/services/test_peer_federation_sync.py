@@ -1014,3 +1014,599 @@ class TestStoreSyncedAgents:
 
         # Should return 0 for failed update
         assert count == 0
+
+
+@pytest.fixture
+def sample_servers():
+    """Sample servers for filtering tests."""
+    return [
+        {"path": "/server-a", "tags": ["production", "api"]},
+        {"path": "/server-b", "tags": ["staging"]},
+        {"path": "/server-c", "categories": ["internal"]},
+        {"path": "/server-d", "tags": ["production", "database"]},
+        {"path": "/server-e"},  # No tags or categories
+    ]
+
+
+@pytest.fixture
+def sample_agents():
+    """Sample agents for filtering tests."""
+    return [
+        {"path": "/agent-a", "tags": ["ai", "production"]},
+        {"path": "/agent-b", "tags": ["utility"]},
+        {"path": "/agent-c", "categories": ["automation"]},
+        {"path": "/agent-d"},  # No tags or categories
+    ]
+
+
+@pytest.fixture
+def whitelist_peer_config():
+    """Peer config with whitelist sync mode."""
+    return PeerRegistryConfig(
+        peer_id="test-peer",
+        name="Test Peer",
+        endpoint="https://peer.example.com",
+        enabled=True,
+        sync_mode="whitelist",
+        whitelist_servers=["/server-a", "/server-c"],
+        whitelist_agents=["/agent-a"],
+    )
+
+
+@pytest.fixture
+def tag_filter_peer_config():
+    """Peer config with tag_filter sync mode."""
+    return PeerRegistryConfig(
+        peer_id="test-peer",
+        name="Test Peer",
+        endpoint="https://peer.example.com",
+        enabled=True,
+        sync_mode="tag_filter",
+        tag_filters=["production"],
+    )
+
+
+@pytest.fixture
+def all_mode_peer_config():
+    """Peer config with all sync mode."""
+    return PeerRegistryConfig(
+        peer_id="test-peer",
+        name="Test Peer",
+        endpoint="https://peer.example.com",
+        enabled=True,
+        sync_mode="all",
+    )
+
+
+@pytest.mark.unit
+class TestFilterServersByConfig:
+    """Tests for _filter_servers_by_config method."""
+
+    def test_sync_mode_all_returns_all_servers(
+        self, mock_settings, all_mode_peer_config, sample_servers
+    ):
+        """Test sync_mode='all' returns all servers."""
+        service = PeerFederationService()
+        service.add_peer(all_mode_peer_config)
+
+        filtered = service._filter_servers_by_config(
+            sample_servers, all_mode_peer_config
+        )
+
+        assert len(filtered) == len(sample_servers)
+        assert filtered == sample_servers
+
+    def test_sync_mode_whitelist_filters_by_whitelist_servers(
+        self, mock_settings, whitelist_peer_config, sample_servers
+    ):
+        """Test sync_mode='whitelist' filters by whitelist_servers."""
+        service = PeerFederationService()
+        service.add_peer(whitelist_peer_config)
+
+        filtered = service._filter_servers_by_config(
+            sample_servers, whitelist_peer_config
+        )
+
+        # Should only include /server-a and /server-c
+        assert len(filtered) == 2
+        paths = [s["path"] for s in filtered]
+        assert "/server-a" in paths
+        assert "/server-c" in paths
+        assert "/server-b" not in paths
+
+    def test_sync_mode_whitelist_with_empty_whitelist_returns_empty(
+        self, mock_settings, sample_servers
+    ):
+        """Test sync_mode='whitelist' with empty whitelist returns empty list."""
+        peer_config = PeerRegistryConfig(
+            peer_id="test-peer",
+            name="Test Peer",
+            endpoint="https://peer.example.com",
+            enabled=True,
+            sync_mode="whitelist",
+            whitelist_servers=[],  # Empty whitelist
+        )
+
+        service = PeerFederationService()
+        service.add_peer(peer_config)
+
+        filtered = service._filter_servers_by_config(sample_servers, peer_config)
+
+        assert len(filtered) == 0
+        assert filtered == []
+
+    def test_sync_mode_whitelist_with_none_whitelist_returns_empty(
+        self, mock_settings, sample_servers, whitelist_peer_config
+    ):
+        """Test sync_mode='whitelist' with None whitelist returns empty list."""
+        # Modify config to have None for whitelist_servers
+        # Note: Pydantic will convert None to empty list, so we test the behavior
+        whitelist_peer_config.whitelist_servers = []
+
+        service = PeerFederationService()
+        service.add_peer(whitelist_peer_config)
+
+        filtered = service._filter_servers_by_config(sample_servers, whitelist_peer_config)
+
+        assert len(filtered) == 0
+        assert filtered == []
+
+    def test_sync_mode_tag_filter_filters_by_tags(
+        self, mock_settings, tag_filter_peer_config, sample_servers
+    ):
+        """Test sync_mode='tag_filter' filters by tags."""
+        service = PeerFederationService()
+        service.add_peer(tag_filter_peer_config)
+
+        filtered = service._filter_servers_by_config(
+            sample_servers, tag_filter_peer_config
+        )
+
+        # Should include servers with "production" tag
+        assert len(filtered) == 2
+        paths = [s["path"] for s in filtered]
+        assert "/server-a" in paths  # has production tag
+        assert "/server-d" in paths  # has production tag
+        assert "/server-b" not in paths  # only has staging
+        assert "/server-c" not in paths  # only has internal category
+        assert "/server-e" not in paths  # has no tags
+
+    def test_sync_mode_tag_filter_with_empty_tag_filters_returns_empty(
+        self, mock_settings, sample_servers
+    ):
+        """Test sync_mode='tag_filter' with empty tag_filters returns empty list."""
+        peer_config = PeerRegistryConfig(
+            peer_id="test-peer",
+            name="Test Peer",
+            endpoint="https://peer.example.com",
+            enabled=True,
+            sync_mode="tag_filter",
+            tag_filters=[],  # Empty tag filters
+        )
+
+        service = PeerFederationService()
+        service.add_peer(peer_config)
+
+        filtered = service._filter_servers_by_config(sample_servers, peer_config)
+
+        assert len(filtered) == 0
+        assert filtered == []
+
+    def test_sync_mode_tag_filter_with_none_tag_filters_returns_empty(
+        self, mock_settings, sample_servers, tag_filter_peer_config
+    ):
+        """Test sync_mode='tag_filter' with None tag_filters returns empty list."""
+        # Modify config to have empty tag_filters
+        # Note: Pydantic converts None to empty list, so we test the behavior
+        tag_filter_peer_config.tag_filters = []
+
+        service = PeerFederationService()
+        service.add_peer(tag_filter_peer_config)
+
+        filtered = service._filter_servers_by_config(sample_servers, tag_filter_peer_config)
+
+        assert len(filtered) == 0
+        assert filtered == []
+
+    def test_sync_mode_tag_filter_matches_categories(
+        self, mock_settings, sample_servers
+    ):
+        """Test sync_mode='tag_filter' matches categories field."""
+        peer_config = PeerRegistryConfig(
+            peer_id="test-peer",
+            name="Test Peer",
+            endpoint="https://peer.example.com",
+            enabled=True,
+            sync_mode="tag_filter",
+            tag_filters=["internal"],
+        )
+
+        service = PeerFederationService()
+        service.add_peer(peer_config)
+
+        filtered = service._filter_servers_by_config(sample_servers, peer_config)
+
+        # Should include /server-c which has "internal" in categories
+        assert len(filtered) == 1
+        assert filtered[0]["path"] == "/server-c"
+
+    def test_sync_mode_unknown_returns_all_servers(
+        self, mock_settings, sample_servers, all_mode_peer_config
+    ):
+        """Test that code handles unknown sync_mode gracefully."""
+        service = PeerFederationService()
+        service.add_peer(all_mode_peer_config)
+
+        # Directly modify sync_mode to simulate an unknown mode
+        # This bypasses Pydantic validation to test fallback behavior
+        all_mode_peer_config.sync_mode = "unknown_mode"
+
+        filtered = service._filter_servers_by_config(sample_servers, all_mode_peer_config)
+
+        # Should return all servers as fallback
+        assert len(filtered) == len(sample_servers)
+        assert filtered == sample_servers
+
+
+@pytest.mark.unit
+class TestFilterAgentsByConfig:
+    """Tests for _filter_agents_by_config method."""
+
+    def test_sync_mode_all_returns_all_agents(
+        self, mock_settings, all_mode_peer_config, sample_agents
+    ):
+        """Test sync_mode='all' returns all agents."""
+        service = PeerFederationService()
+        service.add_peer(all_mode_peer_config)
+
+        filtered = service._filter_agents_by_config(sample_agents, all_mode_peer_config)
+
+        assert len(filtered) == len(sample_agents)
+        assert filtered == sample_agents
+
+    def test_sync_mode_whitelist_filters_by_whitelist_agents(
+        self, mock_settings, whitelist_peer_config, sample_agents
+    ):
+        """Test sync_mode='whitelist' filters by whitelist_agents."""
+        service = PeerFederationService()
+        service.add_peer(whitelist_peer_config)
+
+        filtered = service._filter_agents_by_config(sample_agents, whitelist_peer_config)
+
+        # Should only include /agent-a
+        assert len(filtered) == 1
+        assert filtered[0]["path"] == "/agent-a"
+
+    def test_sync_mode_whitelist_with_empty_whitelist_returns_empty(
+        self, mock_settings, sample_agents
+    ):
+        """Test sync_mode='whitelist' with empty whitelist returns empty list."""
+        peer_config = PeerRegistryConfig(
+            peer_id="test-peer",
+            name="Test Peer",
+            endpoint="https://peer.example.com",
+            enabled=True,
+            sync_mode="whitelist",
+            whitelist_agents=[],  # Empty whitelist
+        )
+
+        service = PeerFederationService()
+        service.add_peer(peer_config)
+
+        filtered = service._filter_agents_by_config(sample_agents, peer_config)
+
+        assert len(filtered) == 0
+        assert filtered == []
+
+    def test_sync_mode_whitelist_with_none_whitelist_returns_empty(
+        self, mock_settings, sample_agents, whitelist_peer_config
+    ):
+        """Test sync_mode='whitelist' with None whitelist returns empty list."""
+        # Modify config to have empty whitelist_agents
+        # Note: Pydantic converts None to empty list, so we test the behavior
+        whitelist_peer_config.whitelist_agents = []
+
+        service = PeerFederationService()
+        service.add_peer(whitelist_peer_config)
+
+        filtered = service._filter_agents_by_config(sample_agents, whitelist_peer_config)
+
+        assert len(filtered) == 0
+        assert filtered == []
+
+    def test_sync_mode_tag_filter_filters_by_tags(
+        self, mock_settings, tag_filter_peer_config, sample_agents
+    ):
+        """Test sync_mode='tag_filter' filters by tags."""
+        service = PeerFederationService()
+        service.add_peer(tag_filter_peer_config)
+
+        filtered = service._filter_agents_by_config(sample_agents, tag_filter_peer_config)
+
+        # Should include agents with "production" tag
+        assert len(filtered) == 1
+        assert filtered[0]["path"] == "/agent-a"  # has production tag
+
+    def test_sync_mode_tag_filter_with_empty_tag_filters_returns_empty(
+        self, mock_settings, sample_agents
+    ):
+        """Test sync_mode='tag_filter' with empty tag_filters returns empty list."""
+        peer_config = PeerRegistryConfig(
+            peer_id="test-peer",
+            name="Test Peer",
+            endpoint="https://peer.example.com",
+            enabled=True,
+            sync_mode="tag_filter",
+            tag_filters=[],  # Empty tag filters
+        )
+
+        service = PeerFederationService()
+        service.add_peer(peer_config)
+
+        filtered = service._filter_agents_by_config(sample_agents, peer_config)
+
+        assert len(filtered) == 0
+        assert filtered == []
+
+    def test_sync_mode_tag_filter_with_none_tag_filters_returns_empty(
+        self, mock_settings, sample_agents, tag_filter_peer_config
+    ):
+        """Test sync_mode='tag_filter' with None tag_filters returns empty list."""
+        # Modify config to have empty tag_filters
+        # Note: Pydantic converts None to empty list, so we test the behavior
+        tag_filter_peer_config.tag_filters = []
+
+        service = PeerFederationService()
+        service.add_peer(tag_filter_peer_config)
+
+        filtered = service._filter_agents_by_config(sample_agents, tag_filter_peer_config)
+
+        assert len(filtered) == 0
+        assert filtered == []
+
+    def test_sync_mode_tag_filter_matches_categories(self, mock_settings, sample_agents):
+        """Test sync_mode='tag_filter' matches categories field."""
+        peer_config = PeerRegistryConfig(
+            peer_id="test-peer",
+            name="Test Peer",
+            endpoint="https://peer.example.com",
+            enabled=True,
+            sync_mode="tag_filter",
+            tag_filters=["automation"],
+        )
+
+        service = PeerFederationService()
+        service.add_peer(peer_config)
+
+        filtered = service._filter_agents_by_config(sample_agents, peer_config)
+
+        # Should include /agent-c which has "automation" in categories
+        assert len(filtered) == 1
+        assert filtered[0]["path"] == "/agent-c"
+
+    def test_sync_mode_unknown_returns_all_agents(
+        self, mock_settings, sample_agents, all_mode_peer_config
+    ):
+        """Test that code handles unknown sync_mode gracefully."""
+        service = PeerFederationService()
+        service.add_peer(all_mode_peer_config)
+
+        # Directly modify sync_mode to simulate an unknown mode
+        # This bypasses Pydantic validation to test fallback behavior
+        all_mode_peer_config.sync_mode = "unknown_mode"
+
+        filtered = service._filter_agents_by_config(sample_agents, all_mode_peer_config)
+
+        # Should return all agents as fallback
+        assert len(filtered) == len(sample_agents)
+        assert filtered == sample_agents
+
+
+@pytest.mark.unit
+class TestMatchesTagFilter:
+    """Tests for _matches_tag_filter method."""
+
+    def test_matches_when_tag_in_tags_field(self, mock_settings):
+        """Test matches when tag is in 'tags' field."""
+        service = PeerFederationService()
+
+        item = {"path": "/test", "tags": ["production", "api"]}
+        tag_filters = ["production"]
+
+        assert service._matches_tag_filter(item, tag_filters) is True
+
+    def test_matches_when_tag_in_categories_field(self, mock_settings):
+        """Test matches when tag is in 'categories' field."""
+        service = PeerFederationService()
+
+        item = {"path": "/test", "categories": ["internal", "database"]}
+        tag_filters = ["internal"]
+
+        assert service._matches_tag_filter(item, tag_filters) is True
+
+    def test_matches_with_multiple_filters(self, mock_settings):
+        """Test matches with multiple tag filters."""
+        service = PeerFederationService()
+
+        item = {"path": "/test", "tags": ["staging"]}
+        tag_filters = ["production", "staging", "development"]
+
+        # Should match if any filter matches
+        assert service._matches_tag_filter(item, tag_filters) is True
+
+    def test_returns_false_when_no_match(self, mock_settings):
+        """Test returns False when no match."""
+        service = PeerFederationService()
+
+        item = {"path": "/test", "tags": ["staging"]}
+        tag_filters = ["production"]
+
+        assert service._matches_tag_filter(item, tag_filters) is False
+
+    def test_returns_false_for_empty_tag_filters(self, mock_settings):
+        """Test returns False for empty tag_filters."""
+        service = PeerFederationService()
+
+        item = {"path": "/test", "tags": ["production"]}
+        tag_filters = []
+
+        assert service._matches_tag_filter(item, tag_filters) is False
+
+    def test_handles_missing_tags_field(self, mock_settings):
+        """Test handles missing 'tags' field."""
+        service = PeerFederationService()
+
+        item = {"path": "/test"}  # No tags field
+        tag_filters = ["production"]
+
+        assert service._matches_tag_filter(item, tag_filters) is False
+
+    def test_handles_missing_categories_field(self, mock_settings):
+        """Test handles missing 'categories' field."""
+        service = PeerFederationService()
+
+        item = {"path": "/test", "tags": ["staging"]}  # No categories field
+        tag_filters = ["internal"]
+
+        assert service._matches_tag_filter(item, tag_filters) is False
+
+    def test_handles_non_list_tags_field(self, mock_settings):
+        """Test handles non-list 'tags' field."""
+        service = PeerFederationService()
+
+        item = {"path": "/test", "tags": "not-a-list"}
+        tag_filters = ["production"]
+
+        # Should handle gracefully and return False
+        assert service._matches_tag_filter(item, tag_filters) is False
+
+    def test_handles_non_list_categories_field(self, mock_settings):
+        """Test handles non-list 'categories' field."""
+        service = PeerFederationService()
+
+        item = {"path": "/test", "categories": "not-a-list"}
+        tag_filters = ["internal"]
+
+        # Should handle gracefully and return False
+        assert service._matches_tag_filter(item, tag_filters) is False
+
+    def test_matches_combined_tags_and_categories(self, mock_settings):
+        """Test matches when combining tags and categories."""
+        service = PeerFederationService()
+
+        item = {
+            "path": "/test",
+            "tags": ["production"],
+            "categories": ["internal"],
+        }
+        tag_filters = ["internal"]
+
+        # Should match from categories
+        assert service._matches_tag_filter(item, tag_filters) is True
+
+        tag_filters = ["production"]
+        # Should match from tags
+        assert service._matches_tag_filter(item, tag_filters) is True
+
+
+@pytest.mark.unit
+class TestSyncPeerWithFiltering:
+    """Integration tests for sync_peer with filtering."""
+
+    def test_sync_peer_applies_whitelist_filters(
+        self,
+        mock_settings,
+        mock_server_service,
+        mock_agent_service,
+        whitelist_peer_config,
+    ):
+        """Test sync_peer applies whitelist filters correctly."""
+        service = PeerFederationService()
+        service.add_peer(whitelist_peer_config)
+
+        # Mock PeerRegistryClient
+        with patch(
+            "registry.services.peer_federation_service.PeerRegistryClient"
+        ) as mock_client_class:
+            mock_client = MagicMock()
+            # Return servers that should be filtered
+            mock_client.fetch_servers.return_value = [
+                {"path": "/server-a", "name": "Server A"},  # In whitelist
+                {"path": "/server-b", "name": "Server B"},  # Not in whitelist
+                {"path": "/server-c", "name": "Server C"},  # In whitelist
+            ]
+            # Return agents that should be filtered
+            mock_client.fetch_agents.return_value = [
+                {
+                    "path": "/agent-a",
+                    "name": "Agent A",
+                    "version": "1.0.0",
+                    "description": "Agent A",
+                    "url": "https://example.com/agent-a",
+                },  # In whitelist
+                {
+                    "path": "/agent-b",
+                    "name": "Agent B",
+                    "version": "1.0.0",
+                    "description": "Agent B",
+                    "url": "https://example.com/agent-b",
+                },  # Not in whitelist
+            ]
+            mock_client_class.return_value = mock_client
+
+            result = service.sync_peer(whitelist_peer_config.peer_id)
+
+            # Should only sync whitelisted items
+            assert result.success is True
+            assert result.servers_synced == 2  # server-a and server-c
+            assert result.agents_synced == 1  # agent-a
+
+    def test_sync_peer_applies_tag_filters(
+        self,
+        mock_settings,
+        mock_server_service,
+        mock_agent_service,
+        tag_filter_peer_config,
+    ):
+        """Test sync_peer applies tag filters correctly."""
+        service = PeerFederationService()
+        service.add_peer(tag_filter_peer_config)
+
+        # Mock PeerRegistryClient
+        with patch(
+            "registry.services.peer_federation_service.PeerRegistryClient"
+        ) as mock_client_class:
+            mock_client = MagicMock()
+            # Return servers with various tags
+            mock_client.fetch_servers.return_value = [
+                {"path": "/server-a", "name": "Server A", "tags": ["production"]},
+                {"path": "/server-b", "name": "Server B", "tags": ["staging"]},
+                {"path": "/server-c", "name": "Server C", "tags": ["production", "api"]},
+            ]
+            # Return agents with various tags
+            mock_client.fetch_agents.return_value = [
+                {
+                    "path": "/agent-a",
+                    "name": "Agent A",
+                    "version": "1.0.0",
+                    "description": "Agent A",
+                    "url": "https://example.com/agent-a",
+                    "tags": ["production"],
+                },
+                {
+                    "path": "/agent-b",
+                    "name": "Agent B",
+                    "version": "1.0.0",
+                    "description": "Agent B",
+                    "url": "https://example.com/agent-b",
+                    "tags": ["utility"],
+                },
+            ]
+            mock_client_class.return_value = mock_client
+
+            result = service.sync_peer(tag_filter_peer_config.peer_id)
+
+            # Should only sync items with production tag
+            assert result.success is True
+            assert result.servers_synced == 2  # server-a and server-c
+            assert result.agents_synced == 1  # agent-a

@@ -684,6 +684,15 @@ class PeerFederationService:
                 f"from peer '{peer_id}'"
             )
 
+            # Apply filters based on peer config
+            servers = self._filter_servers_by_config(servers, peer_config)
+            agents = self._filter_agents_by_config(agents, peer_config)
+
+            logger.info(
+                f"After filtering: {len(servers)} servers and {len(agents)} agents "
+                f"from peer '{peer_id}'"
+            )
+
             # Store fetched items
             servers_stored = self._store_synced_servers(peer_id, servers)
             agents_stored = self._store_synced_agents(peer_id, agents)
@@ -852,6 +861,186 @@ class PeerFederationService:
         )
 
         return results
+
+    def _filter_servers_by_config(
+        self,
+        servers: List[Dict[str, Any]],
+        peer_config: PeerRegistryConfig,
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter servers based on peer sync configuration.
+
+        Args:
+            servers: List of server data from peer
+            peer_config: Peer configuration with sync settings
+
+        Returns:
+            Filtered list of servers
+        """
+        if peer_config.sync_mode == "all":
+            return servers
+
+        if peer_config.sync_mode == "whitelist":
+            if not peer_config.whitelist_servers:
+                logger.debug(
+                    f"Peer '{peer_config.peer_id}' has empty whitelist_servers, "
+                    "returning empty list"
+                )
+                return []
+
+            filtered = []
+            for server in servers:
+                server_path = server.get("path", "")
+                if server_path in peer_config.whitelist_servers:
+                    filtered.append(server)
+                    logger.debug(
+                        f"Server '{server_path}' matches whitelist for peer "
+                        f"'{peer_config.peer_id}'"
+                    )
+
+            logger.info(
+                f"Filtered {len(servers)} servers to {len(filtered)} using whitelist "
+                f"for peer '{peer_config.peer_id}'"
+            )
+            return filtered
+
+        if peer_config.sync_mode == "tag_filter":
+            if not peer_config.tag_filters:
+                logger.debug(
+                    f"Peer '{peer_config.peer_id}' has empty tag_filters, "
+                    "returning empty list"
+                )
+                return []
+
+            filtered = []
+            for server in servers:
+                if self._matches_tag_filter(server, peer_config.tag_filters):
+                    filtered.append(server)
+                    logger.debug(
+                        f"Server '{server.get('path', '')}' matches tag filter "
+                        f"for peer '{peer_config.peer_id}'"
+                    )
+
+            logger.info(
+                f"Filtered {len(servers)} servers to {len(filtered)} using tag filter "
+                f"for peer '{peer_config.peer_id}'"
+            )
+            return filtered
+
+        logger.warning(
+            f"Unknown sync_mode '{peer_config.sync_mode}' for peer "
+            f"'{peer_config.peer_id}', returning all servers"
+        )
+        return servers
+
+
+    def _filter_agents_by_config(
+        self,
+        agents: List[Dict[str, Any]],
+        peer_config: PeerRegistryConfig,
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter agents based on peer sync configuration.
+
+        Args:
+            agents: List of agent data from peer
+            peer_config: Peer configuration with sync settings
+
+        Returns:
+            Filtered list of agents
+        """
+        if peer_config.sync_mode == "all":
+            return agents
+
+        if peer_config.sync_mode == "whitelist":
+            if not peer_config.whitelist_agents:
+                logger.debug(
+                    f"Peer '{peer_config.peer_id}' has empty whitelist_agents, "
+                    "returning empty list"
+                )
+                return []
+
+            filtered = []
+            for agent in agents:
+                agent_path = agent.get("path", "")
+                if agent_path in peer_config.whitelist_agents:
+                    filtered.append(agent)
+                    logger.debug(
+                        f"Agent '{agent_path}' matches whitelist for peer "
+                        f"'{peer_config.peer_id}'"
+                    )
+
+            logger.info(
+                f"Filtered {len(agents)} agents to {len(filtered)} using whitelist "
+                f"for peer '{peer_config.peer_id}'"
+            )
+            return filtered
+
+        if peer_config.sync_mode == "tag_filter":
+            if not peer_config.tag_filters:
+                logger.debug(
+                    f"Peer '{peer_config.peer_id}' has empty tag_filters, "
+                    "returning empty list"
+                )
+                return []
+
+            filtered = []
+            for agent in agents:
+                if self._matches_tag_filter(agent, peer_config.tag_filters):
+                    filtered.append(agent)
+                    logger.debug(
+                        f"Agent '{agent.get('path', '')}' matches tag filter "
+                        f"for peer '{peer_config.peer_id}'"
+                    )
+
+            logger.info(
+                f"Filtered {len(agents)} agents to {len(filtered)} using tag filter "
+                f"for peer '{peer_config.peer_id}'"
+            )
+            return filtered
+
+        logger.warning(
+            f"Unknown sync_mode '{peer_config.sync_mode}' for peer "
+            f"'{peer_config.peer_id}', returning all agents"
+        )
+        return agents
+
+
+    def _matches_tag_filter(
+        self,
+        item: Dict[str, Any],
+        tag_filters: List[str],
+    ) -> bool:
+        """
+        Check if an item matches any of the tag filters.
+
+        Args:
+            item: Server or agent data dict
+            tag_filters: List of tag strings to match
+
+        Returns:
+            True if item has any matching tag
+        """
+        # Extract tags from item - could be in "tags" or "categories" field
+        item_tags = item.get("tags", [])
+        if not isinstance(item_tags, list):
+            item_tags = []
+
+        # Also check categories field
+        item_categories = item.get("categories", [])
+        if not isinstance(item_categories, list):
+            item_categories = []
+
+        # Combine both lists
+        all_item_tags = item_tags + item_categories
+
+        # Check if any filter matches any tag
+        for filter_tag in tag_filters:
+            if filter_tag in all_item_tags:
+                return True
+
+        return False
+
 
     def _store_synced_servers(
         self,
