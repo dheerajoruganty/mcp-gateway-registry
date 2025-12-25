@@ -1089,12 +1089,14 @@ async def discover_agents_semantic(
     )
 
     try:
-        results = await search_repo.search_entities(
+        search_results = await search_repo.search(
             query=query,
             entity_types=["a2a_agent"],
-            enabled_only=True,
             max_results=max_results,
         )
+
+        # Extract agents from search results
+        results = search_results.get("agents", [])
 
         all_agents = agent_service.get_all_agents()
         agent_map = {agent.path: agent for agent in all_agents}
