@@ -1120,8 +1120,8 @@ async def discover_agents_semantic(
                 num_skills=len(agent_card.skills),
                 num_stars=agent_card.num_stars,
                 is_enabled=True,
-                provider=agent_card.provider,
-                streaming=agent_card.streaming,
+                provider=agent_card.provider.organization if agent_card.provider else None,
+                streaming=agent_card.capabilities.get("streaming", False),
                 trust_level=agent_card.trust_level,
             )
 
