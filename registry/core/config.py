@@ -94,6 +94,7 @@ class Settings(BaseSettings):
     opensearch_index_scopes: str = "mcp-scopes"
     opensearch_index_embeddings: str = "mcp-embeddings"
     opensearch_index_security_scans: str = "mcp-security-scans"
+    opensearch_index_federation_config: str = "mcp-federation-config"
     
     # Hybrid Search Weights
     opensearch_hybrid_bm25_weight: float = 0.4

@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional
 
 from ..schemas.agent_models import AgentCard
+from ..schemas.federation_schema import FederationConfig
 
 
 class ServerRepositoryBase(ABC):
@@ -640,4 +641,68 @@ class SearchRepositoryBase(ABC):
         max_results: int = 10,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Perform search."""
+        pass
+
+
+class FederationConfigRepositoryBase(ABC):
+    """Abstract base class for federation configuration storage."""
+
+    @abstractmethod
+    async def get_config(
+        self,
+        config_id: str = "default"
+    ) -> Optional[FederationConfig]:
+        """
+        Get federation configuration by ID.
+
+        Args:
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            FederationConfig if found, None otherwise
+        """
+        pass
+
+    @abstractmethod
+    async def save_config(
+        self,
+        config: FederationConfig,
+        config_id: str = "default"
+    ) -> FederationConfig:
+        """
+        Save or update federation configuration.
+
+        Args:
+            config: Federation configuration to save
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Saved configuration with timestamps
+        """
+        pass
+
+    @abstractmethod
+    async def delete_config(
+        self,
+        config_id: str = "default"
+    ) -> bool:
+        """
+        Delete federation configuration.
+
+        Args:
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+
+    @abstractmethod
+    async def list_configs(self) -> List[Dict[str, Any]]:
+        """
+        List all federation configurations.
+
+        Returns:
+            List of config summaries with id, created_at, updated_at
+        """
         pass

@@ -12,6 +12,7 @@ from .interfaces import (
     ScopeRepositoryBase,
     SecurityScanRepositoryBase,
     SearchRepositoryBase,
+    FederationConfigRepositoryBase,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ _agent_repo: Optional[AgentRepositoryBase] = None
 _scope_repo: Optional[ScopeRepositoryBase] = None
 _security_scan_repo: Optional[SecurityScanRepositoryBase] = None
 _search_repo: Optional[SearchRepositoryBase] = None
+_federation_config_repo: Optional[FederationConfigRepositoryBase] = None
 
 
 def get_server_repository() -> ServerRepositoryBase:
@@ -124,11 +126,32 @@ def get_search_repository() -> SearchRepositoryBase:
     return _search_repo
 
 
+def get_federation_config_repository() -> FederationConfigRepositoryBase:
+    """Get federation config repository singleton."""
+    global _federation_config_repo
+
+    if _federation_config_repo is not None:
+        return _federation_config_repo
+
+    backend = settings.storage_backend
+    logger.info(f"Creating federation config repository with backend: {backend}")
+
+    if backend == "opensearch":
+        from .opensearch.federation_config_repository import OpenSearchFederationConfigRepository
+        _federation_config_repo = OpenSearchFederationConfigRepository()
+    else:
+        from .file.federation_config_repository import FileFederationConfigRepository
+        _federation_config_repo = FileFederationConfigRepository()
+
+    return _federation_config_repo
+
+
 def reset_repositories() -> None:
     """Reset all repository singletons. USE ONLY IN TESTS."""
-    global _server_repo, _agent_repo, _scope_repo, _security_scan_repo, _search_repo
+    global _server_repo, _agent_repo, _scope_repo, _security_scan_repo, _search_repo, _federation_config_repo
     _server_repo = None
     _agent_repo = None
     _scope_repo = None
     _security_scan_repo = None
     _search_repo = None
+    _federation_config_repo = None
