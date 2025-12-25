@@ -91,11 +91,19 @@ class AgentService:
 
         # Save to repository
         agent_card = await self._repo.create(agent_card)
-        
+
         # Add to in-memory registry and default to disabled
         self.registered_agents[path] = agent_card
         self.agent_state["disabled"].append(path)
         await self._persist_state()
+
+        # Index in search backend
+        try:
+            is_enabled = self.is_agent_enabled(path)
+            await self._search_repo.index_agent(path, agent_card, is_enabled)
+        except Exception as e:
+            logger.error(f"Failed to index agent {path}: {e}")
+            # Don't fail the primary operation
 
         logger.info(
             f"New agent registered: '{agent_card.name}' at path '{path}' "
@@ -258,6 +266,14 @@ class AgentService:
         updated_agent = await self._repo.save(updated_agent)
         self.registered_agents[path] = updated_agent
 
+        # Re-index in search backend
+        try:
+            is_enabled = self.is_agent_enabled(path)
+            await self._search_repo.index_agent(path, updated_agent, is_enabled)
+        except Exception as e:
+            logger.error(f"Failed to re-index agent {path}: {e}")
+            # Don't fail the primary operation
+
         logger.info(f"Agent '{updated_agent.name}' ({path}) updated")
         return updated_agent
 
@@ -284,10 +300,10 @@ class AgentService:
 
         try:
             agent_name = self.registered_agents[path].name
-            
+
             # Delete from repository
             await self._repo.delete(path)
-            
+
             # Remove from in-memory registry
             del self.registered_agents[path]
 
@@ -298,6 +314,13 @@ class AgentService:
                 self.agent_state["disabled"].remove(path)
 
             await self._persist_state()
+
+            # Remove from search backend
+            try:
+                await self._search_repo.remove_entity(path)
+            except Exception as e:
+                logger.error(f"Failed to remove agent {path} from search: {e}")
+                # Don't fail the primary operation
 
             logger.info(f"Successfully deleted agent '{agent_name}' from path '{path}'")
             return True

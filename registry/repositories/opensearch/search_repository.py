@@ -30,8 +30,16 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
     async def _get_embedding_model(self):
         """Lazy load embedding model."""
         if self._embedding_model is None:
-            from sentence_transformers import SentenceTransformer
-            self._embedding_model = SentenceTransformer(settings.embeddings_model_name)
+            from ...embeddings import create_embeddings_client
+            self._embedding_model = create_embeddings_client(
+                provider=settings.embeddings_provider,
+                model_name=settings.embeddings_model_name,
+                model_dir=settings.embeddings_model_dir,
+                api_key=settings.embeddings_api_key,
+                api_base=settings.embeddings_api_base,
+                aws_region=settings.embeddings_aws_region,
+                embedding_dimension=settings.embeddings_model_dimensions,
+            )
         return self._embedding_model
 
     def _path_to_doc_id(self, path: str) -> str:
@@ -77,7 +85,7 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
 
         # Generate embedding
         model = await self._get_embedding_model()
-        embedding = model.encode(text_for_embedding).tolist()
+        embedding = model.encode([text_for_embedding])[0].tolist()
 
         # Prepare document
         doc = {
@@ -133,7 +141,7 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
 
         # Generate embedding
         model = await self._get_embedding_model()
-        embedding = model.encode(text_for_embedding).tolist()
+        embedding = model.encode([text_for_embedding])[0].tolist()
 
         # Prepare document
         doc = {
@@ -190,7 +198,7 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
 
         # Generate query embedding
         model = await self._get_embedding_model()
-        query_embedding = model.encode(query).tolist()
+        query_embedding = model.encode([query])[0].tolist()
 
         # Build filter for entity types
         filters = []

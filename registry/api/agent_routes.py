@@ -69,7 +69,7 @@ async def _perform_agent_security_scan_on_registration(
         bool: True if agent should remain enabled, False if disabled due to scan
     """
     from ..services.agent_scanner import agent_scanner_service
-    from ..search.service import faiss_service
+    from ..repositories.factory import get_search_repository
 
     scan_config = agent_scanner_service.get_scan_config()
     if not (scan_config.enabled and scan_config.scan_on_registration):
@@ -115,10 +115,9 @@ async def _perform_agent_security_scan_on_registration(
                 await agent_service.toggle_agent(path, False)
                 logger.warning(f"Disabled agent {path} due to failed security scan")
 
-                # Update FAISS with disabled state
-                await faiss_service.add_or_update_entity(
-                    path, agent_card_dict, "a2a_agent", False
-                )
+                # Update search index with disabled state
+                search_repo = get_search_repository()
+                await search_repo.index_agent(path, agent_card_dict, is_enabled=False)
                 return False  # Agent disabled
 
         else:

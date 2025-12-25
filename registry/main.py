@@ -37,7 +37,7 @@ from registry.auth.dependencies import (
 # Import services for initialization
 from registry.services.server_service import server_service
 from registry.services.agent_service import agent_service
-from registry.search.service import faiss_service
+from registry.repositories.factory import get_search_repository
 from registry.health.service import health_service
 from registry.core.nginx_service import nginx_service
 from registry.services.federation_service import get_federation_service
@@ -111,36 +111,40 @@ async def lifespan(app: FastAPI):
         # Initialize services in order
         logger.info("📚 Loading server definitions and state...")
         await server_service.load_servers_and_state()
-        
-        logger.info("🔍 Initializing FAISS search service...")
-        await faiss_service.initialize()
-        
-        logger.info("📊 Updating FAISS index with all registered services...")
+
+        # Get repository based on STORAGE_BACKEND configuration
+        search_repo = get_search_repository()
+        backend_name = "OpenSearch" if settings.storage_backend == "opensearch" else "FAISS"
+
+        logger.info(f"🔍 Initializing {backend_name} search service...")
+        await search_repo.initialize()
+
+        logger.info(f"📊 Updating {backend_name} index with all registered services...")
         all_servers = await server_service.get_all_servers()
         for service_path, server_info in all_servers.items():
             is_enabled = await server_service.is_service_enabled(service_path)
             try:
-                await faiss_service.add_or_update_service(service_path, server_info, is_enabled)
-                logger.debug(f"Updated FAISS index for service: {service_path}")
+                await search_repo.index_server(service_path, server_info, is_enabled)
+                logger.debug(f"Updated {backend_name} index for service: {service_path}")
             except Exception as e:
-                logger.error(f"Failed to update FAISS index for service {service_path}: {e}", exc_info=True)
-        
-        logger.info(f"✅ FAISS index updated with {len(all_servers)} services")
+                logger.error(f"Failed to update {backend_name} index for service {service_path}: {e}", exc_info=True)
+
+        logger.info(f"✅ {backend_name} index updated with {len(all_servers)} services")
 
         logger.info("📋 Loading agent cards and state...")
         await agent_service.load_agents_and_state()
 
-        logger.info("📊 Updating FAISS index with all registered agents...")
+        logger.info(f"📊 Updating {backend_name} index with all registered agents...")
         all_agents = agent_service.list_agents()
         for agent_card in all_agents:
             is_enabled = agent_service.is_agent_enabled(agent_card.path)
             try:
-                await faiss_service.add_or_update_agent(agent_card.path, agent_card)
-                logger.debug(f"Updated FAISS index for agent: {agent_card.path}")
+                await search_repo.index_agent(agent_card.path, agent_card, is_enabled)
+                logger.debug(f"Updated {backend_name} index for agent: {agent_card.path}")
             except Exception as e:
-                logger.error(f"Failed to update FAISS index for agent {agent_card.path}: {e}", exc_info=True)
+                logger.error(f"Failed to update {backend_name} index for agent {agent_card.path}: {e}", exc_info=True)
 
-        logger.info(f"✅ FAISS index updated with {len(all_agents)} agents")
+        logger.info(f"✅ {backend_name} index updated with {len(all_agents)} agents")
 
         logger.info("🏥 Initializing health monitoring service...")
         await health_service.initialize()

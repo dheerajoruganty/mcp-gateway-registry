@@ -1,5 +1,4 @@
 import logging
-import asyncio
 from typing import Dict, List, Any, Optional
 
 from ..repositories.factory import get_server_repository
@@ -10,9 +9,11 @@ logger = logging.getLogger(__name__)
 
 class ServerService:
     """Service for managing server registration and state."""
-    
+
     def __init__(self):
         self._repo: ServerRepositoryBase = get_server_repository()
+        from ..repositories.factory import get_search_repository
+        self._search_repo = get_search_repository()
         # Keep these for backward compatibility with code that accesses them directly
         self.registered_servers: Dict[str, Dict[str, Any]] = {}
         self.service_state: Dict[str, bool] = {}
@@ -33,35 +34,38 @@ class ServerService:
     async def register_server(self, server_info: Dict[str, Any]) -> bool:
         """Register a new server."""
         result = await self._repo.create(server_info)
-        
+
         if result:
             # Sync to backward-compatible attributes
             path = server_info["path"]
             self.registered_servers[path] = server_info
             self.service_state[path] = False
-        
+
+            # Index in search backend
+            try:
+                is_enabled = self.service_state.get(path, False)
+                await self._search_repo.index_server(path, server_info, is_enabled)
+            except Exception as e:
+                logger.error(f"Failed to index server {path}: {e}")
+                # Don't fail the primary operation
+
         return result
         
     async def update_server(self, path: str, server_info: Dict[str, Any]) -> bool:
         """Update an existing server."""
         result = await self._repo.update(path, server_info)
-        
+
         if result:
             # Sync to backward-compatible attributes
             self.registered_servers[path] = server_info
-            
-            # Update FAISS index
+
+            # Update search index
             try:
-                from ..search.service import faiss_service
-                try:
-                    asyncio.get_running_loop()
-                    is_enabled = self.service_state.get(path, False)
-                    asyncio.create_task(faiss_service.add_or_update_service(path, server_info, is_enabled))
-                except RuntimeError:
-                    logger.debug(f"Skipping FAISS update for {path} - no async context available")
+                is_enabled = self.service_state.get(path, False)
+                await self._search_repo.index_server(path, server_info, is_enabled)
             except Exception as e:
-                logger.error(f"Failed to update FAISS index after server update: {e}")
-            
+                logger.error(f"Failed to update search index after server update: {e}")
+
             # Regenerate nginx config if enabled
             if self.service_state.get(path, False):
                 try:
@@ -75,7 +79,7 @@ class ServerService:
                     logger.info(f"Regenerated nginx config due to server update: {path}")
                 except Exception as e:
                     logger.error(f"Failed to regenerate nginx configuration after server update: {e}")
-        
+
         return result
         
     async def toggle_service(self, path: str, enabled: bool) -> bool:
@@ -328,14 +332,20 @@ class ServerService:
     async def remove_server(self, path: str) -> bool:
         """Remove a server from the registry and file system."""
         result = await self._repo.delete(path)
-        
+
         if result:
             # Sync to backward-compatible attributes
             if path in self.registered_servers:
                 del self.registered_servers[path]
             if path in self.service_state:
                 del self.service_state[path]
-        
+
+            # Remove from search backend
+            try:
+                await self._search_repo.remove_entity(path)
+            except Exception as e:
+                logger.error(f"Failed to remove server {path} from search: {e}")
+
         return result
 
 

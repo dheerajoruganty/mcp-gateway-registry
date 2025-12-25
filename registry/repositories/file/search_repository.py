@@ -1,7 +1,7 @@
 """File-based search repository using FAISS."""
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ...core.config import settings
 from ..interfaces import SearchRepositoryBase
@@ -39,16 +39,23 @@ class FaissSearchRepository(SearchRepositoryBase):
     async def search(
         self,
         query: str,
-        top_k: int = 10,
-        entity_type: str = None,
-        enabled_only: bool = True
-    ) -> List[Dict[str, Any]]:
-        """Search entities using FAISS."""
-        return await self.faiss_service.search(
+        entity_types: Optional[List[str]] = None,
+        max_results: int = 10,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Search entities using FAISS.
+
+        Args:
+            query: Search query text
+            entity_types: Optional list of entity types to filter by (e.g., ["mcp_server", "tool", "a2a_agent"])
+            max_results: Maximum number of results per entity type
+
+        Returns:
+            Dictionary with entity types as keys and lists of results as values
+        """
+        return await self.faiss_service.search_mixed(
             query=query,
-            top_k=top_k,
-            entity_type=entity_type,
-            enabled_only=enabled_only
+            entity_types=entity_types,
+            max_results=max_results
         )
 
     async def rebuild_index(self) -> None:

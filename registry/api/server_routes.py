@@ -89,14 +89,15 @@ async def _perform_security_scan_on_registration(
 
             # Disable server if configured
             if scan_config.block_unsafe_servers:
-                from ..search.service import faiss_service
+                from ..repositories.factory import get_search_repository
                 from ..core.nginx_service import nginx_service
 
                 await server_service.toggle_service(path, False)
                 logger.warning(f"Disabled server {path} due to failed security scan")
 
-                # Update FAISS with disabled state
-                await faiss_service.add_or_update_service(path, server_entry, False)
+                # Update search index with disabled state
+                search_repo = get_search_repository()
+                await search_repo.index_server(path, server_entry, is_enabled=False)
 
                 # Regenerate Nginx config to remove disabled server
                 enabled_servers = {

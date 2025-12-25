@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from ..auth.dependencies import nginx_proxied_auth
-from ..search.service import faiss_service
+from ..repositories.factory import get_search_repository
+from ..repositories.interfaces import SearchRepositoryBase
 from ..services.server_service import server_service
 from ..services.agent_service import agent_service
 
@@ -14,6 +15,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 EntityType = Literal["mcp_server", "tool", "a2a_agent"]
+
+
+def get_search_repo() -> SearchRepositoryBase:
+    """Dependency injection function for search repository."""
+    return get_search_repository()
 
 
 class MatchingToolResult(BaseModel):
@@ -138,6 +144,7 @@ def _user_can_access_agent(agent_path: str, user_context: dict) -> bool:
 async def semantic_search(
     request: SemanticSearchRequest,
     user_context: Annotated[dict, Depends(nginx_proxied_auth)],
+    search_repo: SearchRepositoryBase = Depends(get_search_repo),
 ) -> SemanticSearchResponse:
     """
     Run a semantic search against MCP servers (and their tools) using FAISS embeddings.
@@ -150,7 +157,7 @@ async def semantic_search(
     )
 
     try:
-        raw_results = await faiss_service.search_mixed(
+        raw_results = await search_repo.search(
             query=request.query,
             entity_types=request.entity_types,
             max_results=request.max_results,
