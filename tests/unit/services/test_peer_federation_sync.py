@@ -830,10 +830,20 @@ class TestStoreSyncedAgents:
         service = PeerFederationService()
         service.add_peer(sample_peer_config)
 
-        # Simulate existing agent
-        existing_agent = MagicMock()
-        existing_agent.path = "/test-peer/test-agent"
+        # Simulate existing agent with model_dump method
+        existing_agent = MagicMock(
+            path="/test-peer/test-agent",
+            model_dump=lambda: {
+                "path": "/test-peer/test-agent",
+                "name": "Old Agent",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                    "local_overrides": False,  # Not locally overridden
+                },
+            },
+        )
         mock_agent_service.registered_agents["/test-peer/test-agent"] = existing_agent
+        mock_agent_service.update_agent.return_value = MagicMock()
 
         agents = [
             {
@@ -1610,3 +1620,729 @@ class TestSyncPeerWithFiltering:
             assert result.success is True
             assert result.servers_synced == 2  # server-a and server-c
             assert result.agents_synced == 1  # agent-a
+
+
+@pytest.mark.unit
+class TestDetectOrphanedItems:
+    """Tests for detect_orphaned_items method."""
+
+    def test_detects_servers_missing_from_peer(
+        self, mock_settings, mock_server_service, mock_agent_service, sample_peer_config
+    ):
+        """Test detects servers that exist locally but are missing from peer."""
+        service = PeerFederationService()
+        service.add_peer(sample_peer_config)
+
+        # Set up local servers with sync_metadata
+        mock_server_service.registered_servers = {
+            "/test-peer/server-1": {
+                "path": "/test-peer/server-1",
+                "name": "Server 1",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                    "original_path": "/server-1",
+                },
+            },
+            "/test-peer/server-2": {
+                "path": "/test-peer/server-2",
+                "name": "Server 2",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                    "original_path": "/server-2",
+                },
+            },
+        }
+
+        # Current peer only has server-1
+        current_server_paths = ["/server-1"]
+        current_agent_paths = []
+
+        orphaned_servers, orphaned_agents = service.detect_orphaned_items(
+            "test-peer", current_server_paths, current_agent_paths
+        )
+
+        # server-2 should be detected as orphaned
+        assert len(orphaned_servers) == 1
+        assert "/test-peer/server-2" in orphaned_servers
+        assert len(orphaned_agents) == 0
+
+    def test_detects_agents_missing_from_peer(
+        self, mock_settings, mock_server_service, mock_agent_service, sample_peer_config
+    ):
+        """Test detects agents that exist locally but are missing from peer."""
+        service = PeerFederationService()
+        service.add_peer(sample_peer_config)
+
+        # Set up local agents with sync_metadata
+        mock_agent_service.registered_agents = {
+            "/test-peer/agent-1": MagicMock(
+                path="/test-peer/agent-1",
+                name="Agent 1",
+                model_dump=lambda: {
+                    "path": "/test-peer/agent-1",
+                    "name": "Agent 1",
+                    "sync_metadata": {
+                        "source_peer_id": "test-peer",
+                        "original_path": "/agent-1",
+                    },
+                },
+            ),
+            "/test-peer/agent-2": MagicMock(
+                path="/test-peer/agent-2",
+                name="Agent 2",
+                model_dump=lambda: {
+                    "path": "/test-peer/agent-2",
+                    "name": "Agent 2",
+                    "sync_metadata": {
+                        "source_peer_id": "test-peer",
+                        "original_path": "/agent-2",
+                    },
+                },
+            ),
+        }
+
+        # Current peer only has agent-1
+        current_server_paths = []
+        current_agent_paths = ["/agent-1"]
+
+        orphaned_servers, orphaned_agents = service.detect_orphaned_items(
+            "test-peer", current_server_paths, current_agent_paths
+        )
+
+        # agent-2 should be detected as orphaned
+        assert len(orphaned_servers) == 0
+        assert len(orphaned_agents) == 1
+        assert "/test-peer/agent-2" in orphaned_agents
+
+    def test_returns_empty_lists_when_no_orphans(
+        self, mock_settings, mock_server_service, mock_agent_service, sample_peer_config
+    ):
+        """Test returns empty lists when there are no orphaned items."""
+        service = PeerFederationService()
+        service.add_peer(sample_peer_config)
+
+        # Set up local items that all exist in peer
+        mock_server_service.registered_servers = {
+            "/test-peer/server-1": {
+                "path": "/test-peer/server-1",
+                "name": "Server 1",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                    "original_path": "/server-1",
+                },
+            },
+        }
+
+        mock_agent_service.registered_agents = {
+            "/test-peer/agent-1": MagicMock(
+                model_dump=lambda: {
+                    "path": "/test-peer/agent-1",
+                    "name": "Agent 1",
+                    "sync_metadata": {
+                        "source_peer_id": "test-peer",
+                        "original_path": "/agent-1",
+                    },
+                }
+            ),
+        }
+
+        # All items exist in peer
+        current_server_paths = ["/server-1"]
+        current_agent_paths = ["/agent-1"]
+
+        orphaned_servers, orphaned_agents = service.detect_orphaned_items(
+            "test-peer", current_server_paths, current_agent_paths
+        )
+
+        assert len(orphaned_servers) == 0
+        assert len(orphaned_agents) == 0
+
+    def test_path_normalization_handles_with_without_leading_slash(
+        self, mock_settings, mock_server_service, mock_agent_service, sample_peer_config
+    ):
+        """Test path normalization handles paths with and without leading slash."""
+        service = PeerFederationService()
+        service.add_peer(sample_peer_config)
+
+        # Local server with original_path "/server-1"
+        mock_server_service.registered_servers = {
+            "/test-peer/server-1": {
+                "path": "/test-peer/server-1",
+                "name": "Server 1",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                    "original_path": "/server-1",
+                },
+            },
+        }
+
+        # Current peer returns path without leading slash
+        current_server_paths = ["server-1"]  # No leading slash
+        current_agent_paths = []
+
+        orphaned_servers, orphaned_agents = service.detect_orphaned_items(
+            "test-peer", current_server_paths, current_agent_paths
+        )
+
+        # Should not be detected as orphaned (path normalization should work)
+        assert len(orphaned_servers) == 0
+
+    def test_only_considers_items_from_specified_peer(
+        self, mock_settings, mock_server_service, mock_agent_service
+    ):
+        """Test only considers items from the specified peer."""
+        service = PeerFederationService()
+
+        # Set up items from different peers
+        mock_server_service.registered_servers = {
+            "/peer-a/server-1": {
+                "path": "/peer-a/server-1",
+                "name": "Server 1",
+                "sync_metadata": {
+                    "source_peer_id": "peer-a",
+                    "original_path": "/server-1",
+                },
+            },
+            "/peer-b/server-2": {
+                "path": "/peer-b/server-2",
+                "name": "Server 2",
+                "sync_metadata": {
+                    "source_peer_id": "peer-b",
+                    "original_path": "/server-2",
+                },
+            },
+        }
+
+        # Check for orphans from peer-a only
+        current_server_paths = []  # peer-a has no servers
+        current_agent_paths = []
+
+        orphaned_servers, orphaned_agents = service.detect_orphaned_items(
+            "peer-a", current_server_paths, current_agent_paths
+        )
+
+        # Only peer-a's server should be detected
+        assert len(orphaned_servers) == 1
+        assert "/peer-a/server-1" in orphaned_servers
+        assert "/peer-b/server-2" not in orphaned_servers
+
+
+@pytest.mark.unit
+class TestMarkItemAsOrphaned:
+    """Tests for mark_item_as_orphaned method."""
+
+    def test_marks_server_as_orphaned(
+        self, mock_settings, mock_server_service, sample_peer_config
+    ):
+        """Test successfully marks a server as orphaned."""
+        service = PeerFederationService()
+
+        # Set up existing server
+        mock_server_service.registered_servers = {
+            "/test-peer/server-1": {
+                "path": "/test-peer/server-1",
+                "name": "Server 1",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                },
+            }
+        }
+        mock_server_service.update_server.return_value = True
+
+        result = service.mark_item_as_orphaned("/test-peer/server-1", "server")
+
+        assert result is True
+        mock_server_service.update_server.assert_called_once()
+
+        # Check that update was called with correct metadata
+        call_args = mock_server_service.update_server.call_args
+        updated_data = call_args[0][1]
+        assert updated_data["sync_metadata"]["is_orphaned"] is True
+        assert "orphaned_at" in updated_data["sync_metadata"]
+
+    def test_marks_agent_as_orphaned(
+        self, mock_settings, mock_agent_service, sample_peer_config
+    ):
+        """Test successfully marks an agent as orphaned."""
+        service = PeerFederationService()
+
+        # Set up existing agent
+        existing_agent = MagicMock(
+            path="/test-peer/agent-1",
+            name="Agent 1",
+            model_dump=lambda: {
+                "path": "/test-peer/agent-1",
+                "name": "Agent 1",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                },
+            },
+        )
+        mock_agent_service.registered_agents = {
+            "/test-peer/agent-1": existing_agent,
+        }
+        mock_agent_service.update_agent.return_value = MagicMock()
+
+        result = service.mark_item_as_orphaned("/test-peer/agent-1", "agent")
+
+        assert result is True
+        mock_agent_service.update_agent.assert_called_once()
+
+        # Check that update was called with correct metadata
+        call_args = mock_agent_service.update_agent.call_args
+        updated_data = call_args[0][1]
+        assert updated_data["sync_metadata"]["is_orphaned"] is True
+        assert "orphaned_at" in updated_data["sync_metadata"]
+
+    def test_handles_non_existent_server(
+        self, mock_settings, mock_server_service
+    ):
+        """Test handles non-existent server gracefully."""
+        service = PeerFederationService()
+
+        mock_server_service.registered_servers = {}
+
+        result = service.mark_item_as_orphaned("/non-existent", "server")
+
+        assert result is False
+        mock_server_service.update_server.assert_not_called()
+
+    def test_handles_non_existent_agent(
+        self, mock_settings, mock_agent_service
+    ):
+        """Test handles non-existent agent gracefully."""
+        service = PeerFederationService()
+
+        mock_agent_service.registered_agents = {}
+
+        result = service.mark_item_as_orphaned("/non-existent", "agent")
+
+        assert result is False
+        mock_agent_service.update_agent.assert_not_called()
+
+    def test_updates_sync_metadata_correctly(
+        self, mock_settings, mock_server_service
+    ):
+        """Test updates sync_metadata with orphaned flag and timestamp."""
+        service = PeerFederationService()
+
+        # Set up existing server with existing metadata
+        mock_server_service.registered_servers = {
+            "/test-peer/server-1": {
+                "path": "/test-peer/server-1",
+                "name": "Server 1",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                    "original_path": "/server-1",
+                    "synced_at": "2024-01-01T00:00:00Z",
+                },
+            }
+        }
+        mock_server_service.update_server.return_value = True
+
+        service.mark_item_as_orphaned("/test-peer/server-1", "server")
+
+        # Check that existing metadata is preserved and new fields added
+        call_args = mock_server_service.update_server.call_args
+        updated_data = call_args[0][1]
+        metadata = updated_data["sync_metadata"]
+
+        assert metadata["source_peer_id"] == "test-peer"
+        assert metadata["original_path"] == "/server-1"
+        assert metadata["synced_at"] == "2024-01-01T00:00:00Z"
+        assert metadata["is_orphaned"] is True
+        assert "orphaned_at" in metadata
+
+
+@pytest.mark.unit
+class TestHandleOrphanedItems:
+    """Tests for handle_orphaned_items method."""
+
+    def test_mark_action_marks_all_orphans(
+        self, mock_settings, mock_server_service, mock_agent_service
+    ):
+        """Test mark action marks all orphaned items."""
+        service = PeerFederationService()
+
+        # Set up existing items
+        mock_server_service.registered_servers = {
+            "/test-peer/server-1": {
+                "path": "/test-peer/server-1",
+                "sync_metadata": {"source_peer_id": "test-peer"},
+            },
+            "/test-peer/server-2": {
+                "path": "/test-peer/server-2",
+                "sync_metadata": {"source_peer_id": "test-peer"},
+            },
+        }
+        mock_agent_service.registered_agents = {
+            "/test-peer/agent-1": MagicMock(
+                model_dump=lambda: {
+                    "path": "/test-peer/agent-1",
+                    "sync_metadata": {"source_peer_id": "test-peer"},
+                }
+            ),
+        }
+        mock_server_service.update_server.return_value = True
+        mock_agent_service.update_agent.return_value = MagicMock()
+
+        orphaned_servers = ["/test-peer/server-1", "/test-peer/server-2"]
+        orphaned_agents = ["/test-peer/agent-1"]
+
+        count = service.handle_orphaned_items(
+            "test-peer", orphaned_servers, orphaned_agents, action="mark"
+        )
+
+        assert count == 3
+        assert mock_server_service.update_server.call_count == 2
+        assert mock_agent_service.update_agent.call_count == 1
+
+    def test_delete_action_removes_orphans(
+        self, mock_settings, mock_server_service, mock_agent_service
+    ):
+        """Test delete action removes orphaned items."""
+        service = PeerFederationService()
+
+        mock_server_service.remove_server.return_value = True
+        mock_agent_service.remove_agent.return_value = True
+
+        orphaned_servers = ["/test-peer/server-1"]
+        orphaned_agents = ["/test-peer/agent-1"]
+
+        count = service.handle_orphaned_items(
+            "test-peer", orphaned_servers, orphaned_agents, action="delete"
+        )
+
+        assert count == 2
+        mock_server_service.remove_server.assert_called_once_with("/test-peer/server-1")
+        mock_agent_service.remove_agent.assert_called_once_with("/test-peer/agent-1")
+
+    def test_returns_count_of_handled_items(
+        self, mock_settings, mock_server_service, mock_agent_service
+    ):
+        """Test returns correct count of handled items."""
+        service = PeerFederationService()
+
+        # Set up one success and one failure
+        mock_server_service.registered_servers = {
+            "/test-peer/server-1": {
+                "path": "/test-peer/server-1",
+                "sync_metadata": {"source_peer_id": "test-peer"},
+            },
+        }
+        mock_server_service.update_server.side_effect = [True, False]
+
+        orphaned_servers = ["/test-peer/server-1", "/test-peer/server-2"]
+        orphaned_agents = []
+
+        count = service.handle_orphaned_items(
+            "test-peer", orphaned_servers, orphaned_agents, action="mark"
+        )
+
+        # Only one should be counted as handled (the success)
+        assert count == 1
+
+    def test_handles_empty_lists(self, mock_settings, mock_server_service, mock_agent_service):
+        """Test handles empty orphan lists gracefully."""
+        service = PeerFederationService()
+
+        count = service.handle_orphaned_items(
+            "test-peer", [], [], action="mark"
+        )
+
+        assert count == 0
+        mock_server_service.update_server.assert_not_called()
+        mock_agent_service.update_agent.assert_not_called()
+
+
+@pytest.mark.unit
+class TestSetLocalOverride:
+    """Tests for set_local_override method."""
+
+    def test_sets_override_to_true_for_server(
+        self, mock_settings, mock_server_service
+    ):
+        """Test sets local override to True for a server."""
+        service = PeerFederationService()
+
+        # Set up existing server
+        mock_server_service.registered_servers = {
+            "/test-peer/server-1": {
+                "path": "/test-peer/server-1",
+                "name": "Server 1",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                },
+            }
+        }
+        mock_server_service.update_server.return_value = True
+
+        result = service.set_local_override("/test-peer/server-1", "server", True)
+
+        assert result is True
+        mock_server_service.update_server.assert_called_once()
+
+        # Check that override flag was set
+        call_args = mock_server_service.update_server.call_args
+        updated_data = call_args[0][1]
+        assert updated_data["sync_metadata"]["local_overrides"] is True
+
+    def test_clears_override_for_server(
+        self, mock_settings, mock_server_service
+    ):
+        """Test clears local override (sets to False) for a server."""
+        service = PeerFederationService()
+
+        # Set up existing server with override
+        mock_server_service.registered_servers = {
+            "/test-peer/server-1": {
+                "path": "/test-peer/server-1",
+                "name": "Server 1",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                    "local_overrides": True,
+                },
+            }
+        }
+        mock_server_service.update_server.return_value = True
+
+        result = service.set_local_override("/test-peer/server-1", "server", False)
+
+        assert result is True
+
+        # Check that override flag was cleared
+        call_args = mock_server_service.update_server.call_args
+        updated_data = call_args[0][1]
+        assert updated_data["sync_metadata"]["local_overrides"] is False
+
+    def test_sets_override_to_true_for_agent(
+        self, mock_settings, mock_agent_service
+    ):
+        """Test sets local override to True for an agent."""
+        service = PeerFederationService()
+
+        # Set up existing agent
+        existing_agent = MagicMock(
+            path="/test-peer/agent-1",
+            model_dump=lambda: {
+                "path": "/test-peer/agent-1",
+                "name": "Agent 1",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                },
+            },
+        )
+        mock_agent_service.registered_agents = {
+            "/test-peer/agent-1": existing_agent,
+        }
+        mock_agent_service.update_agent.return_value = MagicMock()
+
+        result = service.set_local_override("/test-peer/agent-1", "agent", True)
+
+        assert result is True
+        mock_agent_service.update_agent.assert_called_once()
+
+        # Check that override flag was set
+        call_args = mock_agent_service.update_agent.call_args
+        updated_data = call_args[0][1]
+        assert updated_data["sync_metadata"]["local_overrides"] is True
+
+    def test_handles_non_existent_server(
+        self, mock_settings, mock_server_service
+    ):
+        """Test handles non-existent server gracefully."""
+        service = PeerFederationService()
+
+        mock_server_service.registered_servers = {}
+
+        result = service.set_local_override("/non-existent", "server", True)
+
+        assert result is False
+        mock_server_service.update_server.assert_not_called()
+
+    def test_handles_non_existent_agent(
+        self, mock_settings, mock_agent_service
+    ):
+        """Test handles non-existent agent gracefully."""
+        service = PeerFederationService()
+
+        mock_agent_service.registered_agents = {}
+
+        result = service.set_local_override("/non-existent", "agent", True)
+
+        assert result is False
+        mock_agent_service.update_agent.assert_not_called()
+
+
+@pytest.mark.unit
+class TestIsLocallyOverridden:
+    """Tests for is_locally_overridden method."""
+
+    def test_returns_true_when_override_is_set(self, mock_settings):
+        """Test returns True when local_overrides is True."""
+        service = PeerFederationService()
+
+        item = {
+            "path": "/test-peer/server-1",
+            "name": "Server 1",
+            "sync_metadata": {
+                "local_overrides": True,
+            },
+        }
+
+        assert service.is_locally_overridden(item) is True
+
+    def test_returns_false_when_override_not_set(self, mock_settings):
+        """Test returns False when local_overrides is False or not present."""
+        service = PeerFederationService()
+
+        item = {
+            "path": "/test-peer/server-1",
+            "name": "Server 1",
+            "sync_metadata": {
+                "local_overrides": False,
+            },
+        }
+
+        assert service.is_locally_overridden(item) is False
+
+    def test_returns_false_when_local_overrides_field_missing(self, mock_settings):
+        """Test returns False when local_overrides field is missing."""
+        service = PeerFederationService()
+
+        item = {
+            "path": "/test-peer/server-1",
+            "name": "Server 1",
+            "sync_metadata": {
+                "source_peer_id": "test-peer",
+            },
+        }
+
+        assert service.is_locally_overridden(item) is False
+
+    def test_handles_missing_sync_metadata(self, mock_settings):
+        """Test handles missing sync_metadata gracefully."""
+        service = PeerFederationService()
+
+        item = {
+            "path": "/test-peer/server-1",
+            "name": "Server 1",
+        }
+
+        assert service.is_locally_overridden(item) is False
+
+
+@pytest.mark.unit
+class TestLocalOverrideIntegration:
+    """Integration tests for local override preventing sync updates."""
+
+    def test_local_override_prevents_server_sync_update(
+        self, mock_settings, mock_server_service, sample_peer_config
+    ):
+        """Test local override prevents update during sync for servers."""
+        service = PeerFederationService()
+        service.add_peer(sample_peer_config)
+
+        # Set up existing server with local override
+        mock_server_service.registered_servers = {
+            "/test-peer/server-1": {
+                "path": "/test-peer/server-1",
+                "name": "Original Name",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                    "original_path": "/server-1",
+                    "local_overrides": True,
+                },
+            }
+        }
+
+        # Try to sync updated server data
+        servers = [
+            {
+                "path": "/server-1",
+                "name": "Updated Name",  # This should be ignored
+            }
+        ]
+
+        count = service._store_synced_servers(sample_peer_config.peer_id, servers)
+
+        # Should not update (returns 0)
+        assert count == 0
+        mock_server_service.update_server.assert_not_called()
+
+    def test_local_override_prevents_agent_sync_update(
+        self, mock_settings, mock_agent_service, sample_peer_config
+    ):
+        """Test local override prevents update during sync for agents."""
+        service = PeerFederationService()
+        service.add_peer(sample_peer_config)
+
+        # Set up existing agent with local override
+        existing_agent = MagicMock(
+            path="/test-peer/agent-1",
+            model_dump=lambda: {
+                "path": "/test-peer/agent-1",
+                "name": "Original Agent",
+                "version": "1.0.0",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                    "original_path": "/agent-1",
+                    "local_overrides": True,
+                },
+            },
+        )
+        mock_agent_service.registered_agents = {
+            "/test-peer/agent-1": existing_agent,
+        }
+
+        # Try to sync updated agent data
+        agents = [
+            {
+                "path": "/agent-1",
+                "name": "Updated Agent",  # This should be ignored
+                "version": "2.0.0",
+                "description": "Updated description",
+                "url": "https://example.com/agent",
+            }
+        ]
+
+        count = service._store_synced_agents(sample_peer_config.peer_id, agents)
+
+        # Should not update (returns 0)
+        assert count == 0
+        mock_agent_service.update_agent.assert_not_called()
+
+    def test_sync_updates_items_without_local_override(
+        self, mock_settings, mock_server_service, sample_peer_config
+    ):
+        """Test sync updates items that don't have local override."""
+        service = PeerFederationService()
+        service.add_peer(sample_peer_config)
+
+        # Set up existing server WITHOUT local override
+        mock_server_service.registered_servers = {
+            "/test-peer/server-1": {
+                "path": "/test-peer/server-1",
+                "name": "Original Name",
+                "sync_metadata": {
+                    "source_peer_id": "test-peer",
+                    "original_path": "/server-1",
+                    "local_overrides": False,
+                },
+            }
+        }
+        mock_server_service.update_server.return_value = True
+
+        # Try to sync updated server data
+        servers = [
+            {
+                "path": "/server-1",
+                "name": "Updated Name",  # This should be applied
+            }
+        ]
+
+        count = service._store_synced_servers(sample_peer_config.peer_id, servers)
+
+        # Should update (returns 1)
+        assert count == 1
+        mock_server_service.update_server.assert_called_once()
