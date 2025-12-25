@@ -1479,7 +1479,7 @@ class RegistryClient:
         response = self._make_request(
             method="POST",
             endpoint="/api/search/semantic",
-            json_data=request_data
+            data=request_data
         )
 
         result = ServerSemanticSearchResponse(**response.json())
