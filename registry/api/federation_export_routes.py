@@ -1,0 +1,472 @@
+"""
+Federation Export API routes for MCP Gateway Registry.
+
+This module provides REST API endpoints for exporting servers and agents to peer
+registries in a federated mesh topology. Endpoints enforce visibility-based
+access control and support incremental sync via generation numbers.
+
+Based on: docs/federation.md
+"""
+
+import logging
+import socket
+from typing import Annotated, Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from ..auth.dependencies import nginx_proxied_auth
+from ..schemas.peer_federation_schema import FederationExportResponse
+from ..services.agent_service import agent_service
+from ..services.server_service import server_service
+
+
+# Configure logging with basicConfig
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s,p%(process)s,{%(filename)s:%(lineno)d},%(levelname)s,%(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
+
+router = APIRouter(prefix="/api/v1/federation", tags=["federation"])
+
+
+# Constants
+DEFAULT_PAGE_LIMIT: int = 100
+MAX_PAGE_LIMIT: int = 1000
+CURRENT_SYNC_GENERATION: int = 1  # TODO: Track this dynamically
+
+
+def _get_registry_id() -> str:
+    """
+    Get the unique identifier for this registry instance.
+
+    Uses hostname as registry ID. In production, this should be configured
+    via environment variable or configuration file.
+
+    Returns:
+        Registry identifier string
+    """
+    try:
+        hostname = socket.gethostname()
+        return f"registry-{hostname}"
+    except Exception as e:
+        logger.warning(f"Failed to get hostname: {e}, using default")
+        return "registry-unknown"
+
+
+def _check_federation_scope(
+    user_context: Dict[str, Any],
+) -> None:
+    """
+    Check if user has federation-service scope.
+
+    Args:
+        user_context: User context from auth dependency
+
+    Raises:
+        HTTPException: 403 if federation-service scope not present
+    """
+    scopes = user_context.get("scopes", [])
+    if "federation-service" not in scopes:
+        logger.warning(
+            f"User {user_context.get('username')} attempted federation access "
+            f"without federation-service scope. Scopes: {scopes}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Federation access requires 'federation-service' scope",
+        )
+
+
+def _get_item_attr(
+    item: Any,
+    attr: str,
+    default: Any = None,
+) -> Any:
+    """
+    Get attribute from item, supporting both dict and object types.
+
+    Args:
+        item: Dict or object to get attribute from
+        attr: Attribute name
+        default: Default value if not found
+
+    Returns:
+        Attribute value or default
+    """
+    if isinstance(item, dict):
+        return item.get(attr, default)
+    return getattr(item, attr, default)
+
+
+def _filter_by_visibility(
+    items: List[Any],
+    peer_groups: List[str],
+) -> List[Any]:
+    """
+    Filter items based on visibility and peer's group membership.
+
+    Filtering rules:
+    - visibility=public: Always included
+    - visibility=group-restricted: Include only if peer is in allowed_groups
+    - visibility=internal: NEVER included
+
+    Args:
+        items: List of items (dict or object) to filter
+        peer_groups: Groups the peer registry belongs to (from JWT)
+
+    Returns:
+        Filtered list of items
+    """
+    filtered = []
+    peer_group_set = set(peer_groups)
+
+    for item in items:
+        visibility = _get_item_attr(item, "visibility", "internal")
+
+        # Never export internal items
+        if visibility == "internal":
+            continue
+
+        # Always export public items
+        if visibility == "public":
+            filtered.append(item)
+            continue
+
+        # Export group-restricted only if peer is in allowed_groups
+        if visibility == "group-restricted":
+            allowed_groups = set(_get_item_attr(item, "allowed_groups", []))
+            if allowed_groups & peer_group_set:
+                filtered.append(item)
+                continue
+
+    logger.debug(
+        f"Filtered {len(items)} items to {len(filtered)} based on visibility. "
+        f"Peer groups: {peer_groups}"
+    )
+
+    return filtered
+
+
+def _filter_by_generation(
+    items: List[Any],
+    since_generation: Optional[int],
+) -> List[Any]:
+    """
+    Filter items by sync generation for incremental sync.
+
+    Args:
+        items: List of items (dict or object) to filter
+        since_generation: Minimum generation number (exclusive)
+
+    Returns:
+        Filtered list of items with generation > since_generation
+    """
+    if since_generation is None:
+        return items
+
+    filtered = []
+    for item in items:
+        sync_metadata = _get_item_attr(item, "sync_metadata", None)
+        if sync_metadata:
+            if isinstance(sync_metadata, dict):
+                item_generation = sync_metadata.get("sync_generation", 0)
+            else:
+                item_generation = getattr(sync_metadata, "sync_generation", 0)
+        else:
+            item_generation = 0
+
+        if item_generation > since_generation:
+            filtered.append(item)
+
+    logger.debug(
+        f"Filtered {len(items)} items to {len(filtered)} with generation > {since_generation}"
+    )
+
+    return filtered
+
+
+def _item_to_dict(
+    item: Any,
+) -> Dict[str, Any]:
+    """
+    Convert item to dictionary, supporting both dict and object types.
+
+    Args:
+        item: Dict or Pydantic model
+
+    Returns:
+        Dictionary representation
+    """
+    if isinstance(item, dict):
+        return item
+    if hasattr(item, "model_dump"):
+        return item.model_dump()
+    return dict(item)
+
+
+def _paginate(
+    items: List[Any],
+    limit: int,
+    offset: int,
+) -> tuple[List[Any], bool]:
+    """
+    Paginate items list.
+
+    Args:
+        items: List of items to paginate
+        limit: Maximum items per page
+        offset: Number of items to skip
+
+    Returns:
+        Tuple of (paginated items, has_more flag)
+    """
+    start = offset
+    end = offset + limit
+    paginated = items[start:end]
+    has_more = len(items) > end
+
+    return paginated, has_more
+
+
+async def federation_auth(
+    user_context: Annotated[Dict[str, Any], Depends(nginx_proxied_auth)],
+) -> Dict[str, Any]:
+    """
+    Authentication dependency for federation endpoints.
+
+    Validates that the requester has federation-service scope in their JWT.
+    This scope is granted to peer registries that are authorized to sync data.
+
+    Args:
+        user_context: User context from nginx_proxied_auth
+
+    Returns:
+        User context if authorized
+
+    Raises:
+        HTTPException: 403 if federation-service scope not present
+    """
+    _check_federation_scope(user_context)
+    return user_context
+
+
+@router.get("/health")
+async def federation_health():
+    """
+    Federation health check endpoint.
+
+    This endpoint does NOT require authentication and is used by peer registries
+    to check if the federation API is available before attempting sync.
+
+    Returns:
+        200 OK with status message
+    """
+    return {
+        "status": "healthy",
+        "federation_api_version": "1.0",
+        "registry_id": _get_registry_id(),
+    }
+
+
+@router.get(
+    "/servers",
+    response_model=FederationExportResponse,
+)
+async def export_servers(
+    limit: int = Query(
+        DEFAULT_PAGE_LIMIT,
+        ge=1,
+        le=MAX_PAGE_LIMIT,
+        description=f"Maximum items per page (default {DEFAULT_PAGE_LIMIT}, max {MAX_PAGE_LIMIT})",
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Number of items to skip (default 0)",
+    ),
+    since_generation: Optional[int] = Query(
+        None,
+        ge=0,
+        description="Return only items with generation > this value (for incremental sync)",
+    ),
+    user_context: Annotated[Dict[str, Any], Depends(federation_auth)] = None,
+):
+    """
+    Export servers for federation sync.
+
+    Returns servers with visibility filtering based on the peer's group membership.
+    Supports pagination and incremental sync via generation numbers.
+
+    **Authentication:** Requires JWT with 'federation-service' scope
+
+    **Visibility filtering:**
+    - public: Returned to all peers
+    - group-restricted: Returned only if peer is in allowed_groups
+    - internal: NEVER returned
+
+    **Pagination:**
+    - Use limit and offset for pagination
+    - Check has_more to determine if more pages exist
+
+    **Incremental sync:**
+    - Use since_generation to get only changed items
+    - Track sync_generation from response for next sync
+
+    Args:
+        limit: Maximum items per page
+        offset: Number of items to skip
+        since_generation: Minimum generation for incremental sync
+        user_context: Authenticated peer context
+
+    Returns:
+        FederationExportResponse with filtered servers
+
+    Raises:
+        HTTPException: 401 if unauthenticated, 403 if missing federation scope
+    """
+    logger.info(
+        f"Federation export request for servers from peer '{user_context['username']}' "
+        f"(limit={limit}, offset={offset}, since_generation={since_generation})"
+    )
+
+    # Get all servers (enabled and disabled) - returns Dict[str, Dict[str, Any]]
+    all_servers_dict = server_service.get_all_servers()
+
+    # Convert to list and filter out disabled servers - never sync disabled servers
+    # Each server is a dict with 'path' key
+    enabled_servers = [
+        server_data
+        for path, server_data in all_servers_dict.items()
+        if server_service.is_service_enabled(path)
+    ]
+
+    # Extract peer groups from JWT for visibility filtering
+    peer_groups = user_context.get("groups", [])
+
+    # Apply visibility filtering
+    visible_servers = _filter_by_visibility(enabled_servers, peer_groups)
+
+    # Apply generation filtering for incremental sync
+    if since_generation is not None:
+        visible_servers = _filter_by_generation(visible_servers, since_generation)
+
+    # Apply pagination
+    total_count = len(visible_servers)
+    paginated_servers, has_more = _paginate(visible_servers, limit, offset)
+
+    # Convert to dict format (servers are already dicts from service)
+    items = [_item_to_dict(server) for server in paginated_servers]
+
+    logger.info(
+        f"Exporting {len(items)} servers to peer '{user_context['username']}' "
+        f"(total visible: {total_count}, has_more: {has_more})"
+    )
+
+    return FederationExportResponse(
+        items=items,
+        sync_generation=CURRENT_SYNC_GENERATION,
+        total_count=total_count,
+        has_more=has_more,
+        registry_id=_get_registry_id(),
+    )
+
+
+@router.get(
+    "/agents",
+    response_model=FederationExportResponse,
+)
+async def export_agents(
+    limit: int = Query(
+        DEFAULT_PAGE_LIMIT,
+        ge=1,
+        le=MAX_PAGE_LIMIT,
+        description=f"Maximum items per page (default {DEFAULT_PAGE_LIMIT}, max {MAX_PAGE_LIMIT})",
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Number of items to skip (default 0)",
+    ),
+    since_generation: Optional[int] = Query(
+        None,
+        ge=0,
+        description="Return only items with generation > this value (for incremental sync)",
+    ),
+    user_context: Annotated[Dict[str, Any], Depends(federation_auth)] = None,
+):
+    """
+    Export agents for federation sync.
+
+    Returns agents with visibility filtering based on the peer's group membership.
+    Supports pagination and incremental sync via generation numbers.
+
+    **Authentication:** Requires JWT with 'federation-service' scope
+
+    **Visibility filtering:**
+    - public: Returned to all peers
+    - group-restricted: Returned only if peer is in allowed_groups
+    - internal: NEVER returned
+
+    **Pagination:**
+    - Use limit and offset for pagination
+    - Check has_more to determine if more pages exist
+
+    **Incremental sync:**
+    - Use since_generation to get only changed items
+    - Track sync_generation from response for next sync
+
+    Args:
+        limit: Maximum items per page
+        offset: Number of items to skip
+        since_generation: Minimum generation for incremental sync
+        user_context: Authenticated peer context
+
+    Returns:
+        FederationExportResponse with filtered agents
+
+    Raises:
+        HTTPException: 401 if unauthenticated, 403 if missing federation scope
+    """
+    logger.info(
+        f"Federation export request for agents from peer '{user_context['username']}' "
+        f"(limit={limit}, offset={offset}, since_generation={since_generation})"
+    )
+
+    # Get all agents (enabled and disabled)
+    all_agents = agent_service.get_all_agents()
+
+    # Filter out disabled agents - never sync disabled agents
+    enabled_agents = [a for a in all_agents if agent_service.is_agent_enabled(a.path)]
+
+    # Extract peer groups from JWT for visibility filtering
+    peer_groups = user_context.get("groups", [])
+
+    # Apply visibility filtering
+    visible_agents = _filter_by_visibility(enabled_agents, peer_groups)
+
+    # Apply generation filtering for incremental sync
+    if since_generation is not None:
+        visible_agents = _filter_by_generation(visible_agents, since_generation)
+
+    # Apply pagination
+    total_count = len(visible_agents)
+    paginated_agents, has_more = _paginate(visible_agents, limit, offset)
+
+    # Convert to dict format (agents are AgentCard objects)
+    items = [_item_to_dict(agent) for agent in paginated_agents]
+
+    logger.info(
+        f"Exporting {len(items)} agents to peer '{user_context['username']}' "
+        f"(total visible: {total_count}, has_more: {has_more})"
+    )
+
+    return FederationExportResponse(
+        items=items,
+        sync_generation=CURRENT_SYNC_GENERATION,
+        total_count=total_count,
+        has_more=has_more,
+        registry_id=_get_registry_id(),
+    )
