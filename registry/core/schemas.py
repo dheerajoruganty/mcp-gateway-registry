@@ -1,6 +1,5 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Dict, Any, Optional
-from datetime import datetime
 
 
 class ServerInfo(BaseModel):
@@ -20,6 +19,34 @@ class ServerInfo(BaseModel):
     supported_transports: List[str] = Field(default_factory=lambda: ["streamable-http"], description="List of supported transports")
     mcp_endpoint: Optional[str] = Field(default=None, description="Custom /mcp endpoint path")
     sse_endpoint: Optional[str] = Field(default=None, description="Custom /sse endpoint path")
+
+    # Federation and access control fields
+    visibility: str = Field(
+        default="internal",
+        description="Visibility level: public, group-restricted, or internal (default)"
+    )
+    allowed_groups: List[str] = Field(
+        default_factory=list,
+        description="Groups with access when visibility is group-restricted"
+    )
+    sync_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Metadata for items synced from peer registries"
+    )
+
+    @field_validator("visibility")
+    @classmethod
+    def _validate_visibility(
+        cls,
+        v: str,
+    ) -> str:
+        """Validate visibility value."""
+        valid_values = ["public", "group-restricted", "internal"]
+        if v not in valid_values:
+            raise ValueError(
+                f"Visibility must be one of: {', '.join(valid_values)}"
+            )
+        return v
 
 
 class ToolDescription(BaseModel):
