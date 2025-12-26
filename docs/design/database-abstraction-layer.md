@@ -13,7 +13,6 @@
 5. [Factory Pattern](#factory-pattern)
 6. [Design Rationale](#design-rationale)
 7. [Code Organization](#code-organization)
-8. [Migration Strategy](#migration-strategy)
 
 ## Architecture Overview
 
@@ -702,61 +701,6 @@ opensearch_index_federation_config: str = "mcp-federation-config"
 opensearch_hybrid_bm25_weight: float = 0.4
 opensearch_hybrid_knn_weight: float = 0.6
 ```
-
----
-
-## Migration Strategy
-
-### From File to OpenSearch
-
-The repository pattern enables **zero-downtime migration** from file-based to OpenSearch backend:
-
-#### Phase 1: Parallel Writes (Optional)
-Create a "dual-write" repository wrapper that writes to both backends:
-
-```python
-class DualWriteRepository:
-    """Dual-write wrapper for gradual migration."""
-
-    def __init__(self, file_repo, opensearch_repo):
-        self.file_repo = file_repo
-        self.opensearch_repo = opensearch_repo
-
-    async def create(self, entity):
-        # Write to both backends
-        await self.file_repo.create(entity)
-        await self.opensearch_repo.create(entity)
-```
-
-**Benefits:**
-- Builds OpenSearch index while keeping file system as fallback
-- Can verify data consistency between backends
-- Easy rollback if issues arise
-
-#### Phase 2: Migration
-1. Set up OpenSearch cluster
-2. Enable dual-write mode
-3. Bulk load existing data into OpenSearch
-4. Verify data integrity
-5. Switch `STORAGE_BACKEND` to "opensearch"
-6. Disable dual-write mode
-7. Keep file backup for X days before cleanup
-
-#### Phase 3: File System Cleanup
-After successful OpenSearch operation:
-- Archive or delete file-based storage
-- Decommission FAISS indexes
-- Document migration for future reference
-
-### Backwards Compatibility
-
-File-based backend is maintained for:
-- Development environments
-- Testing (no external dependencies)
-- Backwards compatibility
-- Emergency fallback
-
-The factory pattern ensures no code changes needed when switching backends.
 
 ---
 
