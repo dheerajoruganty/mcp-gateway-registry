@@ -135,38 +135,63 @@ Stores authorization scopes, permission mappings, and UI access control configur
 
 **Document Structure:**
 
+The scopes index stores three separate document types, each with a distinct structure:
+
+**Example 1: Server Scope Document**
+
 ```json
 {
   "scope_type": "server_scope",
-  "scope_name": "finance_admin",
-  "group_name": "finance_team",
-  "ui_permissions": {
-    "dashboard": true,
-    "admin_panel": true,
-    "settings": true
-  },
+  "scope_name": "admin_access",
   "server_access": [
     {
-      "server": "financial_data_server",
-      "methods": ["GET", "POST"],
-      "tools": ["analyze_earnings", "portfolio_analysis"]
+      "server": "financial_server",
+      "methods": ["GET", "POST", "PUT"],
+      "tools": ["analyze_data", "generate_report"]
     },
     {
-      "server": "market_research_server",
+      "server": "analytics_server",
       "methods": ["GET"],
-      "tools": ["search_market_data"]
+      "tools": null
     }
   ],
-  "group_mappings": ["finance_team", "senior_analysts"],
-  "updated_at": "2024-12-19T11:45:00Z"
+  "description": "Administrator access to financial and analytics servers",
+  "created_at": "2024-12-01T10:00:00Z",
+  "updated_at": "2024-12-20T15:30:00Z"
+}
+```
+
+**Example 2: Group Mapping Document**
+
+```json
+{
+  "scope_type": "group_mapping",
+  "group_name": "finance_team",
+  "group_mappings": ["admin_access", "read_only_access", "reporting_access"],
+  "created_at": "2024-12-01T10:00:00Z",
+  "updated_at": "2024-12-20T15:30:00Z"
+}
+```
+
+**Example 3: UI Scope Document**
+
+```json
+{
+  "scope_type": "ui_scope",
+  "scope_name": "finance_team",
+  "ui_permissions": {
+    "list_service": ["financial_server", "analytics_server", "reporting_server"]
+  },
+  "created_at": "2024-12-01T10:00:00Z",
+  "updated_at": "2024-12-20T15:30:00Z"
 }
 ```
 
 **Document Types:**
-The scopes index stores three related document types:
+The scopes index stores three separate document types, distinguished by the `scope_type` field:
 
 1. **server_scope**: Defines server-level access permissions
-   - Fields: `scope_type`, `scope_name`, `server_access` (nested)
+   - Fields: `scope_type`, `scope_name`, `server_access` (nested), `description`
 
 2. **group_mapping**: Maps user groups to scopes
    - Fields: `scope_type`, `group_name`, `group_mappings` (keyword array)
@@ -200,32 +225,67 @@ Stores vector embeddings for semantic search across servers and agents.
 
 **Document Structure:**
 
+The embeddings index stores two entity types, distinguished by the `entity_type` field:
+
+**Entity Type 1: MCP Server Embedding**
+
 ```json
 {
-  "entity_type": "server",
-  "path": "/servers/mcp",
-  "name": "model-context-protocol",
-  "description": "Model Context Protocol server implementation",
-  "tags": ["protocol", "mcp"],
+  "entity_type": "mcp_server",
+  "path": "financial_server",
+  "name": "Financial Data Server",
+  "description": "Provides financial data analysis and reporting tools",
+  "tags": ["finance", "data", "analysis"],
   "is_enabled": true,
-  "text_for_embedding": "model context protocol server mcp stdio sse json-rpc tools",
-  "embedding": [0.125, 0.342, -0.098, ...],
+  "text_for_embedding": "Financial Data Server. Provides financial data analysis and reporting tools. Tools: analyze_earnings, generate_report, portfolio_analysis",
+  "embedding": [0.125, -0.342, 0.098, -0.215, 0.456, ...],
   "tools": [
     {
-      "name": "get_resources",
-      "description": "Retrieve available resources"
-    }
-  ],
-  "skills": [
+      "name": "analyze_earnings",
+      "description": "Analyze company earnings reports"
+    },
     {
-      "id": "skill-001",
-      "name": "protocol_handling",
-      "description": "Handle MCP protocol messages"
+      "name": "generate_report",
+      "description": "Generate financial summary reports"
     }
   ],
   "metadata": {
-    "source": "auto-generated",
-    "model": "all-MiniLM-L6-v2"
+    "server_name": "Financial Data Server",
+    "proxy_pass_url": "http://localhost:8000",
+    "num_tools": 15
+  },
+  "indexed_at": "2024-12-20T15:30:00Z"
+}
+```
+
+**Entity Type 2: A2A Agent Embedding**
+
+```json
+{
+  "entity_type": "a2a_agent",
+  "path": "agents_financial_analyst",
+  "name": "Financial Analysis Agent",
+  "description": "Analyzes financial data and provides insights",
+  "tags": ["finance", "analysis", "agent"],
+  "is_enabled": true,
+  "text_for_embedding": "Financial Analysis Agent. Analyzes financial data and provides insights. Skills: earnings_analysis, market_research, risk_assessment",
+  "embedding": [0.215, -0.128, 0.342, -0.098, 0.567, ...],
+  "skills": [
+    {
+      "id": "skill-001",
+      "name": "earnings_analysis",
+      "description": "Analyze company earnings reports"
+    },
+    {
+      "id": "skill-002",
+      "name": "market_research",
+      "description": "Research market trends and patterns"
+    }
+  ],
+  "metadata": {
+    "protocol_version": "1.0",
+    "url": "https://agent.example.com/financial-analyst",
+    "version": "2.1.0"
   },
   "indexed_at": "2024-12-20T15:30:00Z"
 }
@@ -233,10 +293,10 @@ Stores vector embeddings for semantic search across servers and agents.
 
 **Key Fields:**
 - `embedding` (knn_vector): 384-dimensional vector for semantic search
-- `entity_type` (keyword): Type of entity (server or agent)
+- `entity_type` (keyword): Type of entity (mcp_server or a2a_agent)
 - `text_for_embedding` (text): Combined text used to generate the embedding
-- `tools` (nested): Associated tools with descriptions
-- `skills` (nested): Associated agent skills with descriptions
+- `tools` (nested): Associated tools with descriptions (for MCP servers)
+- `skills` (nested): Associated agent skills with descriptions (for A2A agents)
 - `metadata` (object, disabled): Flexible metadata storage
 
 ---
@@ -252,50 +312,53 @@ Stores security vulnerability scan results and risk assessments.
 
 ```json
 {
-  "server_path": "/servers/financial-api",
-  "scan_timestamp": "2024-12-20T10:15:00Z",
-  "scan_status": "completed",
+  "server_path": "financial_server",
+  "scan_timestamp": "2024-12-20T10:30:00Z",
+  "scan_status": "unsafe",
   "vulnerabilities": [
     {
       "severity": "high",
-      "title": "SQL Injection vulnerability",
-      "description": "Unescaped user input in database queries",
+      "title": "SQL Injection vulnerability in query handler",
+      "description": "User input not properly sanitized in database queries",
       "cve_id": "CVE-2024-12345",
-      "package_name": "sqlalchemy",
-      "package_version": "1.3.0",
-      "fixed_version": "1.4.0"
+      "package_name": "db-connector",
+      "package_version": "2.1.0",
+      "fixed_version": "2.1.5"
     },
     {
       "severity": "medium",
-      "title": "Outdated dependency",
-      "description": "Deprecated library usage",
-      "cve_id": null,
-      "package_name": "requests",
-      "package_version": "2.24.0",
-      "fixed_version": "2.31.0"
+      "title": "Outdated dependency with known issues",
+      "description": "Package has known security vulnerabilities",
+      "cve_id": "CVE-2024-67890",
+      "package_name": "http-client",
+      "package_version": "1.2.3",
+      "fixed_version": "1.3.0"
     }
   ],
-  "risk_score": 7.8,
-  "scan_metadata": {
-    "scanner_version": "1.2.0",
-    "analyzers": ["yara", "llm"],
-    "duration_seconds": 45
-  },
+  "risk_score": 0.75,
   "total_vulnerabilities": 2,
   "critical_count": 0,
   "high_count": 1,
   "medium_count": 1,
-  "low_count": 0
+  "low_count": 0,
+  "scan_metadata": {
+    "scanner": "security-analyzer-v2",
+    "scan_duration_ms": 3456
+  }
 }
 ```
 
 **Key Fields:**
 - `server_path` (keyword): Path to the scanned server/agent
-- `scan_status` (keyword): Status of the scan (pending, in_progress, completed, failed)
+- `scan_status` (keyword): Status of the scan (safe, unsafe, pending, in_progress, failed)
 - `vulnerabilities` (nested): Array of vulnerability findings with CVE details
-- `risk_score` (float): Overall risk score (0-10 scale)
-- `*_count` (integer): Count by severity level (critical, high, medium, low)
+- `risk_score` (float): Overall risk score (0-1 scale)
+- `total_vulnerabilities` (integer): Total count of vulnerabilities found
+- `*_count` (integer): Count by severity level (critical_count, high_count, medium_count, low_count)
 - `scan_timestamp` (date): When the scan was executed
+- `scan_metadata` (object): Additional metadata about the scan (scanner version, duration, etc.)
+
+**Note:** The counts (`total_vulnerabilities`, `critical_count`, `high_count`, `medium_count`, `low_count`) are automatically calculated from the `vulnerabilities` array.
 
 ---
 
