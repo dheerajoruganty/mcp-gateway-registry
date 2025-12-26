@@ -1,0 +1,22 @@
+{
+  "anthropic": {
+    "enabled": true,
+    "endpoint": "https://registry.modelcontextprotocol.io",
+    "sync_on_startup": false,
+    "servers": [
+      {"name": "io.github.jgador/websharp"},
+      {"name": "modelcontextprotocol/filesystem"},
+      {"name": "modelcontextprotocol/brave-search"}
+    ]
+  },
+  "asor": {
+    "enabled": true,
+    "endpoint": "https://wcpdev-services1.wd103.myworkday.com/ccx/api/asor/v1/awsasor_wcpdev1",
+    "auth_env_var": "ASOR_ACCESS_TOKEN",
+    "sync_on_startup": false,
+    "agents": [
+      {"id": "aws_assistant"},
+      {"id": "data_analyst"}
+    ]
+  }
+}

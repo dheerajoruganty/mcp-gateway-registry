@@ -26,6 +26,7 @@ from registry.api.wellknown_routes import router as wellknown_router
 from registry.api.registry_routes import router as registry_router
 from registry.api.agent_routes import router as agent_router
 from registry.api.management_routes import router as management_router
+from registry.api.federation_routes import router as federation_router
 from registry.health.routes import router as health_router
 
 # Import auth dependencies
@@ -149,27 +150,70 @@ async def lifespan(app: FastAPI):
         logger.info("🏥 Initializing health monitoring service...")
         await health_service.initialize()
 
-        logger.info("🔗 Initializing federation service...")
-        federation_service = get_federation_service()
-        if federation_service.config.is_any_federation_enabled():
-            logger.info(f"Federation enabled for: {', '.join(federation_service.config.get_enabled_federations())}")
+        logger.info("🔗 Checking federation configuration...")
+        from registry.repositories.factory import get_federation_config_repository
 
-            # Sync on startup if configured
-            sync_on_startup = (
-                (federation_service.config.anthropic.enabled and federation_service.config.anthropic.sync_on_startup) or
-                (federation_service.config.asor.enabled and federation_service.config.asor.sync_on_startup)
-            )
-            
-            if sync_on_startup:
-                logger.info("🔄 Syncing servers from federated registries on startup...")
-                try:
-                    sync_results = await federation_service.sync_all()
-                    for source, servers in sync_results.items():
-                        logger.info(f"✅ Synced {len(servers)} servers from {source}")
-                except Exception as e:
-                    logger.error(f"⚠️ Federation sync failed (continuing with startup): {e}", exc_info=True)
-        else:
-            logger.info("Federation is disabled")
+        try:
+            # Load federation config from OpenSearch
+            federation_repo = get_federation_config_repository()
+            federation_config = await federation_repo.get_config("default")
+
+            if federation_config and federation_config.is_any_federation_enabled():
+                logger.info(f"Federation enabled for: {', '.join(federation_config.get_enabled_federations())}")
+
+                # Sync on startup if configured
+                sync_on_startup = (
+                    (federation_config.anthropic.enabled and federation_config.anthropic.sync_on_startup) or
+                    (federation_config.asor.enabled and federation_config.asor.sync_on_startup)
+                )
+
+                if sync_on_startup:
+                    logger.info("🔄 Syncing servers from federated registries on startup...")
+                    try:
+                        from registry.services.federation.anthropic_client import AnthropicFederationClient
+
+                        # Sync Anthropic servers if enabled and sync_on_startup is true
+                        if federation_config.anthropic.enabled and federation_config.anthropic.sync_on_startup:
+                            logger.info("Syncing from Anthropic MCP Registry...")
+                            anthropic_client = AnthropicFederationClient(
+                                endpoint=federation_config.anthropic.endpoint
+                            )
+                            servers = anthropic_client.fetch_all_servers(
+                                federation_config.anthropic.servers
+                            )
+
+                            # Register servers
+                            synced_count = 0
+                            for server_data in servers:
+                                try:
+                                    server_path = server_data.get("path")
+                                    if not server_path:
+                                        continue
+
+                                    # Register or update server
+                                    success = await server_service.register_server(server_data)
+                                    if not success:
+                                        success = await server_service.update_server(server_path, server_data)
+
+                                    if success:
+                                        # Enable the server
+                                        await server_service.toggle_service(server_path, True)
+                                        synced_count += 1
+                                        logger.info(f"Synced: {server_data.get('server_name', server_path)}")
+                                except Exception as e:
+                                    logger.error(f"Failed to sync server {server_data.get('server_name', 'unknown')}: {e}")
+
+                            logger.info(f"✅ Synced {synced_count} servers from Anthropic")
+
+                        # ASOR sync would go here if needed
+
+                    except Exception as e:
+                        logger.error(f"⚠️ Federation sync failed (continuing with startup): {e}", exc_info=True)
+            else:
+                logger.info("Federation is disabled or not configured")
+        except Exception as e:
+            logger.error(f"Failed to load federation config: {e}")
+            logger.info("Continuing without federation")
 
         logger.info("🌐 Generating initial Nginx configuration...")
         enabled_servers = {
@@ -234,6 +278,10 @@ app = FastAPI(
         {
             "name": "Anthropic Registry API",
             "description": "Anthropic-compatible registry API (v0.1) for MCP server discovery"
+        },
+        {
+            "name": "federation",
+            "description": "Federation configuration management API for Anthropic and ASOR integrations"
         }
     ]
 )
@@ -253,6 +301,7 @@ app.include_router(servers_router, prefix="/api", tags=["Server Management"])
 app.include_router(agent_router, prefix="/api", tags=["Agent Management"])
 app.include_router(management_router, prefix="/api")
 app.include_router(search_router, prefix="/api/search", tags=["Semantic Search"])
+app.include_router(federation_router, prefix="/api", tags=["federation"])
 app.include_router(health_router, prefix="/api/health", tags=["Health Monitoring"])
 
 # Register Anthropic MCP Registry API (public API for MCP servers only)

@@ -9,8 +9,7 @@ from opensearchpy import AsyncOpenSearch, NotFoundError
 from ...core.config import settings
 from ...schemas.federation_schema import FederationConfig
 from ..interfaces import FederationConfigRepositoryBase
-from .opensearch_client import get_opensearch_client
-from .utils import get_index_name
+from .client import get_opensearch_client, get_index_name
 
 
 logger = logging.getLogger(__name__)

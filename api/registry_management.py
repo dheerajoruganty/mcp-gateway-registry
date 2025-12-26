@@ -107,6 +107,31 @@ Group Management (IAM):
     # Delete an IAM group
     uv run python registry_management.py group-delete --name developers --force
 
+Federation Management:
+    # Get federation configuration
+    uv run python registry_management.py federation-get
+
+    # Save federation configuration from JSON file
+    uv run python registry_management.py federation-save --config federation-config.json
+
+    # List all federation configurations
+    uv run python registry_management.py federation-list
+
+    # Add Anthropic server to federation config
+    uv run python registry_management.py federation-add-anthropic-server --server-name io.github.jgador/websharp
+
+    # Remove Anthropic server from federation config
+    uv run python registry_management.py federation-remove-anthropic-server --server-name io.github.jgador/websharp
+
+    # Add ASOR agent to federation config
+    uv run python registry_management.py federation-add-asor-agent --agent-id aws_assistant
+
+    # Remove ASOR agent from federation config
+    uv run python registry_management.py federation-remove-asor-agent --agent-id aws_assistant
+
+    # Delete federation configuration
+    uv run python registry_management.py federation-delete --config-id default --force
+
 Global Options (can be set via environment variables or command-line arguments):
     --registry-url URL       Registry base URL (overrides REGISTRY_URL env var)
     --aws-region REGION      AWS region (overrides AWS_REGION env var)
@@ -2059,6 +2084,279 @@ def cmd_group_list(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_federation_get(args: argparse.Namespace) -> int:
+    """
+    Get federation configuration.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        config = client.get_federation_config(config_id=args.config_id)
+
+        print(json.dumps(config, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Get federation config failed: {e}")
+        return 1
+
+
+def cmd_federation_save(args: argparse.Namespace) -> int:
+    """
+    Save federation configuration from JSON file.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+
+        # Load config from file
+        with open(args.config, 'r') as f:
+            config_data = json.load(f)
+
+        response = client.save_federation_config(
+            config=config_data,
+            config_id=args.config_id
+        )
+
+        logger.info(f"Federation config saved successfully: {args.config_id}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except FileNotFoundError:
+        logger.error(f"Config file not found: {args.config}")
+        return 1
+    except Exception as e:
+        logger.error(f"Save federation config failed: {e}")
+        return 1
+
+
+def cmd_federation_delete(args: argparse.Namespace) -> int:
+    """
+    Delete federation configuration.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+
+        if not args.force:
+            confirm = input(f"Delete federation config '{args.config_id}'? (y/N): ")
+            if confirm.lower() != 'y':
+                logger.info("Cancelled")
+                return 0
+
+        response = client.delete_federation_config(config_id=args.config_id)
+
+        logger.info(f"Federation config deleted: {args.config_id}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Delete federation config failed: {e}")
+        return 1
+
+
+def cmd_federation_list(args: argparse.Namespace) -> int:
+    """
+    List all federation configurations.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.list_federation_configs()
+
+        if args.json:
+            # Output raw JSON
+            print(json.dumps(response, indent=2, default=str))
+            return 0
+
+        if not response.get('configs'):
+            logger.info("No federation configs found")
+            return 0
+
+        logger.info(f"Found {response.get('total', 0)} federation configs:\n")
+
+        for config in response['configs']:
+            print(f"Config ID: {config.get('id')}")
+            print(f"  Created: {config.get('created_at')}")
+            print(f"  Updated: {config.get('updated_at')}")
+            print()
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"List federation configs failed: {e}")
+        return 1
+
+
+def cmd_federation_add_anthropic_server(args: argparse.Namespace) -> int:
+    """
+    Add Anthropic server to federation config.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.add_anthropic_server(
+            server_name=args.server_name,
+            config_id=args.config_id
+        )
+
+        logger.info(f"Anthropic server added: {args.server_name}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Add Anthropic server failed: {e}")
+        return 1
+
+
+def cmd_federation_remove_anthropic_server(args: argparse.Namespace) -> int:
+    """
+    Remove Anthropic server from federation config.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.remove_anthropic_server(
+            server_name=args.server_name,
+            config_id=args.config_id
+        )
+
+        logger.info(f"Anthropic server removed: {args.server_name}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Remove Anthropic server failed: {e}")
+        return 1
+
+
+def cmd_federation_add_asor_agent(args: argparse.Namespace) -> int:
+    """
+    Add ASOR agent to federation config.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.add_asor_agent(
+            agent_id=args.agent_id,
+            config_id=args.config_id
+        )
+
+        logger.info(f"ASOR agent added: {args.agent_id}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Add ASOR agent failed: {e}")
+        return 1
+
+
+def cmd_federation_remove_asor_agent(args: argparse.Namespace) -> int:
+    """
+    Remove ASOR agent from federation config.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.remove_asor_agent(
+            agent_id=args.agent_id,
+            config_id=args.config_id
+        )
+
+        logger.info(f"ASOR agent removed: {args.agent_id}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Remove ASOR agent failed: {e}")
+        return 1
+
+
+def cmd_federation_sync(args: argparse.Namespace) -> int:
+    """
+    Trigger manual federation sync to import servers/agents.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.sync_federation(
+            config_id=args.config_id,
+            source=args.source
+        )
+
+        if args.json:
+            # Output raw JSON
+            print(json.dumps(response, indent=2, default=str))
+        else:
+            # Formatted output
+            logger.info(f"Federation sync completed: {response.get('message')}")
+            print(f"\nSync Results:")
+            print(f"  Config ID: {response.get('config_id')}")
+            print(f"  Total Synced: {response.get('total_synced', 0)}")
+
+            results = response.get('results', {})
+            if results.get('anthropic', {}).get('count', 0) > 0:
+                print(f"\n  Anthropic Servers ({results['anthropic']['count']}):")
+                for server in results['anthropic'].get('servers', []):
+                    print(f"    - {server}")
+
+            if results.get('asor', {}).get('count', 0) > 0:
+                print(f"\n  ASOR Agents ({results['asor']['count']}):")
+                for agent in results['asor'].get('agents', []):
+                    print(f"    - {agent}")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Federation sync failed: {e}")
+        return 1
+
+
 def main() -> int:
     """
     Main entry point for the CLI.
@@ -2677,6 +2975,152 @@ Examples:
     # List IAM groups command
     group_list_parser = subparsers.add_parser("group-list", help="List IAM groups")
 
+    # Federation Management Commands
+
+    # Get federation config command
+    federation_get_parser = subparsers.add_parser(
+        "federation-get",
+        help="Get federation configuration"
+    )
+    federation_get_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+    federation_get_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
+    # Save federation config command
+    federation_save_parser = subparsers.add_parser(
+        "federation-save",
+        help="Save federation configuration from JSON file"
+    )
+    federation_save_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to federation config JSON file"
+    )
+    federation_save_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+
+    # Delete federation config command
+    federation_delete_parser = subparsers.add_parser(
+        "federation-delete",
+        help="Delete federation configuration"
+    )
+    federation_delete_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID to delete (default: default)"
+    )
+    federation_delete_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Skip confirmation prompt"
+    )
+
+    # List federation configs command
+    federation_list_parser = subparsers.add_parser(
+        "federation-list",
+        help="List all federation configurations"
+    )
+    federation_list_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
+    # Add Anthropic server command
+    federation_add_anthropic_parser = subparsers.add_parser(
+        "federation-add-anthropic-server",
+        help="Add Anthropic server to federation config"
+    )
+    federation_add_anthropic_parser.add_argument(
+        "--server-name",
+        required=True,
+        help="Anthropic server name (e.g., io.github.jgador/websharp)"
+    )
+    federation_add_anthropic_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+
+    # Remove Anthropic server command
+    federation_remove_anthropic_parser = subparsers.add_parser(
+        "federation-remove-anthropic-server",
+        help="Remove Anthropic server from federation config"
+    )
+    federation_remove_anthropic_parser.add_argument(
+        "--server-name",
+        required=True,
+        help="Anthropic server name to remove"
+    )
+    federation_remove_anthropic_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+
+    # Add ASOR agent command
+    federation_add_asor_parser = subparsers.add_parser(
+        "federation-add-asor-agent",
+        help="Add ASOR agent to federation config"
+    )
+    federation_add_asor_parser.add_argument(
+        "--agent-id",
+        required=True,
+        help="ASOR agent ID (e.g., aws_assistant)"
+    )
+    federation_add_asor_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+
+    # Remove ASOR agent command
+    federation_remove_asor_parser = subparsers.add_parser(
+        "federation-remove-asor-agent",
+        help="Remove ASOR agent from federation config"
+    )
+    federation_remove_asor_parser.add_argument(
+        "--agent-id",
+        required=True,
+        help="ASOR agent ID to remove"
+    )
+    federation_remove_asor_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+
+    # Federation sync command
+    federation_sync_parser = subparsers.add_parser(
+        "federation-sync",
+        help="Trigger manual federation sync to import servers/agents"
+    )
+    federation_sync_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+    federation_sync_parser.add_argument(
+        "--source",
+        choices=["anthropic", "asor"],
+        help="Optional source filter (anthropic or asor). Syncs all enabled sources if not specified."
+    )
+    federation_sync_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
     args = parser.parse_args()
 
     # Enable debug logging if requested
@@ -2728,6 +3172,15 @@ Examples:
         "group-create": cmd_group_create,
         "group-delete": cmd_group_delete,
         "group-list": cmd_group_list,
+        "federation-get": cmd_federation_get,
+        "federation-save": cmd_federation_save,
+        "federation-delete": cmd_federation_delete,
+        "federation-list": cmd_federation_list,
+        "federation-add-anthropic-server": cmd_federation_add_anthropic_server,
+        "federation-remove-anthropic-server": cmd_federation_remove_anthropic_server,
+        "federation-add-asor-agent": cmd_federation_add_asor_agent,
+        "federation-remove-asor-agent": cmd_federation_remove_asor_agent,
+        "federation-sync": cmd_federation_sync,
     }
 
     handler = command_handlers.get(args.command)

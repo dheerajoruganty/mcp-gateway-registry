@@ -1,0 +1,15 @@
+{
+  "anthropic": {
+    "enabled": true,
+    "endpoint": "https://registry.modelcontextprotocol.io",
+    "sync_on_startup": true,
+    "servers": []
+  },
+  "asor": {
+    "enabled": false,
+    "endpoint": "",
+    "auth_env_var": "ASOR_ACCESS_TOKEN",
+    "sync_on_startup": false,
+    "agents": []
+  }
+}

@@ -809,12 +809,13 @@ class RegistryClient:
         logger.debug(f"{method} {url}")
 
         # Determine content type based on endpoint
-        # Agent, Management, Search, and group import endpoints use JSON, server registration uses form data
+        # Agent, Management, Search, Federation, and group import endpoints use JSON, server registration uses form data
         if (endpoint.startswith("/api/agents") or
             endpoint.startswith("/api/management") or
             endpoint.startswith("/api/search") or
+            endpoint.startswith("/api/federation") or
             endpoint == "/api/servers/groups/import"):
-            # Send as JSON for agent, management, search, and import endpoints
+            # Send as JSON for agent, management, search, federation, and import endpoints
             response = requests.request(
                 method=method,
                 url=url,
@@ -2151,4 +2152,272 @@ class RegistryClient:
 
         result = GroupDeleteResponse(**response.json())
         logger.info(f"Group deleted successfully: {name}")
+        return result
+
+
+    def get_federation_config(
+        self,
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Get federation configuration by ID.
+
+        Args:
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Federation configuration dictionary
+
+        Raises:
+            requests.HTTPError: If not found (404) or request fails
+        """
+        logger.info(f"Getting federation config: {config_id}")
+
+        response = self._make_request(
+            method="GET",
+            endpoint=f"/api/federation/config",
+            params={"config_id": config_id}
+        )
+
+        result = response.json()
+        logger.info(f"Retrieved federation config: {config_id}")
+        return result
+
+
+    def save_federation_config(
+        self,
+        config: Dict[str, Any],
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Create or update federation configuration.
+
+        Args:
+            config: Federation configuration dictionary
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Saved configuration response
+
+        Raises:
+            requests.HTTPError: If validation fails (422) or request fails
+        """
+        logger.info(f"Saving federation config: {config_id}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint="/api/federation/config",
+            params={"config_id": config_id},
+            data=config
+        )
+
+        result = response.json()
+        logger.info(f"Federation config saved successfully: {config_id}")
+        return result
+
+
+    def delete_federation_config(
+        self,
+        config_id: str = "default"
+    ) -> Dict[str, str]:
+        """
+        Delete federation configuration.
+
+        Args:
+            config_id: Configuration ID to delete
+
+        Returns:
+            Deletion confirmation message
+
+        Raises:
+            requests.HTTPError: If not found (404) or request fails
+        """
+        logger.info(f"Deleting federation config: {config_id}")
+
+        response = self._make_request(
+            method="DELETE",
+            endpoint=f"/api/federation/config/{config_id}"
+        )
+
+        result = response.json()
+        logger.info(f"Federation config deleted successfully: {config_id}")
+        return result
+
+
+    def list_federation_configs(self) -> Dict[str, Any]:
+        """
+        List all federation configurations.
+
+        Returns:
+            Dictionary with configs list and total count
+
+        Raises:
+            requests.HTTPError: If request fails
+        """
+        logger.info("Listing federation configs")
+
+        response = self._make_request(
+            method="GET",
+            endpoint="/api/federation/configs"
+        )
+
+        result = response.json()
+        logger.info(f"Retrieved {result.get('total', 0)} federation configs")
+        return result
+
+
+    def add_anthropic_server(
+        self,
+        server_name: str,
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Add Anthropic server to federation configuration.
+
+        Args:
+            server_name: Server name (e.g., "io.github.jgador/websharp")
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Updated configuration
+
+        Raises:
+            requests.HTTPError: If config not found (404), already exists (400), or request fails
+        """
+        logger.info(f"Adding Anthropic server '{server_name}' to config: {config_id}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint=f"/api/federation/config/{config_id}/anthropic/servers",
+            params={"server_name": server_name}
+        )
+
+        result = response.json()
+        logger.info(f"Anthropic server added successfully: {server_name}")
+        return result
+
+
+    def remove_anthropic_server(
+        self,
+        server_name: str,
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Remove Anthropic server from federation configuration.
+
+        Args:
+            server_name: Server name to remove
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Updated configuration
+
+        Raises:
+            requests.HTTPError: If config or server not found (404) or request fails
+        """
+        logger.info(f"Removing Anthropic server '{server_name}' from config: {config_id}")
+
+        response = self._make_request(
+            method="DELETE",
+            endpoint=f"/api/federation/config/{config_id}/anthropic/servers/{server_name}"
+        )
+
+        result = response.json()
+        logger.info(f"Anthropic server removed successfully: {server_name}")
+        return result
+
+
+    def add_asor_agent(
+        self,
+        agent_id: str,
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Add ASOR agent to federation configuration.
+
+        Args:
+            agent_id: Agent ID (e.g., "aws_assistant")
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Updated configuration
+
+        Raises:
+            requests.HTTPError: If config not found (404), already exists (400), or request fails
+        """
+        logger.info(f"Adding ASOR agent '{agent_id}' to config: {config_id}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint=f"/api/federation/config/{config_id}/asor/agents",
+            params={"agent_id": agent_id}
+        )
+
+        result = response.json()
+        logger.info(f"ASOR agent added successfully: {agent_id}")
+        return result
+
+
+    def remove_asor_agent(
+        self,
+        agent_id: str,
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Remove ASOR agent from federation configuration.
+
+        Args:
+            agent_id: Agent ID to remove
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Updated configuration
+
+        Raises:
+            requests.HTTPError: If config or agent not found (404) or request fails
+        """
+        logger.info(f"Removing ASOR agent '{agent_id}' from config: {config_id}")
+
+        response = self._make_request(
+            method="DELETE",
+            endpoint=f"/api/federation/config/{config_id}/asor/agents/{agent_id}"
+        )
+
+        result = response.json()
+        logger.info(f"ASOR agent removed successfully: {agent_id}")
+        return result
+
+
+    def sync_federation(
+        self,
+        config_id: str = "default",
+        source: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Trigger manual federation sync to import servers/agents.
+
+        Args:
+            config_id: Configuration ID (default: "default")
+            source: Optional source filter ("anthropic" or "asor"). None syncs all enabled sources.
+
+        Returns:
+            Sync results with counts of synced items
+
+        Raises:
+            requests.HTTPError: If config not found (404) or request fails
+        """
+        logger.info(f"Triggering federation sync for config: {config_id}")
+
+        params = {}
+        if source:
+            params["source"] = source
+
+        response = self._make_request(
+            method="POST",
+            endpoint=f"/api/federation/sync",
+            params={"config_id": config_id, **params}
+        )
+
+        result = response.json()
+        logger.info(f"Federation sync completed: {result.get('total_synced', 0)} items synced")
         return result

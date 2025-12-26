@@ -1,0 +1,18 @@
+{
+  "anthropic": {
+    "enabled": true,
+    "endpoint": "https://registry.modelcontextprotocol.io",
+    "sync_on_startup": false,
+    "servers": [
+      {"name": "io.github.jgador/websharp"},
+      {"name": "modelcontextprotocol/filesystem"}
+    ]
+  },
+  "asor": {
+    "enabled": false,
+    "endpoint": "",
+    "auth_env_var": "ASOR_ACCESS_TOKEN",
+    "sync_on_startup": false,
+    "agents": []
+  }
+}

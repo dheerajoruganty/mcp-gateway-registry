@@ -124,6 +124,9 @@ fi
 
 log "Found .env file"
 
+# Load environment variables from .env file early so we can check STORAGE_BACKEND
+source .env
+
 # Check if docker compose is installed
 if ! docker compose version &> /dev/null; then
     log "ERROR: docker compose is not available"
@@ -175,102 +178,154 @@ else
     log "No existing FAISS index files found - will be created on first startup"
 fi
 
+# Clean up any root-owned directories from previous Docker runs when using OpenSearch backend
+if [ "${STORAGE_BACKEND:-file}" = "opensearch" ]; then
+    log "Cleaning up root-owned directories from previous Docker runs..."
+
+    # Check and remove root-owned directories
+    for dir in "$MCPGATEWAY_SERVERS_DIR" "${HOME}/mcp-gateway/agents" "${HOME}/mcp-gateway/auth_server" "${HOME}/mcp-gateway/security_scans" "${HOME}/mcp-gateway/federation.json"; do
+        if [ -e "$dir" ] && [ "$(stat -c '%U' "$dir" 2>/dev/null)" = "root" ]; then
+            log "Removing root-owned: $dir"
+            sudo rm -rf "$dir"
+        fi
+    done
+fi
+
 # Copy JSON files from registry/servers to ${HOME}/mcp-gateway/servers with environment variable substitution
-log "Copying JSON files from registry/servers to $MCPGATEWAY_SERVERS_DIR..."
-if [ -d "registry/servers" ]; then
-    # Create the target directory if it doesn't exist
+# Skip if using OpenSearch backend (data is stored in OpenSearch, not files)
+if [ "${STORAGE_BACKEND:-file}" = "opensearch" ]; then
+    log "STORAGE_BACKEND=opensearch - creating empty servers directory for Docker mount (data stored in OpenSearch)"
     mkdir -p "$MCPGATEWAY_SERVERS_DIR"
+else
+    log "Copying JSON files from registry/servers to $MCPGATEWAY_SERVERS_DIR..."
+    if [ -d "registry/servers" ]; then
+        # Create the target directory if it doesn't exist
+        mkdir -p "$MCPGATEWAY_SERVERS_DIR"
 
-    # Copy all JSON files with environment variable substitution
-    if ls registry/servers/*.json 1> /dev/null 2>&1; then
-        # Export all environment variables from .env file for envsubst
-        set -a  # Automatically export all variables
-        source .env
-        set +a  # Turn off automatic export
+        # Copy all JSON files with environment variable substitution
+        if ls registry/servers/*.json 1> /dev/null 2>&1; then
+            # Export all environment variables from .env file for envsubst
+            set -a  # Automatically export all variables
+            source .env
+            set +a  # Turn off automatic export
 
-        for json_file in registry/servers/*.json; do
-            filename=$(basename "$json_file")
-            log "Processing $filename with environment variable substitution..."
+            for json_file in registry/servers/*.json; do
+                filename=$(basename "$json_file")
+                log "Processing $filename with environment variable substitution..."
 
-            # Use envsubst to substitute environment variables, then copy to target
-            envsubst < "$json_file" > "$MCPGATEWAY_SERVERS_DIR/$filename"
-        done
-        log "JSON files copied successfully with environment variable substitution"
+                # Use envsubst to substitute environment variables, then copy to target
+                envsubst < "$json_file" > "$MCPGATEWAY_SERVERS_DIR/$filename"
+            done
+            log "JSON files copied successfully with environment variable substitution"
 
-        # Verify atlassian.json was copied
-        if [ -f "$MCPGATEWAY_SERVERS_DIR/atlassian.json" ]; then
-            log "atlassian.json copied successfully"
+            # Verify atlassian.json was copied
+            if [ -f "$MCPGATEWAY_SERVERS_DIR/atlassian.json" ]; then
+                log "atlassian.json copied successfully"
+            else
+                log "WARNING: atlassian.json not found in copied files"
+            fi
         else
-            log "WARNING: atlassian.json not found in copied files"
+            log "No JSON files found in registry/servers"
         fi
     else
-        log "No JSON files found in registry/servers"
+        log "WARNING: registry/servers directory not found"
     fi
-else
-    log "WARNING: registry/servers directory not found"
 fi
 
 # Copy seed agent JSON files from cli/examples to ${HOME}/mcp-gateway/agents
+# Skip if using OpenSearch backend (data is stored in OpenSearch, not files)
 AGENTS_DIR="${HOME}/mcp-gateway/agents"
-log "Copying seed agent files from cli/examples to $AGENTS_DIR..."
-if [ -d "cli/examples" ]; then
-    # Create the target directory if it doesn't exist
+if [ "${STORAGE_BACKEND:-file}" = "opensearch" ]; then
+    log "STORAGE_BACKEND=opensearch - creating empty agents directory for Docker mount (data stored in OpenSearch)"
     mkdir -p "$AGENTS_DIR"
-
-    # Copy all agent JSON files from cli/examples
-    if ls cli/examples/*agent*.json 1> /dev/null 2>&1; then
-        for json_file in cli/examples/*agent*.json; do
-            filename=$(basename "$json_file")
-            log "Copying seed agent $filename..."
-
-            # Copy agent file to target directory
-            cp "$json_file" "$AGENTS_DIR/$filename"
-        done
-        log "Seed agent files copied successfully"
-    else
-        log "No seed agent files found in cli/examples"
-    fi
 else
-    log "WARNING: cli/examples directory not found - seed agents will not be copied"
+    log "Copying seed agent files from cli/examples to $AGENTS_DIR..."
+    if [ -d "cli/examples" ]; then
+        # Create the target directory if it doesn't exist
+        mkdir -p "$AGENTS_DIR"
+
+        # Copy all agent JSON files from cli/examples
+        if ls cli/examples/*agent*.json 1> /dev/null 2>&1; then
+            for json_file in cli/examples/*agent*.json; do
+                filename=$(basename "$json_file")
+                log "Copying seed agent $filename..."
+
+                # Copy agent file to target directory
+                cp "$json_file" "$AGENTS_DIR/$filename"
+            done
+            log "Seed agent files copied successfully"
+        else
+            log "No seed agent files found in cli/examples"
+        fi
+    else
+        log "WARNING: cli/examples directory not found - seed agents will not be copied"
+    fi
 fi
 
 # Copy scopes.yml to ${HOME}/mcp-gateway/auth_server
+# Skip if using OpenSearch backend (scopes stored in OpenSearch, not scopes.yml)
 AUTH_SERVER_DIR="${HOME}/mcp-gateway/auth_server"
 TARGET_SCOPES_FILE="$AUTH_SERVER_DIR/scopes.yml"
 
-log "Checking scopes.yml configuration..."
-if [ -f "auth_server/scopes.yml" ]; then
-    # Create the target directory if it doesn't exist
+if [ "${STORAGE_BACKEND:-file}" = "opensearch" ]; then
+    log "STORAGE_BACKEND=opensearch - creating empty auth_server directory and scopes.yml for Docker mount (scopes stored in OpenSearch)"
     mkdir -p "$AUTH_SERVER_DIR"
-
-    # Check if scopes.yml already exists in the target directory
-    if [ -f "$TARGET_SCOPES_FILE" ]; then
-        echo ""
-        echo "╔════════════════════════════════════════════════════════════════════════════╗"
-        echo "║                          ⚠️  SCOPES.YML EXISTS  ⚠️                          ║"
-        echo "╠════════════════════════════════════════════════════════════════════════════╣"
-        echo "║                                                                            ║"
-        echo "║  An existing scopes.yml file was found at:                                ║"
-        echo "║  $TARGET_SCOPES_FILE"
-        echo "║                                                                            ║"
-        echo "║  This file contains your custom groups and server configurations.         ║"
-        echo "║  To preserve your settings, this file will NOT be overwritten.            ║"
-        echo "║                                                                            ║"
-        echo "║  If you need to restore the default scopes.yml from the codebase:         ║"
-        echo "║  1. Delete the existing file:                                             ║"
-        echo "║     rm $TARGET_SCOPES_FILE"
-        echo "║  2. Re-run this script                                                    ║"
-        echo "║                                                                            ║"
-        echo "╚════════════════════════════════════════════════════════════════════════════╝"
-        echo ""
-        log "Keeping existing scopes.yml - NOT overwriting"
-    else
-        # Copy scopes.yml for first-time setup
-        cp auth_server/scopes.yml "$AUTH_SERVER_DIR/"
-        log "scopes.yml copied successfully to $AUTH_SERVER_DIR (initial setup)"
-    fi
+    touch "$TARGET_SCOPES_FILE"
 else
-    log "WARNING: auth_server/scopes.yml not found in codebase"
+    log "Checking scopes.yml configuration..."
+    if [ -f "auth_server/scopes.yml" ]; then
+        # Create the target directory if it doesn't exist
+        mkdir -p "$AUTH_SERVER_DIR"
+
+        # Check if scopes.yml already exists in the target directory
+        if [ -f "$TARGET_SCOPES_FILE" ]; then
+            echo ""
+            echo "╔════════════════════════════════════════════════════════════════════════════╗"
+            echo "║                          ⚠️  SCOPES.YML EXISTS  ⚠️                          ║"
+            echo "╠════════════════════════════════════════════════════════════════════════════╣"
+            echo "║                                                                            ║"
+            echo "║  An existing scopes.yml file was found at:                                ║"
+            echo "║  $TARGET_SCOPES_FILE"
+            echo "║                                                                            ║"
+            echo "║  This file contains your custom groups and server configurations.         ║"
+            echo "║  To preserve your settings, this file will NOT be overwritten.            ║"
+            echo "║                                                                            ║"
+            echo "║  If you need to restore the default scopes.yml from the codebase:         ║"
+            echo "║  1. Delete the existing file:                                             ║"
+            echo "║     rm $TARGET_SCOPES_FILE"
+            echo "║  2. Re-run this script                                                    ║"
+            echo "║                                                                            ║"
+            echo "╚════════════════════════════════════════════════════════════════════════════╝"
+            echo ""
+            log "Keeping existing scopes.yml - NOT overwriting"
+        else
+            # Copy scopes.yml for first-time setup
+            cp auth_server/scopes.yml "$AUTH_SERVER_DIR/"
+            log "scopes.yml copied successfully to $AUTH_SERVER_DIR (initial setup)"
+        fi
+    else
+        log "WARNING: auth_server/scopes.yml not found in codebase"
+    fi
+fi
+
+# Create empty security_scans directory for Docker mount
+SECURITY_SCANS_DIR="${HOME}/mcp-gateway/security_scans"
+if [ "${STORAGE_BACKEND:-file}" = "opensearch" ]; then
+    log "STORAGE_BACKEND=opensearch - creating empty security_scans directory for Docker mount (data stored in OpenSearch)"
+    mkdir -p "$SECURITY_SCANS_DIR"
+else
+    log "Creating empty security_scans directory for Docker mount"
+    mkdir -p "$SECURITY_SCANS_DIR"
+fi
+
+# Create empty federation.json file for Docker mount
+FEDERATION_JSON_FILE="${HOME}/mcp-gateway/federation.json"
+if [ "${STORAGE_BACKEND:-file}" = "opensearch" ]; then
+    log "STORAGE_BACKEND=opensearch - creating empty federation.json for Docker mount (config stored in OpenSearch)"
+    touch "$FEDERATION_JSON_FILE"
+else
+    log "Creating empty federation.json for Docker mount (not used in file-based mode)"
+    touch "$FEDERATION_JSON_FILE"
 fi
 
 # Setup SSL certificate directory structure

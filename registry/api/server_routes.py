@@ -198,6 +198,24 @@ async def read_root(
 
             health_data = health_service._get_service_health_data(path)
 
+            # Normalize health status to enum values only (strip error messages)
+            raw_status = health_data["status"]
+            if isinstance(raw_status, str):
+                if "unhealthy" in raw_status.lower():
+                    normalized_status = "unhealthy"
+                elif "healthy" in raw_status.lower():
+                    normalized_status = "healthy"
+                elif "disabled" in raw_status.lower():
+                    normalized_status = "disabled"
+                elif "checking" in raw_status.lower():
+                    normalized_status = "unknown"
+                elif "error" in raw_status.lower():
+                    normalized_status = "unhealthy"
+                else:
+                    normalized_status = raw_status
+            else:
+                normalized_status = raw_status
+
             service_data.append(
                 {
                     "display_name": server_name,
@@ -210,7 +228,7 @@ async def read_root(
                     "num_stars": server_info.get("num_stars", 0),
                     "is_python": server_info.get("is_python", False),
                     "license": server_info.get("license", "N/A"),
-                    "health_status": health_data["status"],
+                    "health_status": normalized_status,
                     "last_checked_iso": health_data["last_checked_iso"],
                 }
             )
@@ -286,6 +304,24 @@ async def get_servers_json(
 
             health_data = health_service._get_service_health_data(path)
 
+            # Normalize health status to enum values only (strip error messages)
+            raw_status = health_data["status"]
+            if isinstance(raw_status, str):
+                if "unhealthy" in raw_status.lower():
+                    normalized_status = "unhealthy"
+                elif "healthy" in raw_status.lower():
+                    normalized_status = "healthy"
+                elif "disabled" in raw_status.lower():
+                    normalized_status = "disabled"
+                elif "checking" in raw_status.lower():
+                    normalized_status = "unknown"
+                elif "error" in raw_status.lower():
+                    normalized_status = "unhealthy"
+                else:
+                    normalized_status = raw_status
+            else:
+                normalized_status = raw_status
+
             service_data.append(
                 {
                     "display_name": server_name,
@@ -298,7 +334,7 @@ async def get_servers_json(
                     "num_stars": server_info.get("num_stars", 0),
                     "is_python": server_info.get("is_python", False),
                     "license": server_info.get("license", "N/A"),
-                    "health_status": health_data["status"],
+                    "health_status": normalized_status,
                     "last_checked_iso": health_data["last_checked_iso"],
                 }
             )
