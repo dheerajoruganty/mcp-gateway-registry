@@ -85,8 +85,8 @@ registry:
   # Build variant configuration
   app:
     # Build variant: "lite" (default) or "full"
-    # - lite: API embeddings (litellm) + OpenSearch (~650MB image)
-    # - full: Local ML (sentence-transformers, FAISS) + PyTorch (~2.5GB image)
+    # - lite: API embeddings (litellm) + OpenSearch (target: ~650MB)
+    # - full: Local ML (sentence-transformers, FAISS) + PyTorch (current: ~5GB)
     variant: lite
 
     # Storage backend: "opensearch" (for lite) or "file" (for full with FAISS)

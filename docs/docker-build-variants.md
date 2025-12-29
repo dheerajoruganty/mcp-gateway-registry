@@ -7,7 +7,9 @@ The MCP Gateway Registry supports two Docker build variants to optimize for diff
 | Variant | Default | Use Case | Image Size |
 |---------|---------|----------|------------|
 | `lite` | Yes | Production with API embeddings (Bedrock, OpenAI) + OpenSearch | ~650MB |
-| `full` | No | Development/offline with local ML models (PyTorch, FAISS) | ~2.5GB |
+| `full` | No | Development/offline with local ML models (PyTorch, FAISS) | ~5GB |
+
+**Note:** Pre-built images on Docker Hub (prior to v1.1.0) are the `full` variant at ~5GB. Building locally with `VARIANT=lite` produces significantly smaller images.
 
 ## Quick Reference
 
@@ -69,12 +71,14 @@ EMBEDDINGS_MODEL_DIMENSIONS=384
 
 MCP servers also support variants:
 
-| Server | Lite Image | Full Image | Notes |
-|--------|------------|------------|-------|
-| currenttime | ~90MB | N/A | Alpine-based, no ML needed |
-| fininfo | ~110MB | N/A | Alpine-based, no ML needed |
-| realserverfaketools | ~110MB | N/A | Alpine-based, no ML needed |
-| mcpgw | N/A | ~2.1GB | Requires PyTorch for local embeddings |
+| Server | Current Size | Lite Target | Notes |
+|--------|--------------|-------------|-------|
+| currenttime | ~244MB | ~90MB | Alpine-based, no ML needed |
+| fininfo | ~244MB | ~110MB | Alpine-based, no ML needed |
+| realserverfaketools | ~244MB | ~110MB | Alpine-based, no ML needed |
+| mcpgw | ~4.5GB | N/A | Requires PyTorch for local embeddings |
+
+**Note:** Current pre-built images use Debian slim. Local builds with `target: runtime-lite` use Alpine for smaller images.
 
 ```bash
 # Lite servers use Alpine (target: runtime-lite)

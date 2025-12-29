@@ -16,16 +16,18 @@ When using the `--prebuilt` option with `build_and_run.sh`, the following pre-bu
 
 ## Registry Image Variants
 
-The registry image is available in two variants optimized for different use cases:
+The registry image supports two build variants optimized for different use cases:
 
 | Tag | Variant | Description | Size |
 |-----|---------|-------------|------|
-| `mcpgateway/registry:latest` | lite | API embeddings (LiteLLM) + OpenSearch | ~1.2GB |
-| `mcpgateway/registry:full` | full | Local ML (PyTorch, FAISS, sentence-transformers) | ~2.5GB |
+| `mcpgateway/registry:latest` | full | Local ML (PyTorch, FAISS, sentence-transformers) | ~5GB |
+| `mcpgateway/registry:lite` | lite | API embeddings (LiteLLM) + OpenSearch | ~650MB |
 
-**Lite variant (default):** Recommended for production. Uses cloud-based embeddings via LiteLLM (Bedrock, OpenAI, Cohere) and OpenSearch for vector storage.
+**Note:** Current pre-built images on Docker Hub (v1.0.x) are the `full` variant at ~5GB. The `lite` variant will be available in v1.1.0+.
 
-**Full variant:** For offline operation or local ML inference. Includes PyTorch CPU, FAISS, and sentence-transformers.
+**Lite variant:** Recommended for production. Uses cloud-based embeddings via LiteLLM (Bedrock, OpenAI, Cohere) and OpenSearch for vector storage. Significantly smaller image size.
+
+**Full variant:** For offline operation or local ML inference. Includes PyTorch CPU, FAISS, and sentence-transformers. Required if using `STORAGE_BACKEND=file` or `EMBEDDINGS_PROVIDER=sentence-transformers`.
 
 See [Docker Build Variants](docker-build-variants.md) for detailed configuration.
 
