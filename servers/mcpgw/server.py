@@ -17,9 +17,18 @@ from typing import Dict, Any, Optional, ClassVar, List
 from dotenv import load_dotenv
 import os
 import numpy as np # Added
-from sklearn.metrics.pairwise import cosine_similarity # Added
-import faiss # Added
 import yaml # Added for scopes.yml parsing
+
+# ML dependencies are optional (only in VARIANT=full Docker builds)
+# They will be checked at runtime when FAISS-based search is used
+try:
+    from sklearn.metrics.pairwise import cosine_similarity
+    import faiss
+    ML_AVAILABLE = True
+except ImportError:
+    cosine_similarity = None  # type: ignore
+    faiss = None  # type: ignore
+    ML_AVAILABLE = False
 
 # Import embeddings client from registry
 import sys
@@ -533,13 +542,28 @@ FAISS_INDEX_PATH_MCPGW = _registry_server_data_path / "service_index.faiss"
 FAISS_METADATA_PATH_MCPGW = _registry_server_data_path / "service_index_metadata.json"
 EMBEDDING_DIMENSION_MCPGW = 384 # Should match the one used in main registry
 
+def _ensure_ml_available() -> None:
+    """Check that ML dependencies are installed and raise helpful error if not."""
+    if not ML_AVAILABLE:
+        raise RuntimeError(
+            "ML dependencies (faiss-cpu, scikit-learn) are not installed. "
+            "These are only included in the 'full' Docker build variant.\n\n"
+            "Options:\n"
+            "1. Rebuild with ML dependencies: docker build --build-arg VARIANT=full ...\n"
+            "2. Use the registry API for search instead of local FAISS\n"
+            "3. For local development: uv sync --extra ml"
+        )
+
+
 async def load_faiss_data_for_mcpgw():
     """Loads the FAISS index, metadata, and embedding model for the mcpgw server.
        Reloads data if underlying files have changed since last load.
     """
+    _ensure_ml_available()
+
     global _embedding_model_mcpgw, _faiss_index_mcpgw, _faiss_metadata_mcpgw
     global _last_faiss_index_mtime, _last_faiss_metadata_mtime
-    
+
     async with _faiss_data_lock:
         # Load embedding model if not already loaded (model doesn't change on disk typically)
         if _embedding_model_mcpgw is None:

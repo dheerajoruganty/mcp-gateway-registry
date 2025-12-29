@@ -1,10 +1,85 @@
-# Registry Dockerfile - includes nginx, SSL, FAISS, models, and registry service
+# syntax=docker/dockerfile:1
+# Registry Dockerfile - Multi-stage build with optional ML dependencies
+#
+# Build variants:
+#   VARIANT=lite (default): Lightweight build for API embeddings + OpenSearch
+#   VARIANT=full: Full build with local ML (PyTorch, FAISS, sentence-transformers)
+#
+# Usage:
+#   docker build --build-arg VARIANT=lite -f docker/Dockerfile.registry .   # ~800MB, ~2-3 min
+#   docker build --build-arg VARIANT=full -f docker/Dockerfile.registry .   # ~2.5GB, ~5-8 min
+
+# =============================================================================
+# Stage 1: Frontend Builder
+# =============================================================================
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Copy package files first for better layer caching
+COPY frontend/package.json frontend/package-lock.json ./
+
+# Install dependencies with npm cache mount for faster rebuilds
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps
+
+# Copy frontend source and build
+COPY frontend/ ./
+RUN npm run build
+
+
+# =============================================================================
+# Stage 2: Python Dependencies Builder (with build tools)
+# =============================================================================
+FROM python:3.12-slim AS python-builder
+
+# Build arguments
+ARG VARIANT="lite"
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install uv and create venv
+RUN pip install --no-cache-dir uv==0.5.11 && \
+    uv venv .venv --python 3.12
+
+# Copy pyproject.toml and minimal source for editable install
+COPY pyproject.toml /app/
+COPY registry/__init__.py /app/registry/__init__.py
+
+# Install dependencies
+# VARIANT=lite: Core deps only (API embeddings + OpenSearch)
+# VARIANT=full: Core deps + [ml] extras (PyTorch, FAISS, sentence-transformers)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    . .venv/bin/activate && \
+    if [ "$VARIANT" = "full" ]; then \
+        echo "Installing FULL variant with ML dependencies..." && \
+        uv pip install --index-strategy unsafe-best-match -e ".[ml]"; \
+    else \
+        echo "Installing LITE variant (API embeddings + OpenSearch)..." && \
+        uv pip install --index-strategy unsafe-best-match -e .; \
+    fi
+
+
+# =============================================================================
+# Stage 3: Runtime (minimal - no build tools)
+# =============================================================================
 FROM python:3.12-slim
 
-ENV PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive
+ARG BUILD_VERSION="1.0.0"
+ARG VARIANT="lite"
 
-# Install system dependencies including nginx with lua module and Node.js
+ENV PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    BUILD_VERSION=$BUILD_VERSION \
+    DOCKER_VARIANT=$VARIANT
+
+# Install only runtime dependencies (no build-essential)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     nginx-extras \
@@ -12,65 +87,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     procps \
     openssl \
-    git \
-    build-essential \
     ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Build argument for version (will be set at build time from git)
-ARG BUILD_VERSION="1.0.0"
-ENV BUILD_VERSION=$BUILD_VERSION
+# Copy virtual environment from builder (includes all Python deps)
+COPY --from=python-builder /app/.venv /app/.venv
 
-RUN pip install uv && \
-    uv venv .venv --python 3.12 && \
-    . .venv/bin/activate && \
-    uv pip install --index-url https://download.pytorch.org/whl/cpu \
-    "torch>=1.6.0" && \
-    uv pip install \
-    "fastapi>=0.115.12" \
-    "itsdangerous>=2.2.0" \
-    "jinja2>=3.1.6" \
-    "mcp>=1.6.0" \
-    "pydantic>=2.11.3" \
-    "httpx>=0.27.0" \
-    "python-dotenv>=1.1.0" \
-    "python-multipart>=0.0.20" \
-    "uvicorn[standard]>=0.34.2" \
-    "faiss-cpu>=1.7.4" \
-    "sentence-transformers>=2.2.2" \
-    "websockets>=15.0.1" \
-    "scikit-learn>=1.3.0" \
-    "huggingface-hub[cli,hf_xet]>=0.31.1" \
-    "hf_xet>=0.1.0" \
-    "cisco-ai-mcp-scanner==3.2.3"
+# Copy application code
+COPY registry/ /app/registry/
+COPY docker/ /app/docker/
+COPY auth_server/ /app/auth_server/
+COPY servers/ /app/servers/
+COPY agents/ /app/agents/
+COPY pyproject.toml /app/
 
-# Copy the application code
-COPY . /app/
+# Copy frontend build artifacts from Stage 1
+COPY --from=frontend-builder /app/frontend/build /app/frontend/build
 
-# Copy nginx configurations (both HTTP-only and HTTP+HTTPS versions)
-COPY docker/nginx_rev_proxy_http_only.conf /app/docker/nginx_rev_proxy_http_only.conf
-COPY docker/nginx_rev_proxy_http_and_https.conf /app/docker/nginx_rev_proxy_http_and_https.conf
-
-# Build React frontend
-WORKDIR /app/frontend
-COPY frontend/package.json ./
-RUN npm install --legacy-peer-deps
-COPY frontend/ ./
-RUN npm run build
-
-# Return to app directory
-WORKDIR /app
-
-# Install the registry package
-RUN . .venv/bin/activate && uv pip install -e .
-
-# Create logs directory
-RUN mkdir -p /app/logs
+# Create logs directory and make entrypoint executable
+RUN mkdir -p /app/logs && \
+    chmod +x /app/docker/registry-entrypoint.sh
 
 # Expose ports for nginx (HTTP/HTTPS) and registry
 EXPOSE 80 443 7860
@@ -79,8 +118,4 @@ EXPOSE 80 443 7860
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
 
-# Entrypoint script that sets up everything from original entrypoint.sh
-COPY docker/registry-entrypoint.sh /app/registry-entrypoint.sh
-RUN chmod +x /app/registry-entrypoint.sh
-
-ENTRYPOINT ["/app/registry-entrypoint.sh"] 
+ENTRYPOINT ["/app/docker/registry-entrypoint.sh"]

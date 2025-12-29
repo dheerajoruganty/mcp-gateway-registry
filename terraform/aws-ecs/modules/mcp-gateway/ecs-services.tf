@@ -346,6 +346,10 @@ module "ecs_service_registry" {
 
       environment = [
         {
+          name  = "DOCKER_VARIANT"
+          value = var.registry_variant
+        },
+        {
           name  = "GATEWAY_ADDITIONAL_SERVER_NAMES"
           value = var.domain_name != "" ? var.domain_name : ""
         },

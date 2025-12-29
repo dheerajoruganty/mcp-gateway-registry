@@ -292,11 +292,35 @@ variable "route53_zone_id" {
 }
 
 
-# Embeddings Configuration
-variable "embeddings_provider" {
-  description = "Embeddings provider: 'sentence-transformers' for local models or 'litellm' for API-based models"
+# =============================================================================
+# BUILD VARIANT CONFIGURATION
+# =============================================================================
+# Two variants are available:
+#   - lite (default): API embeddings (litellm) + OpenSearch (~650MB image)
+#   - full: Local ML (sentence-transformers, FAISS, PyTorch) (~2.5GB image)
+#
+# For ECS/Fargate, "lite" is recommended as it:
+#   - Has faster startup times
+#   - Uses less memory
+#   - Leverages managed OpenSearch Serverless for vector search
+#   - Uses Bedrock for embeddings (no GPU required)
+
+variable "registry_variant" {
+  description = "Registry build variant: 'lite' for API embeddings + OpenSearch, 'full' for local ML + FAISS"
   type        = string
-  default     = "sentence-transformers"
+  default     = "lite"
+  validation {
+    condition     = contains(["lite", "full"], var.registry_variant)
+    error_message = "Registry variant must be either 'lite' or 'full'."
+  }
+}
+
+# Embeddings Configuration
+# Defaults are set for "lite" variant (API embeddings via Bedrock)
+variable "embeddings_provider" {
+  description = "Embeddings provider: 'litellm' for API-based (lite) or 'sentence-transformers' for local (full)"
+  type        = string
+  default     = "litellm"
   validation {
     condition     = contains(["sentence-transformers", "litellm"], var.embeddings_provider)
     error_message = "Embeddings provider must be either 'sentence-transformers' or 'litellm'."
@@ -304,15 +328,15 @@ variable "embeddings_provider" {
 }
 
 variable "embeddings_model_name" {
-  description = "Name of the embeddings model to use (e.g., 'all-MiniLM-L6-v2' for sentence-transformers, 'openai/text-embedding-ada-002' for litellm)"
+  description = "Name of the embeddings model (lite: 'bedrock/amazon.titan-embed-text-v1', full: 'all-MiniLM-L6-v2')"
   type        = string
-  default     = "all-MiniLM-L6-v2"
+  default     = "bedrock/amazon.titan-embed-text-v1"
 }
 
 variable "embeddings_model_dimensions" {
-  description = "Dimension of the embeddings model (e.g., 384 for MiniLM, 1536 for OpenAI/Titan)"
+  description = "Dimension of the embeddings model (1024 for Titan, 1536 for OpenAI, 384 for MiniLM)"
   type        = number
-  default     = 384
+  default     = 1024
   validation {
     condition     = var.embeddings_model_dimensions > 0
     error_message = "Embeddings model dimensions must be greater than 0."
@@ -326,7 +350,7 @@ variable "embeddings_aws_region" {
 }
 
 variable "embeddings_api_key" {
-  description = "API key for embeddings provider (OpenAI, Anthropic, etc.). Only used when embeddings_provider is 'litellm'. Leave empty for Bedrock (uses IAM)."
+  description = "API key for embeddings provider (OpenAI, etc.). Leave empty for Bedrock (uses IAM)."
   type        = string
   default     = ""
   sensitive   = true

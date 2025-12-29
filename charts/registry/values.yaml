@@ -11,6 +11,29 @@ app:
   replicas: 1
   envSecretName: registry-secret
 
+  # Build variant: "lite" (default) or "full"
+  # - lite: API embeddings (litellm) + OpenSearch (~650MB image)
+  # - full: Local ML (sentence-transformers, FAISS) + PyTorch (~2.5GB image)
+  variant: lite
+
+  # Storage backend: "opensearch" (for lite) or "file" (for full with FAISS)
+  storageBackend: opensearch
+
+  # Embeddings configuration
+  embeddings:
+    # Provider: "litellm" (for lite) or "sentence-transformers" (for full)
+    provider: litellm
+    # Model name varies by provider:
+    # - litellm: "bedrock/amazon.titan-embed-text-v1", "openai/text-embedding-3-small"
+    # - sentence-transformers: "all-MiniLM-L6-v2"
+    modelName: bedrock/amazon.titan-embed-text-v1
+    # Dimensions: 1024 for Titan, 1536 for OpenAI, 384 for MiniLM
+    modelDimensions: 1024
+    # API key (for litellm with OpenAI)
+    apiKey: ""
+    # AWS region (for Bedrock)
+    awsRegion: us-east-1
+
   # External URLs
   authServerUrl: http://localhost:8888
 

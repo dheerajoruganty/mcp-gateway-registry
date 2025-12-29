@@ -86,7 +86,19 @@ class SentenceTransformersClient(EmbeddingsClient):
 
         try:
             from sentence_transformers import SentenceTransformer
+        except ImportError as e:
+            raise RuntimeError(
+                "sentence-transformers is not installed. This dependency is only included "
+                "in the 'full' Docker build variant.\n\n"
+                "Options:\n"
+                "1. Rebuild with ML dependencies: docker build --build-arg VARIANT=full ...\n"
+                "2. Use docker-compose override: docker-compose -f docker-compose.yml -f docker-compose.full.yml up\n"
+                "3. Switch to API embeddings: set EMBEDDINGS_PROVIDER=litellm and "
+                "EMBEDDINGS_MODEL_NAME=bedrock/amazon.titan-embed-text-v1\n"
+                "4. For local development: uv sync --extra ml"
+            ) from e
 
+        try:
             # Set cache directory if provided
             original_st_home = os.environ.get("SENTENCE_TRANSFORMERS_HOME")
             if self.cache_dir:

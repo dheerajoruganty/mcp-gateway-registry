@@ -36,6 +36,25 @@ Before making any code changes, ask your AI coding assistant to read:
 ### 2. Review the CLAUDE.md File
 This project uses [CLAUDE.md](CLAUDE.md) for coding standards. The file is already included in the repository root - make sure to review it before contributing.
 
+## Docker Build Variants
+
+For faster development iteration, use the lightweight build (default):
+
+```bash
+# Fast rebuild (~2-3 min instead of ~5-8 min)
+docker-compose build registry
+
+# If you need local ML models (PyTorch, FAISS, sentence-transformers)
+REGISTRY_VARIANT=full docker-compose build registry
+
+# Or use the docker-compose override file
+docker-compose -f docker-compose.yml -f docker-compose.full.yml up --build
+```
+
+The `lite` variant (default) uses API-based embeddings and OpenSearch. The `full` variant includes local ML dependencies for offline operation.
+
+See [docs/docker-build-variants.md](docs/docker-build-variants.md) for details.
+
 ## Testing Your Changes
 
 Before submitting a pull request, you must run and pass the test suite:

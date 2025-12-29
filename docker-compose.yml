@@ -46,13 +46,15 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Registry service (includes nginx, SSL, FAISS, models)
+  # Registry service (includes nginx, SSL, and semantic search)
+  # Build variants: REGISTRY_VARIANT=lite (default) or REGISTRY_VARIANT=full (ML)
   registry:
     build:
       context: .
       dockerfile: docker/Dockerfile.registry
       args:
         BUILD_VERSION: ${BUILD_VERSION:-1.0.0}
+        VARIANT: ${REGISTRY_VARIANT:-lite}
     environment:
       - SECRET_KEY=${SECRET_KEY}
       - ADMIN_USER=${ADMIN_USER:-admin}
@@ -95,15 +97,18 @@ services:
       - SECURITY_SCAN_TIMEOUT=${SECURITY_SCAN_TIMEOUT:-60}
       - SECURITY_ADD_PENDING_TAG=${SECURITY_ADD_PENDING_TAG:-true}
       - MCP_SCANNER_LLM_API_KEY=${MCP_SCANNER_LLM_API_KEY}
-      # OpenSearch Configuration
-      - STORAGE_BACKEND=${STORAGE_BACKEND:-file}
+      # OpenSearch Configuration (lite default: opensearch for vector storage)
+      # For local FAISS, set REGISTRY_VARIANT=full and STORAGE_BACKEND=file
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-opensearch}
       - OPENSEARCH_HOST=opensearch
       - OPENSEARCH_PORT=9200
       - OPENSEARCH_NAMESPACE=${OPENSEARCH_NAMESPACE:-default}
-      # Embeddings Configuration
-      - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-sentence-transformers}
-      - EMBEDDINGS_MODEL_NAME=${EMBEDDINGS_MODEL_NAME:-all-MiniLM-L6-v2}
-      - EMBEDDINGS_MODEL_DIMENSIONS=${EMBEDDINGS_MODEL_DIMENSIONS:-384}
+      # Embeddings Configuration (lite default: API embeddings via litellm)
+      # For local ML models, set REGISTRY_VARIANT=full and change these to:
+      #   EMBEDDINGS_PROVIDER=sentence-transformers, MODEL_NAME=all-MiniLM-L6-v2, DIMENSIONS=384
+      - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-litellm}
+      - EMBEDDINGS_MODEL_NAME=${EMBEDDINGS_MODEL_NAME:-bedrock/amazon.titan-embed-text-v1}
+      - EMBEDDINGS_MODEL_DIMENSIONS=${EMBEDDINGS_MODEL_DIMENSIONS:-1024}
       - EMBEDDINGS_API_KEY=${EMBEDDINGS_API_KEY}
       - EMBEDDINGS_API_BASE=${EMBEDDINGS_API_BASE}
       - EMBEDDINGS_AWS_REGION=${EMBEDDINGS_AWS_REGION:-us-east-1}
@@ -222,6 +227,7 @@ services:
     build:
       context: servers/currenttime
       dockerfile: ../../docker/Dockerfile.mcp-server
+      target: runtime-lite
     environment:
       - PORT=8000
       - MCP_TRANSPORT=streamable-http
@@ -234,6 +240,7 @@ services:
     build:
       context: servers/fininfo
       dockerfile: ../../docker/Dockerfile.mcp-server
+      target: runtime-lite
     environment:
       - PORT=8001
       - SECRET_KEY=${SECRET_KEY}
@@ -244,10 +251,12 @@ services:
     restart: unless-stopped
 
   # MCP Gateway Server
+  # Note: mcpgw uses local FAISS for semantic search, requires VARIANT=full
   mcpgw-server:
     build:
       context: .
       dockerfile: docker/Dockerfile.mcp-server
+      target: runtime-full
       args:
         SERVER_DIR: servers/mcpgw
     environment:
@@ -270,6 +279,7 @@ services:
     build:
       context: servers/realserverfaketools
       dockerfile: ../../docker/Dockerfile.mcp-server
+      target: runtime-lite
     environment:
       - PORT=8002
     ports:
@@ -282,8 +292,9 @@ services:
     image: ghcr.io/sooperset/mcp-atlassian:latest
     environment:
       - ATLASSIAN_OAUTH_ENABLE=true
-      - MCP_VERY_VERBOSE=true
+      - MCP_VERY_VERBOSE=false
       - MCP_LOGGING_STDOUT=true
+      - LOG_LEVEL=INFO
     ports:
       - "8005:8005"
     volumes:

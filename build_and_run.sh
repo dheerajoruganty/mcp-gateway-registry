@@ -17,6 +17,7 @@ handle_error() {
 # Parse command line arguments
 USE_PREBUILT=false
 DOCKER_COMPOSE_FILE="docker-compose.yml"
+REGISTRY_VARIANT="${REGISTRY_VARIANT:-lite}"  # Default to lite variant
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -25,16 +26,31 @@ while [[ $# -gt 0 ]]; do
       DOCKER_COMPOSE_FILE="docker-compose.prebuilt.yml"
       shift
       ;;
+    --lite)
+      REGISTRY_VARIANT="lite"
+      shift
+      ;;
+    --full)
+      REGISTRY_VARIANT="full"
+      shift
+      ;;
     --help)
-      echo "Usage: $0 [--prebuilt] [--help]"
+      echo "Usage: $0 [--prebuilt] [--lite|--full] [--help]"
       echo ""
       echo "Options:"
       echo "  --prebuilt    Use pre-built container images (faster startup)"
+      echo "  --lite        Build with API embeddings + OpenSearch (default, ~2-3 min)"
+      echo "  --full        Build with local ML models + FAISS (~5-8 min)"
       echo "  --help        Show this help message"
       echo ""
       echo "Examples:"
-      echo "  $0                # Build containers locally (default)"
-      echo "  $0 --prebuilt    # Use pre-built images from registry"
+      echo "  $0                # Build lite variant (fastest)"
+      echo "  $0 --full         # Build with local ML dependencies"
+      echo "  $0 --prebuilt     # Use pre-built images from registry"
+      echo ""
+      echo "Build Variants:"
+      echo "  lite (default):  API embeddings via LiteLLM + OpenSearch (~1.2GB image)"
+      echo "  full:            Local PyTorch + sentence-transformers + FAISS (~2.5GB image)"
       echo ""
       echo "Benefits of --prebuilt:"
       echo "  - Instant deployment (no build time)"
@@ -51,63 +67,30 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Export variant for docker-compose
+export REGISTRY_VARIANT
+
 echo "MCP Gateway Registry Deployment"
 echo "==============================="
 
 if [ "$USE_PREBUILT" = true ]; then
-    log "🚀 Using pre-built container images for fast deployment"
-    log "📥 Will pull latest images from container registry during startup..."
+    log "Using pre-built container images for fast deployment"
+    log "Will pull latest images from container registry during startup..."
 else
-    log "🔨 Building containers locally (this may take several minutes)"
+    log "Building containers locally with VARIANT=$REGISTRY_VARIANT"
+    if [ "$REGISTRY_VARIANT" = "full" ]; then
+        log "Full variant: includes PyTorch, FAISS, sentence-transformers (~5-8 min build)"
+    else
+        log "Lite variant: API embeddings + OpenSearch only (~2-3 min build)"
+    fi
 fi
 
 log "Using Docker Compose file: $DOCKER_COMPOSE_FILE"
 log "Starting MCP Gateway Docker Compose deployment script"
 
-# Only check Node.js and build frontend when building locally
+# Note: Frontend is built inside Docker multi-stage build (no local Node.js required)
 if [ "$USE_PREBUILT" = false ]; then
-    # Check if Node.js and npm are installed
-    if ! command -v node &> /dev/null; then
-        log "ERROR: Node.js is not installed"
-        log "Please install Node.js (version 16 or higher): https://nodejs.org/"
-        exit 1
-    fi
-
-    if ! command -v npm &> /dev/null; then
-        log "ERROR: npm is not installed"
-        log "Please install npm (usually comes with Node.js): https://nodejs.org/"
-        exit 1
-    fi
-
-    # Check Node.js version
-    NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$NODE_VERSION" -lt 16 ]; then
-        log "ERROR: Node.js version $NODE_VERSION is too old. Please install Node.js 16 or higher."
-        exit 1
-    fi
-
-    log "Node.js $(node -v) and npm $(npm -v) are available"
-
-    # Build the React frontend
-    log "Building React frontend..."
-    if [ ! -d "frontend" ]; then
-        handle_error "Frontend directory not found"
-    fi
-
-    cd frontend
-
-    # Install frontend dependencies
-    log "Installing frontend dependencies..."
-    npm install || handle_error "Failed to install frontend dependencies"
-
-    # Build the React application
-    log "Building React application for production..."
-    npm run build || handle_error "Failed to build React application"
-
-    log "Frontend build completed successfully"
-    cd ..
-else
-    log "Skipping frontend build (using pre-built images)"
+    log "Frontend will be built inside Docker (multi-stage build)"
 fi
 
 # Check if .env file exists

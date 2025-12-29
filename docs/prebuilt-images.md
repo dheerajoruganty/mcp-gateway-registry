@@ -14,6 +14,21 @@ When using the `--prebuilt` option with `build_and_run.sh`, the following pre-bu
 | MCPGW Server | `mcpgateway/mcpgw-server:latest` | latest | MCP Gateway server for service management | 8003 |
 | Real Server Fake Tools | `mcpgateway/realserverfaketools-server:latest` | latest | Example MCP server with mock tools | 8002 |
 
+## Registry Image Variants
+
+The registry image is available in two variants optimized for different use cases:
+
+| Tag | Variant | Description | Size |
+|-----|---------|-------------|------|
+| `mcpgateway/registry:latest` | lite | API embeddings (LiteLLM) + OpenSearch | ~1.2GB |
+| `mcpgateway/registry:full` | full | Local ML (PyTorch, FAISS, sentence-transformers) | ~2.5GB |
+
+**Lite variant (default):** Recommended for production. Uses cloud-based embeddings via LiteLLM (Bedrock, OpenAI, Cohere) and OpenSearch for vector storage.
+
+**Full variant:** For offline operation or local ML inference. Includes PyTorch CPU, FAISS, and sentence-transformers.
+
+See [Docker Build Variants](docker-build-variants.md) for detailed configuration.
+
 ## External Images
 
 The following external images are pulled from their original sources:

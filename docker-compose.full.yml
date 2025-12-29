@@ -1,0 +1,25 @@
+# Docker Compose Override for Full ML Build
+#
+# This override file configures the registry with local ML models (PyTorch, FAISS, sentence-transformers).
+# Use this for offline operation or when you need local embedding generation.
+#
+# Usage:
+#   docker-compose -f docker-compose.yml -f docker-compose.full.yml up --build
+#
+# Or set environment variables:
+#   REGISTRY_VARIANT=full STORAGE_BACKEND=file EMBEDDINGS_PROVIDER=sentence-transformers docker-compose up --build
+
+version: '3.8'
+
+services:
+  registry:
+    build:
+      args:
+        VARIANT: full
+    environment:
+      # Use FAISS for local vector storage
+      - STORAGE_BACKEND=file
+      # Use local sentence-transformers for embeddings
+      - EMBEDDINGS_PROVIDER=sentence-transformers
+      - EMBEDDINGS_MODEL_NAME=all-MiniLM-L6-v2
+      - EMBEDDINGS_MODEL_DIMENSIONS=384

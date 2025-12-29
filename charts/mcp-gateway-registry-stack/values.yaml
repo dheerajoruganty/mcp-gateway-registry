@@ -81,6 +81,24 @@ keycloak-configure:
 # Registry service configuration
 registry:
   # app.secretKey and app.authServerUrl will be templated in the subchart using global values
+
+  # Build variant configuration
+  app:
+    # Build variant: "lite" (default) or "full"
+    # - lite: API embeddings (litellm) + OpenSearch (~650MB image)
+    # - full: Local ML (sentence-transformers, FAISS) + PyTorch (~2.5GB image)
+    variant: lite
+
+    # Storage backend: "opensearch" (for lite) or "file" (for full with FAISS)
+    storageBackend: opensearch
+
+    # Embeddings configuration (defaults for lite variant)
+    embeddings:
+      provider: litellm
+      modelName: bedrock/amazon.titan-embed-text-v1
+      modelDimensions: 1024
+      awsRegion: us-east-1
+
   ingress:
     enabled: true
     ingressClassName: alb

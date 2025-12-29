@@ -12,9 +12,17 @@ from typing import (
     Tuple
 )
 
-import faiss
 import numpy as np
 from pydantic import HttpUrl
+
+# FAISS is an optional dependency (only in VARIANT=full Docker builds)
+# It will be checked at runtime when FaissService is initialized
+try:
+    import faiss
+    FAISS_AVAILABLE = True
+except ImportError:
+    faiss = None  # type: ignore
+    FAISS_AVAILABLE = False
 
 from ..core.config import settings
 from ..core.schemas import ServerInfo
@@ -42,17 +50,32 @@ class _PydanticAwareJSONEncoder(json.JSONEncoder):
         return super().default(o)
 
 
+def _ensure_faiss_available() -> None:
+    """Check that FAISS is installed and raise helpful error if not."""
+    if not FAISS_AVAILABLE:
+        raise RuntimeError(
+            "faiss-cpu is not installed. This dependency is only included "
+            "in the 'full' Docker build variant.\n\n"
+            "Options:\n"
+            "1. Rebuild with ML dependencies: docker build --build-arg VARIANT=full ...\n"
+            "2. Use docker-compose override: docker-compose -f docker-compose.yml -f docker-compose.full.yml up\n"
+            "3. Switch to OpenSearch storage: set STORAGE_BACKEND=opensearch\n"
+            "4. For local development: uv sync --extra ml"
+        )
+
+
 class FaissService:
     """Service for managing FAISS vector database operations."""
 
     def __init__(self):
         self.embedding_model: Optional[EmbeddingsClient] = None
-        self.faiss_index: Optional[faiss.IndexIDMap] = None
+        self.faiss_index: Optional[Any] = None  # faiss.IndexIDMap when available
         self.metadata_store: Dict[str, Dict[str, Any]] = {}
         self.next_id_counter: int = 0
-        
+
     async def initialize(self):
         """Initialize the FAISS service - load model and index."""
+        _ensure_faiss_available()
         await self._load_embedding_model()
         await self._load_faiss_data()
         

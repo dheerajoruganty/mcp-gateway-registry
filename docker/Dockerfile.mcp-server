@@ -1,32 +1,107 @@
 # Generic MCP Server Dockerfile for servers in the servers/ directory
 # Each server must have pyproject.toml and server.py
 # Build context can be either the server directory or repo root (for servers needing registry module)
-FROM python:3.12-slim
+#
+# Build variants:
+#   VARIANT=lite (default): Lightweight Alpine build without ML dependencies (~90MB)
+#   VARIANT=full: Debian-slim build with ML dependencies (~2GB) - required for PyTorch
+#
+# Usage:
+#   docker build --build-arg VARIANT=lite -f docker/Dockerfile.mcp-server .
+#   docker build --build-arg VARIANT=full -f docker/Dockerfile.mcp-server .
+# syntax=docker/dockerfile:1
 
-# Build arg for server directory (when building from repo root)
+# =============================================================================
+# Stage 1a: Builder for LITE variant (Alpine)
+# =============================================================================
+FROM python:3.12-alpine AS builder-lite
+
 ARG SERVER_DIR
+ARG VARIANT="lite"
 
-ENV PYTHONUNBUFFERED=1
+# Install build dependencies (Alpine uses apk)
+RUN apk add --no-cache \
+    git \
+    build-base \
+    libffi-dev
 
-# Install system dependencies
+WORKDIR /app
+
+# Install uv and create venv
+RUN pip install --no-cache-dir uv==0.5.11 && \
+    uv venv .venv --python 3.12
+
+# Copy pyproject.toml first for layer caching
+COPY ${SERVER_DIR:-.}/pyproject.toml /app/
+
+# Install dependencies (lite - no uv.lock needed, simpler deps)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    . .venv/bin/activate && \
+    if [ -f /app/pyproject.toml ]; then \
+        uv pip install -e .; \
+    fi
+
+# =============================================================================
+# Stage 1b: Builder for FULL variant (Debian slim - PyTorch compatibility)
+# =============================================================================
+FROM python:3.12-slim AS builder-full
+
+ARG SERVER_DIR
+ARG VARIANT="lite"
+
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
     git \
     build-essential \
-    netcat-openbsd \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy server files - handle both build contexts
-# If SERVER_DIR is set (building from root), copy from that directory
-# Otherwise copy from current context (building from server directory)
+# Install uv and create venv
+RUN pip install --no-cache-dir uv==0.5.11 && \
+    uv venv .venv --python 3.12
+
+# Copy pyproject.toml and uv.lock first for layer caching
+COPY ${SERVER_DIR:-.}/pyproject.toml /app/
+COPY ${SERVER_DIR:-.}/uv.lock* /app/
+
+# Install dependencies with cache mount
+RUN --mount=type=cache,target=/root/.cache/uv \
+    . .venv/bin/activate && \
+    if [ -f /app/pyproject.toml ]; then \
+        if [ -f /app/uv.lock ]; then \
+            echo "Found uv.lock, using uv sync..." && \
+            uv sync --extra ml --index-strategy unsafe-best-match; \
+        else \
+            echo "No uv.lock, using uv pip install..." && \
+            uv pip install --index-strategy unsafe-best-match -e ".[ml]" 2>/dev/null || \
+            uv pip install --index-strategy unsafe-best-match -e .; \
+        fi; \
+    fi
+
+# =============================================================================
+# Stage 2a: Runtime for LITE variant (Alpine - minimal)
+# =============================================================================
+FROM python:3.12-alpine AS runtime-lite
+
+ARG SERVER_DIR
+ENV PYTHONUNBUFFERED=1
+ENV DOCKER_VARIANT=lite
+
+# Only netcat needed for healthcheck
+RUN apk add --no-cache \
+    netcat-openbsd \
+    libffi
+
+WORKDIR /app
+
+# Copy virtual environment from lite builder
+COPY --from=builder-lite /app/.venv /app/.venv
+
+# Copy server files
 COPY ${SERVER_DIR:-.}/ /app/
 
 # Copy registry module for embeddings support (only when building from root with SERVER_DIR set)
-# This is required for servers that use the embeddings client (like mcpgw)
-# Use a conditional copy that won't fail if registry doesn't exist
 COPY --chown=root:root . /tmp/build-context/
 RUN if [ -d /tmp/build-context/registry ]; then \
         cp -r /tmp/build-context/registry /app/registry && \
@@ -36,15 +111,63 @@ RUN if [ -d /tmp/build-context/registry ]; then \
     fi && \
     rm -rf /tmp/build-context
 
-# Install uv and setup Python environment
-RUN pip install uv && \
-    uv venv .venv --python 3.12
+# Expose default port (can be overridden by environment variable)
+EXPOSE 8000
 
-# Install dependencies from pyproject.toml (copied from SERVER_PATH)
-RUN . .venv/bin/activate && \
-    if [ -f /app/pyproject.toml ]; then \
-        uv pip install --requirement /app/pyproject.toml; \
-    fi
+# Health check (generic for all MCP servers)
+HEALTHCHECK --interval=500s --timeout=10s --start-period=30s --retries=3 \
+    CMD nc -z localhost ${PORT:-8000} || exit 1
+
+# Create entrypoint script (POSIX sh for Alpine)
+RUN printf '#!/bin/sh\n\
+set -e\n\
+SERVER_PORT=${PORT:-8000}\n\
+if [ -n "$POLYGON_API_KEY" ]; then\n\
+    echo "POLYGON_API_KEY=$POLYGON_API_KEY" > /app/.env\n\
+fi\n\
+if [ -n "$REGISTRY_BASE_URL" ]; then\n\
+    echo "REGISTRY_BASE_URL=$REGISTRY_BASE_URL" > /app/.env\n\
+    echo "REGISTRY_USERNAME=$REGISTRY_USERNAME" >> /app/.env\n\
+    echo "REGISTRY_PASSWORD=$REGISTRY_PASSWORD" >> /app/.env\n\
+fi\n\
+. .venv/bin/activate\n\
+exec python server.py --port $SERVER_PORT\n' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+
+# =============================================================================
+# Stage 2b: Runtime for FULL variant (Debian slim - PyTorch compatible)
+# =============================================================================
+FROM python:3.12-slim AS runtime-full
+
+ARG SERVER_DIR
+ENV PYTHONUNBUFFERED=1
+ENV DOCKER_VARIANT=full
+
+# Only netcat needed for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    netcat-openbsd \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy virtual environment from full builder
+COPY --from=builder-full /app/.venv /app/.venv
+
+# Copy server files
+COPY ${SERVER_DIR:-.}/ /app/
+
+# Copy registry module for embeddings support (only when building from root with SERVER_DIR set)
+COPY --chown=root:root . /tmp/build-context/
+RUN if [ -d /tmp/build-context/registry ]; then \
+        cp -r /tmp/build-context/registry /app/registry && \
+        echo "Registry module copied successfully"; \
+    else \
+        echo "Registry module not found in build context (expected for non-mcpgw servers)"; \
+    fi && \
+    rm -rf /tmp/build-context
 
 # Expose default port (can be overridden by environment variable)
 EXPOSE 8000
@@ -53,27 +176,29 @@ EXPOSE 8000
 HEALTHCHECK --interval=500s --timeout=10s --start-period=30s --retries=3 \
     CMD nc -z localhost ${PORT:-8000} || exit 1
 
-# Create entrypoint script that handles environment setup and runs server.py
+# Create entrypoint script (bash for Debian)
 RUN echo '#!/bin/bash\n\
 set -e\n\
-\n\
-# Set default port\n\
 SERVER_PORT=${PORT:-8000}\n\
-\n\
-# Create .env file if needed (for servers that require it)\n\
 if [ ! -z "$POLYGON_API_KEY" ]; then\n\
     echo "POLYGON_API_KEY=$POLYGON_API_KEY" > /app/.env\n\
 fi\n\
-\n\
 if [ ! -z "$REGISTRY_BASE_URL" ]; then\n\
     echo "REGISTRY_BASE_URL=$REGISTRY_BASE_URL" > /app/.env\n\
     echo "REGISTRY_USERNAME=$REGISTRY_USERNAME" >> /app/.env\n\
     echo "REGISTRY_PASSWORD=$REGISTRY_PASSWORD" >> /app/.env\n\
 fi\n\
-\n\
-# Activate virtual environment and run the server\n\
 source .venv/bin/activate\n\
 exec python server.py --port $SERVER_PORT' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
-ENTRYPOINT ["/entrypoint.sh"] 
+ENTRYPOINT ["/entrypoint.sh"]
+
+# =============================================================================
+# Final Stage Selection
+# =============================================================================
+# Use --target=runtime-lite for lightweight servers (currenttime, fininfo, etc.)
+# Use --target=runtime-full for ML-enabled servers (mcpgw with embeddings)
+#
+# docker build --target runtime-lite -f docker/Dockerfile.mcp-server .
+# docker build --target runtime-full -f docker/Dockerfile.mcp-server .
