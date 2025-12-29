@@ -337,11 +337,6 @@ uv run pytest tests/integration/ -v
 
 ### Manual Verification
 
-```bash
-# Run comprehensive test script
-bash scripts/test-opensearch-phase2.sh
-```
-
 ## Troubleshooting
 
 ### OpenSearch won't start

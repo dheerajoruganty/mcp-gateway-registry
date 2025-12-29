@@ -9,10 +9,11 @@ This guide provides a comprehensive, step-by-step walkthrough for setting up the
 4. [Cloning and Configuring the Project](#4-cloning-and-configuring-the-project)
 5. [Setting Up Keycloak Identity Provider](#5-setting-up-keycloak-identity-provider)
 6. [Starting the MCP Gateway Services](#6-starting-the-mcp-gateway-services)
-7. [Verification and Testing](#7-verification-and-testing)
-8. [Configuring AI Agents and Coding Assistants](#8-configuring-ai-agents-and-coding-assistants)
-9. [Troubleshooting](#9-troubleshooting)
-10. [Next Steps](#10-next-steps)
+7. [OpenSearch Setup (Optional - Local Installation Only)](#7-opensearch-setup-optional---local-installation-only)
+8. [Verification and Testing](#8-verification-and-testing)
+9. [Configuring AI Agents and Coding Assistants](#9-configuring-ai-agents-and-coding-assistants)
+10. [Troubleshooting](#10-troubleshooting)
+11. [Next Steps](#11-next-steps)
 
 ---
 
@@ -592,7 +593,30 @@ curl http://localhost:7860/health
 
 ---
 
-## 7. Verification and Testing
+## 7. OpenSearch Setup (Optional - Local Installation Only)
+
+**Note**: This section is ONLY for local Docker Compose installations. For AWS ECS/EKS deployments, OpenSearch initialization is handled automatically by the infrastructure scripts.
+
+If you're using OpenSearch as your storage backend (instead of file-based storage), you need to initialize the indices and import scope data:
+
+```bash
+# Initialize OpenSearch indices
+uv run python scripts/init-opensearch.py
+
+# Import authorization scopes from YAML to OpenSearch
+uv run python scripts/import-scopes-to-opensearch.py
+```
+
+For detailed information about OpenSearch setup, data migration, and troubleshooting, see [OpenSearch Import Guide](../scripts/README-OPENSEARCH-IMPORT.md).
+
+**When to skip this section:**
+- Using file-based storage backend (default)
+- Deploying to AWS ECS/EKS (automated setup)
+- Not using OpenSearch features
+
+---
+
+## 8. Verification and Testing
 
 ### Test the Registry Web Interface
 
@@ -680,7 +704,7 @@ uv run python agents/agent.py --agent-name agent-test-agent-m2m --mcp-registry-u
 
 ---
 
-## 8. Configuring AI Agents and Coding Assistants
+## 9. Configuring AI Agents and Coding Assistants
 
 ### Configure OAuth Credentials
 
@@ -826,7 +850,7 @@ uv run python agent.py --config agent_config.json
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 ### Common Issues and Solutions
 
@@ -1054,7 +1078,7 @@ docker-compose up -d keycloak-db keycloak
 
 ---
 
-## 10. Custom HTTPS Domain Configuration
+## 11. Custom HTTPS Domain Configuration
 
 If you're running this setup with a custom HTTPS domain (e.g., `https://mcpgateway.mycorp.com`) instead of localhost, you'll need to update the following parameters in your `.env` file:
 
@@ -1109,7 +1133,7 @@ curl -f https://mcpgateway.mycorp.com/realms/mcp-gateway
 
 ---
 
-## 11. Next Steps
+## 12. Next Steps
 
 ### Secure Your Installation
 

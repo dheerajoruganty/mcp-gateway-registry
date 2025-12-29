@@ -143,26 +143,31 @@ output "registry_url" {
 # }
 
 #
-# OpenSearch Outputs
+# OpenSearch Serverless Outputs
 #
 
-output "opensearch_endpoint" {
-  description = "OpenSearch internal endpoint (accessible via Service Discovery)"
-  value       = "https://opensearch.${module.mcp_gateway.service_discovery_namespace_id}:9200"
+output "opensearch_serverless_collection_endpoint" {
+  description = "OpenSearch Serverless collection endpoint URL"
+  value       = aws_opensearchserverless_collection.main.collection_endpoint
 }
 
-output "opensearch_service_name" {
-  description = "OpenSearch ECS service name"
-  value       = aws_ecs_service.opensearch.name
+output "opensearch_serverless_collection_id" {
+  description = "OpenSearch Serverless collection ID"
+  value       = aws_opensearchserverless_collection.main.id
 }
 
-output "opensearch_security_group_id" {
-  description = "OpenSearch ECS security group ID"
-  value       = aws_security_group.opensearch_ecs.id
+output "opensearch_serverless_collection_arn" {
+  description = "OpenSearch Serverless collection ARN"
+  value       = aws_opensearchserverless_collection.main.arn
 }
 
-output "opensearch_admin_password_ssm" {
-  description = "SSM parameter name for OpenSearch admin password"
-  value       = aws_ssm_parameter.opensearch_admin_password.name
-  sensitive   = false
+output "opensearch_serverless_vpc_endpoint_id" {
+  description = "OpenSearch Serverless VPC endpoint ID"
+  value       = aws_opensearchserverless_vpc_endpoint.main.id
 }
+
+output "opensearch_serverless_endpoint_security_group_id" {
+  description = "Security group ID for OpenSearch Serverless VPC endpoint"
+  value       = aws_security_group.opensearch_endpoint.id
+}
+

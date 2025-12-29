@@ -93,7 +93,7 @@ resource "aws_lb_listener" "keycloak_https" {
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
-  certificate_arn   = var.certificate_arn
+  certificate_arn   = aws_acm_certificate.keycloak.arn
 
   default_action {
     type             = "forward"

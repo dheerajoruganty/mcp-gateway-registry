@@ -81,6 +81,12 @@ output "service_discovery_namespace_arn" {
   sensitive   = false
 }
 
+output "service_discovery_namespace_hosted_zone_id" {
+  description = "MCP Gateway Registry service discovery namespace hosted zone ID"
+  value       = aws_service_discovery_private_dns_namespace.mcp.hosted_zone
+  sensitive   = false
+}
+
 # Secrets Manager outputs
 output "secret_arns" {
   description = "ARNs of MCP Gateway Registry secrets"

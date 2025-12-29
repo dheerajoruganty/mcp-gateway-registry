@@ -35,11 +35,15 @@ module "mcp_gateway" {
   task_execution_role_arn = module.ecs_cluster.task_exec_iam_role_arn
 
   # HTTPS configuration
-  certificate_arn = var.certificate_arn
-  domain_name     = var.base_domain
+  certificate_arn = aws_acm_certificate.registry.arn
+  domain_name     = "registry.${local.root_domain}"
 
   # Keycloak configuration
   keycloak_domain = local.keycloak_domain
+
+  # OpenSearch Serverless configuration
+  opensearch_serverless_endpoint       = aws_opensearchserverless_collection.main.collection_endpoint
+  opensearch_serverless_collection_arn = aws_opensearchserverless_collection.main.arn
 
   # Container images
   registry_image_uri               = var.registry_image_uri

@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional, List
 
 from opensearchpy import AsyncOpenSearch
 
-from ...core.config import settings
+from ...core.config import settings, embedding_config
 from ...schemas.agent_models import AgentCard
 from ..interfaces import SearchRepositoryBase
 from .client import get_opensearch_client, get_index_name
@@ -26,6 +26,12 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
         if self._client is None:
             self._client = await get_opensearch_client()
         return self._client
+
+
+    def _is_aoss(self) -> bool:
+        """Check if using AWS OpenSearch Serverless (which doesn't support custom IDs)."""
+        return settings.opensearch_auth_type == "aws_iam"
+
 
     async def _get_embedding_model(self):
         """Lazy load embedding model."""
@@ -102,6 +108,7 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
             "is_enabled": is_enabled,
             "text_for_embedding": text_for_embedding,
             "embedding": embedding,
+            "embedding_metadata": embedding_config.get_embedding_metadata(),
             "tools": [
                 {"name": t.get("name"), "description": t.get("description")}
                 for t in server_info.get("tool_list", [])
@@ -111,12 +118,19 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
         }
 
         try:
-            await client.index(
-                index=self._index_name,
-                id=doc_id,
-                body=doc,
-                refresh=True
-            )
+            if self._is_aoss():
+                # AOSS doesn't support custom IDs or refresh=true
+                await client.index(
+                    index=self._index_name,
+                    body=doc
+                )
+            else:
+                await client.index(
+                    index=self._index_name,
+                    id=doc_id,
+                    body=doc,
+                    refresh=True
+                )
             logger.info(f"Indexed server '{server_info.get('server_name')}' for search")
         except Exception as e:
             logger.error(f"Failed to index server in search: {e}", exc_info=True)
@@ -163,6 +177,7 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
             "is_enabled": is_enabled,
             "text_for_embedding": text_for_embedding,
             "embedding": embedding,
+            "embedding_metadata": embedding_config.get_embedding_metadata(),
             "skills": [
                 {"id": s.id, "name": s.name, "description": s.description}
                 for s in (agent_card.skills or [])
@@ -172,12 +187,19 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
         }
 
         try:
-            await client.index(
-                index=self._index_name,
-                id=doc_id,
-                body=doc,
-                refresh=True
-            )
+            if self._is_aoss():
+                # AOSS doesn't support custom IDs or refresh=true
+                await client.index(
+                    index=self._index_name,
+                    body=doc
+                )
+            else:
+                await client.index(
+                    index=self._index_name,
+                    id=doc_id,
+                    body=doc,
+                    refresh=True
+                )
             logger.info(f"Indexed agent '{agent_card.name}' for search")
         except Exception as e:
             logger.error(f"Failed to index agent in search: {e}", exc_info=True)
@@ -188,11 +210,18 @@ class OpenSearchSearchRepository(SearchRepositoryBase):
         doc_id = self._path_to_doc_id(path)
 
         try:
-            await client.delete(
-                index=self._index_name,
-                id=doc_id,
-                refresh=True
-            )
+            if self._is_aoss():
+                # AOSS doesn't support refresh=true
+                await client.delete(
+                    index=self._index_name,
+                    id=doc_id
+                )
+            else:
+                await client.delete(
+                    index=self._index_name,
+                    id=doc_id,
+                    refresh=True
+                )
             logger.info(f"Removed entity '{path}' from search index")
         except Exception as e:
             logger.debug(f"Entity '{path}' not found in search index or error: {e}")

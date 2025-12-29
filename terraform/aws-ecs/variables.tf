@@ -251,3 +251,32 @@ variable "session_cookie_domain" {
   default     = ""
 }
 
+
+# =============================================================================
+# OPENSEARCH CLUSTER CONFIGURATION
+# =============================================================================
+
+variable "opensearch_node_count" {
+  description = "Number of OpenSearch nodes in cluster"
+  type        = number
+  default     = 3
+}
+
+variable "opensearch_cpu" {
+  description = "CPU units for OpenSearch tasks (1 vCPU = 1024)"
+  type        = number
+  default     = 2048
+}
+
+variable "opensearch_memory" {
+  description = "Memory in MB for OpenSearch tasks"
+  type        = number
+  default     = 4096
+}
+
+variable "opensearch_version" {
+  description = "OpenSearch Docker image version"
+  type        = string
+  default     = "2.11.1"
+}
+

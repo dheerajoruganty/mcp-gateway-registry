@@ -53,8 +53,9 @@ module "ecs_service_auth" {
   }
   create_tasks_iam_role = true
   tasks_iam_role_policies = {
-    SecretsManagerAccess = aws_iam_policy.ecs_secrets_access.arn
-    EcsExecTask          = aws_iam_policy.ecs_exec_task.arn
+    SecretsManagerAccess       = aws_iam_policy.ecs_secrets_access.arn
+    EcsExecTask                = aws_iam_policy.ecs_exec_task.arn
+    OpenSearchServerlessAccess = aws_iam_policy.opensearch_serverless_access.arn
   }
 
   # Enable Service Connect
@@ -98,7 +99,7 @@ module "ecs_service_auth" {
         },
         {
           name  = "AUTH_SERVER_EXTERNAL_URL"
-          value = "https://${var.domain_name}"
+          value = "https://${var.domain_name}:8888"
         },
         {
           name  = "AWS_REGION"
@@ -135,6 +136,30 @@ module "ecs_service_auth" {
         {
           name  = "SESSION_COOKIE_DOMAIN"
           value = var.session_cookie_domain
+        },
+        {
+          name  = "OPENSEARCH_HOST"
+          value = replace(replace(var.opensearch_serverless_endpoint, "https://", ""), "http://", "")
+        },
+        {
+          name  = "OPENSEARCH_PORT"
+          value = "443"
+        },
+        {
+          name  = "OPENSEARCH_USE_SSL"
+          value = "true"
+        },
+        {
+          name  = "OPENSEARCH_AUTH_TYPE"
+          value = "aws_iam"
+        },
+        {
+          name  = "OPENSEARCH_REGION"
+          value = data.aws_region.current.id
+        },
+        {
+          name  = "STORAGE_BACKEND"
+          value = "opensearch"
         }
       ]
 
@@ -274,8 +299,9 @@ module "ecs_service_registry" {
   }
   create_tasks_iam_role = true
   tasks_iam_role_policies = {
-    SecretsManagerAccess = aws_iam_policy.ecs_secrets_access.arn
-    EcsExecTask          = aws_iam_policy.ecs_exec_task.arn
+    SecretsManagerAccess       = aws_iam_policy.ecs_secrets_access.arn
+    EcsExecTask                = aws_iam_policy.ecs_exec_task.arn
+    OpenSearchServerlessAccess = aws_iam_policy.opensearch_serverless_access.arn
   }
 
   # Enable Service Connect
@@ -333,7 +359,7 @@ module "ecs_service_registry" {
         },
         {
           name  = "AUTH_SERVER_EXTERNAL_URL"
-          value = var.domain_name != "" ? "https://${var.domain_name}" : "http://${module.alb.dns_name}"
+          value = var.domain_name != "" ? "https://${var.domain_name}:8888" : "http://${module.alb.dns_name}:8888"
         },
         {
           name  = "KEYCLOAK_URL"
@@ -414,6 +440,30 @@ module "ecs_service_registry" {
         {
           name  = "KEYCLOAK_ADMIN"
           value = "admin"
+        },
+        {
+          name  = "OPENSEARCH_HOST"
+          value = replace(replace(var.opensearch_serverless_endpoint, "https://", ""), "http://", "")
+        },
+        {
+          name  = "OPENSEARCH_PORT"
+          value = "443"
+        },
+        {
+          name  = "OPENSEARCH_USE_SSL"
+          value = "true"
+        },
+        {
+          name  = "OPENSEARCH_AUTH_TYPE"
+          value = "aws_iam"
+        },
+        {
+          name  = "OPENSEARCH_REGION"
+          value = data.aws_region.current.id
+        },
+        {
+          name  = "STORAGE_BACKEND"
+          value = "opensearch"
         }
       ]
 

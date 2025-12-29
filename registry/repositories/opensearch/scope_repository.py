@@ -27,6 +27,12 @@ class OpenSearchScopeRepository(ScopeRepositoryBase):
             self._client = await get_opensearch_client()
         return self._client
 
+
+    def _is_aoss(self) -> bool:
+        """Check if using AWS OpenSearch Serverless (which doesn't support custom IDs)."""
+        return settings.opensearch_auth_type == "aws_iam"
+
+
     def _create_doc_id(
         self,
         scope_type: str,
@@ -136,12 +142,19 @@ class OpenSearchScopeRepository(ScopeRepositoryBase):
                 "updated_at": datetime.utcnow().isoformat()
             }
 
-            await client.index(
-                index=self._index_name,
-                id=doc_id,
-                body=document,
-                refresh=True
-            )
+            if self._is_aoss():
+                # AOSS doesn't support custom IDs or refresh=true
+                await client.index(
+                    index=self._index_name,
+                    body=document
+                )
+            else:
+                await client.index(
+                    index=self._index_name,
+                    id=doc_id,
+                    body=document,
+                    refresh=True
+                )
 
             self._scopes_data[scope_name] = existing_scopes
 
@@ -174,11 +187,18 @@ class OpenSearchScopeRepository(ScopeRepositoryBase):
                 doc_id = self._create_doc_id("server_scopes", scope_name)
 
                 if len(existing_scopes) == 0:
-                    await client.delete(
-                        index=self._index_name,
-                        id=doc_id,
-                        refresh=True
-                    )
+                    if self._is_aoss():
+                        # AOSS doesn't support refresh=true
+                        await client.delete(
+                            index=self._index_name,
+                            id=doc_id
+                        )
+                    else:
+                        await client.delete(
+                            index=self._index_name,
+                            id=doc_id,
+                            refresh=True
+                        )
                     if scope_name in self._scopes_data:
                         del self._scopes_data[scope_name]
                 else:
@@ -189,12 +209,19 @@ class OpenSearchScopeRepository(ScopeRepositoryBase):
                         "updated_at": datetime.utcnow().isoformat()
                     }
 
-                    await client.index(
-                        index=self._index_name,
-                        id=doc_id,
-                        body=document,
-                        refresh=True
-                    )
+                    if self._is_aoss():
+                        # AOSS doesn't support custom IDs or refresh=true
+                        await client.index(
+                            index=self._index_name,
+                            body=document
+                        )
+                    else:
+                        await client.index(
+                            index=self._index_name,
+                            id=doc_id,
+                            body=document,
+                            refresh=True
+                        )
                     self._scopes_data[scope_name] = existing_scopes
 
                 logger.info(f"Removed server {server_path} from scope {scope_name} in OpenSearch")
@@ -485,43 +512,115 @@ class OpenSearchScopeRepository(ScopeRepositoryBase):
         try:
             client = await self._get_client()
 
-            # Get all three document types for this group
-            server_scope_id = self._create_doc_id("server_scope", group_name)
-            group_mapping_id = self._create_doc_id("group_mapping", group_name)
-            ui_scope_id = self._create_doc_id("ui_scope", group_name)
+            # OpenSearch Serverless (aws_iam) doesn't support custom document IDs
+            # Use search queries instead of direct ID lookups
+            use_search = settings.opensearch_auth_type == "aws_iam"
 
-            # Try to get server_scope document
-            try:
-                server_scope_doc = await client.get(
+            if use_search:
+                # Search for server_scope document by scope_name
+                server_scope_response = await client.search(
                     index=self._index_name,
-                    id=server_scope_id
+                    body={
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {"term": {"scope_type": "server_scope"}},
+                                    {"term": {"scope_name": group_name}}
+                                ]
+                            }
+                        },
+                        "size": 1
+                    }
                 )
-                server_scope_source = server_scope_doc["_source"]
-            except NotFoundError:
-                logger.warning(f"Server scope document not found for group {group_name}")
-                return None
 
-            # Try to get group_mapping document
-            try:
-                group_mapping_doc = await client.get(
-                    index=self._index_name,
-                    id=group_mapping_id
-                )
-                group_mapping_source = group_mapping_doc["_source"]
-            except NotFoundError:
-                logger.debug(f"Group mapping document not found for group {group_name}")
-                group_mapping_source = {"group_mappings": [group_name]}
+                hits = server_scope_response.get("hits", {}).get("hits", [])
+                if not hits:
+                    logger.warning(f"Server scope document not found for group {group_name}")
+                    return None
 
-            # Try to get ui_scope document
-            try:
-                ui_scope_doc = await client.get(
+                server_scope_source = hits[0]["_source"]
+            else:
+                # Use direct ID lookup for regular OpenSearch (faster)
+                server_scope_id = self._create_doc_id("server_scope", group_name)
+                try:
+                    server_scope_doc = await client.get(
+                        index=self._index_name,
+                        id=server_scope_id
+                    )
+                    server_scope_source = server_scope_doc["_source"]
+                except NotFoundError:
+                    logger.warning(f"Server scope document not found for group {group_name}")
+                    return None
+
+            # Get group_mapping document
+            if use_search:
+                group_mapping_response = await client.search(
                     index=self._index_name,
-                    id=ui_scope_id
+                    body={
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {"term": {"scope_type": "group_mapping"}},
+                                    {"term": {"group_name": group_name}}
+                                ]
+                            }
+                        },
+                        "size": 1
+                    }
                 )
-                ui_scope_source = ui_scope_doc["_source"]
-            except NotFoundError:
-                logger.debug(f"UI scope document not found for group {group_name}")
-                ui_scope_source = {"ui_permissions": {}}
+
+                mapping_hits = group_mapping_response.get("hits", {}).get("hits", [])
+                if mapping_hits:
+                    group_mapping_source = mapping_hits[0]["_source"]
+                else:
+                    logger.debug(f"Group mapping document not found for group {group_name}")
+                    group_mapping_source = {"group_mappings": [group_name]}
+            else:
+                group_mapping_id = self._create_doc_id("group_mapping", group_name)
+                try:
+                    group_mapping_doc = await client.get(
+                        index=self._index_name,
+                        id=group_mapping_id
+                    )
+                    group_mapping_source = group_mapping_doc["_source"]
+                except NotFoundError:
+                    logger.debug(f"Group mapping document not found for group {group_name}")
+                    group_mapping_source = {"group_mappings": [group_name]}
+
+            # Get ui_scope document
+            if use_search:
+                ui_scope_response = await client.search(
+                    index=self._index_name,
+                    body={
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {"term": {"scope_type": "ui_scope"}},
+                                    {"term": {"scope_name": group_name}}
+                                ]
+                            }
+                        },
+                        "size": 1
+                    }
+                )
+
+                ui_hits = ui_scope_response.get("hits", {}).get("hits", [])
+                if ui_hits:
+                    ui_scope_source = ui_hits[0]["_source"]
+                else:
+                    logger.debug(f"UI scope document not found for group {group_name}")
+                    ui_scope_source = {"ui_permissions": {}}
+            else:
+                ui_scope_id = self._create_doc_id("ui_scope", group_name)
+                try:
+                    ui_scope_doc = await client.get(
+                        index=self._index_name,
+                        id=ui_scope_id
+                    )
+                    ui_scope_source = ui_scope_doc["_source"]
+                except NotFoundError:
+                    logger.debug(f"UI scope document not found for group {group_name}")
+                    ui_scope_source = {"ui_permissions": {}}
 
             # Combine all three document types into a single response
             result = {

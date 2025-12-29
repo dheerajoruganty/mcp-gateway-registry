@@ -29,6 +29,12 @@ class OpenSearchAgentRepository(AgentRepositoryBase):
             self._client = await get_opensearch_client()
         return self._client
 
+
+    def _is_aoss(self) -> bool:
+        """Check if using AWS OpenSearch Serverless (which doesn't support custom IDs)."""
+        return settings.opensearch_auth_type == "aws_iam"
+
+
     def _path_to_doc_id(self, path: str) -> str:
         """Convert path to document ID."""
         return path.replace("/", "_").strip("_")
@@ -114,14 +120,23 @@ class OpenSearchAgentRepository(AgentRepositoryBase):
 
         agent_dict = agent.model_dump(mode="json")
         agent_dict["is_enabled"] = False
+        agent_dict["path"] = path  # Store path for querying in AOSS
 
         try:
-            await client.index(
-                index=self._index_name,
-                id=doc_id,
-                body=agent_dict,
-                refresh=True
-            )
+            if self._is_aoss():
+                # OpenSearch Serverless doesn't support custom IDs or refresh=true
+                await client.index(
+                    index=self._index_name,
+                    body=agent_dict
+                )
+            else:
+                # Regular OpenSearch - use custom ID for backwards compatibility
+                await client.index(
+                    index=self._index_name,
+                    id=doc_id,
+                    body=agent_dict,
+                    refresh=True
+                )
 
             self._agents[path] = agent
             self._state["disabled"].append(path)
@@ -139,7 +154,6 @@ class OpenSearchAgentRepository(AgentRepositoryBase):
             raise ValueError(f"Agent not found at path: {path}")
 
         client = await self._get_client()
-        doc_id = self._path_to_doc_id(path)
 
         # Merge updates with existing agent
         existing_agent = self._agents[path]
@@ -157,12 +171,34 @@ class OpenSearchAgentRepository(AgentRepositoryBase):
         agent_dict = updated_agent.model_dump(mode="json")
 
         try:
-            await client.index(
-                index=self._index_name,
-                id=doc_id,
-                body=agent_dict,
-                refresh=True
-            )
+            if self._is_aoss():
+                # Find existing document by path field for AOSS
+                search_response = await client.search(
+                    index=self._index_name,
+                    body={"query": {"term": {"path.keyword": path}}}
+                )
+
+                if search_response['hits']['total']['value'] == 0:
+                    raise ValueError(f"Agent at '{path}' not found in OpenSearch")
+
+                # Get the auto-generated document ID
+                doc_id = search_response['hits']['hits'][0]['_id']
+
+                # Update using the document ID (AOSS doesn't support refresh=true)
+                await client.update(
+                    index=self._index_name,
+                    id=doc_id,
+                    body={"doc": agent_dict}
+                )
+            else:
+                # Regular OpenSearch - use deterministic ID
+                doc_id = self._path_to_doc_id(path)
+                await client.index(
+                    index=self._index_name,
+                    id=doc_id,
+                    body=agent_dict,
+                    refresh=True
+                )
 
             self._agents[path] = updated_agent
             logger.info(f"Updated agent '{updated_agent.name}' ({path})")
@@ -179,14 +215,38 @@ class OpenSearchAgentRepository(AgentRepositoryBase):
             return False
 
         client = await self._get_client()
-        doc_id = self._path_to_doc_id(path)
 
         try:
-            await client.delete(
-                index=self._index_name,
-                id=doc_id,
-                refresh=True
-            )
+            if self._is_aoss():
+                # Find existing document by path field for AOSS
+                search_response = await client.search(
+                    index=self._index_name,
+                    body={"query": {"term": {"path.keyword": path}}}
+                )
+
+                if search_response['hits']['total']['value'] == 0:
+                    logger.error(f"Agent at '{path}' not found in OpenSearch")
+                    return False
+
+                # Get the auto-generated document ID
+                doc_id = search_response['hits']['hits'][0]['_id']
+            else:
+                # Regular OpenSearch - use deterministic ID
+                doc_id = self._path_to_doc_id(path)
+
+            # Delete using the document ID
+            if self._is_aoss():
+                # AOSS doesn't support refresh=true
+                await client.delete(
+                    index=self._index_name,
+                    id=doc_id
+                )
+            else:
+                await client.delete(
+                    index=self._index_name,
+                    id=doc_id,
+                    refresh=True
+                )
 
             agent_name = self._agents[path].name
             del self._agents[path]
@@ -229,15 +289,40 @@ class OpenSearchAgentRepository(AgentRepositoryBase):
             return False
 
         client = await self._get_client()
-        doc_id = self._path_to_doc_id(path)
 
         try:
-            await client.update(
-                index=self._index_name,
-                id=doc_id,
-                body={"doc": {"is_enabled": enabled, "updated_at": datetime.utcnow().isoformat()}},
-                refresh=True
-            )
+            if self._is_aoss():
+                # Find existing document by path field for AOSS
+                search_response = await client.search(
+                    index=self._index_name,
+                    body={"query": {"term": {"path.keyword": path}}}
+                )
+
+                if search_response['hits']['total']['value'] == 0:
+                    logger.error(f"Agent at '{path}' not found in OpenSearch")
+                    return False
+
+                # Get the auto-generated document ID
+                doc_id = search_response['hits']['hits'][0]['_id']
+            else:
+                # Regular OpenSearch - use deterministic ID
+                doc_id = self._path_to_doc_id(path)
+
+            # Update using the document ID
+            if self._is_aoss():
+                # AOSS doesn't support refresh=true
+                await client.update(
+                    index=self._index_name,
+                    id=doc_id,
+                    body={"doc": {"is_enabled": enabled, "updated_at": datetime.utcnow().isoformat()}}
+                )
+            else:
+                await client.update(
+                    index=self._index_name,
+                    id=doc_id,
+                    body={"doc": {"is_enabled": enabled, "updated_at": datetime.utcnow().isoformat()}},
+                    refresh=True
+                )
 
             # Update state lists
             if enabled:

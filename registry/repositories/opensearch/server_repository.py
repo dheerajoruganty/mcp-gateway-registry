@@ -27,6 +27,12 @@ class OpenSearchServerRepository(ServerRepositoryBase):
             self._client = await get_opensearch_client()
         return self._client
 
+
+    def _is_aoss(self) -> bool:
+        """Check if using AWS OpenSearch Serverless (which doesn't support custom IDs)."""
+        return settings.opensearch_auth_type == "aws_iam"
+
+
     def _path_to_doc_id(self, path: str) -> str:
         """Convert path to document ID."""
         return path.replace("/", "_").strip("_")
@@ -91,14 +97,23 @@ class OpenSearchServerRepository(ServerRepositoryBase):
         server_info["registered_at"] = datetime.utcnow().isoformat()
         server_info["updated_at"] = datetime.utcnow().isoformat()
         server_info.setdefault("is_enabled", False)
+        server_info["path"] = path  # Store path in document for querying
 
         try:
-            await client.index(
-                index=self._index_name,
-                id=doc_id,
-                body=server_info,
-                refresh=True
-            )
+            if self._is_aoss():
+                # OpenSearch Serverless doesn't support custom IDs or refresh=true
+                await client.index(
+                    index=self._index_name,
+                    body=server_info
+                )
+            else:
+                # Regular OpenSearch - use custom ID for backwards compatibility
+                await client.index(
+                    index=self._index_name,
+                    id=doc_id,
+                    body=server_info,
+                    refresh=True
+                )
 
             self._servers[path] = server_info
             logger.info(f"Created server '{server_info['server_name']}' at '{path}'")
@@ -115,18 +130,43 @@ class OpenSearchServerRepository(ServerRepositoryBase):
             return False
 
         client = await self._get_client()
-        doc_id = self._path_to_doc_id(path)
 
         server_info["path"] = path
         server_info["updated_at"] = datetime.utcnow().isoformat()
 
         try:
-            await client.index(
-                index=self._index_name,
-                id=doc_id,
-                body=server_info,
-                refresh=True
-            )
+            if self._is_aoss():
+                # Find existing document by path field for AOSS
+                search_response = await client.search(
+                    index=self._index_name,
+                    body={"query": {"term": {"path.keyword": path}}}
+                )
+
+                if search_response['hits']['total']['value'] == 0:
+                    logger.error(f"Server at '{path}' not found in OpenSearch")
+                    return False
+
+                # Get the auto-generated document ID
+                doc_id = search_response['hits']['hits'][0]['_id']
+            else:
+                # Regular OpenSearch - use deterministic ID
+                doc_id = self._path_to_doc_id(path)
+
+            # Update using the document ID
+            if self._is_aoss():
+                # AOSS doesn't support refresh=true
+                await client.update(
+                    index=self._index_name,
+                    id=doc_id,
+                    body={"doc": server_info}
+                )
+            else:
+                await client.update(
+                    index=self._index_name,
+                    id=doc_id,
+                    body={"doc": server_info},
+                    refresh=True
+                )
 
             self._servers[path] = server_info
             logger.info(f"Updated server '{server_info['server_name']}' ({path})")
@@ -143,14 +183,38 @@ class OpenSearchServerRepository(ServerRepositoryBase):
             return False
 
         client = await self._get_client()
-        doc_id = self._path_to_doc_id(path)
 
         try:
-            await client.delete(
-                index=self._index_name,
-                id=doc_id,
-                refresh=True
-            )
+            if self._is_aoss():
+                # Find existing document by path field for AOSS
+                search_response = await client.search(
+                    index=self._index_name,
+                    body={"query": {"term": {"path.keyword": path}}}
+                )
+
+                if search_response['hits']['total']['value'] == 0:
+                    logger.error(f"Server at '{path}' not found in OpenSearch")
+                    return False
+
+                # Get the auto-generated document ID
+                doc_id = search_response['hits']['hits'][0]['_id']
+            else:
+                # Regular OpenSearch - use deterministic ID
+                doc_id = self._path_to_doc_id(path)
+
+            # Delete using the document ID
+            if self._is_aoss():
+                # AOSS doesn't support refresh=true
+                await client.delete(
+                    index=self._index_name,
+                    id=doc_id
+                )
+            else:
+                await client.delete(
+                    index=self._index_name,
+                    id=doc_id,
+                    refresh=True
+                )
 
             server_name = self._servers[path].get('server_name', 'Unknown')
             del self._servers[path]

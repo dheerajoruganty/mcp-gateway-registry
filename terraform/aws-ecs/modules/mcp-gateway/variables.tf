@@ -392,3 +392,14 @@ variable "security_add_pending_tag" {
   type        = bool
   default     = true
 }
+
+# OpenSearch Serverless Configuration
+variable "opensearch_serverless_endpoint" {
+  description = "OpenSearch Serverless collection endpoint URL"
+  type        = string
+}
+
+variable "opensearch_serverless_collection_arn" {
+  description = "OpenSearch Serverless collection ARN for IAM permissions"
+  type        = string
+}

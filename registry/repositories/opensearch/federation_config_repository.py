@@ -29,6 +29,11 @@ class OpenSearchFederationConfigRepository(FederationConfigRepositoryBase):
         return await get_opensearch_client()
 
 
+    def _is_aoss(self) -> bool:
+        """Check if using AWS OpenSearch Serverless (which doesn't support custom IDs)."""
+        return settings.opensearch_auth_type == "aws_iam"
+
+
     async def _ensure_index(self) -> None:
         """Ensure the federation config index exists with proper mapping."""
         client = await self._get_client()
@@ -168,12 +173,19 @@ class OpenSearchFederationConfigRepository(FederationConfigRepositoryBase):
                 doc["updated_at"] = now
 
             # Index the document
-            await client.index(
-                index=self._index_name,
-                id=config_id,
-                body=doc,
-                refresh=True
-            )
+            if self._is_aoss():
+                # AOSS doesn't support custom IDs or refresh=true
+                await client.index(
+                    index=self._index_name,
+                    body=doc
+                )
+            else:
+                await client.index(
+                    index=self._index_name,
+                    id=config_id,
+                    body=doc,
+                    refresh=True
+                )
 
             logger.info(f"Saved federation config: {config_id}")
             return config
@@ -198,11 +210,18 @@ class OpenSearchFederationConfigRepository(FederationConfigRepositoryBase):
         """
         try:
             client = await self._get_client()
-            await client.delete(
-                index=self._index_name,
-                id=config_id,
-                refresh=True
-            )
+            if self._is_aoss():
+                # AOSS doesn't support refresh=true
+                await client.delete(
+                    index=self._index_name,
+                    id=config_id
+                )
+            else:
+                await client.delete(
+                    index=self._index_name,
+                    id=config_id,
+                    refresh=True
+                )
             logger.info(f"Deleted federation config: {config_id}")
             return True
 

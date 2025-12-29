@@ -570,49 +570,63 @@ The MCP Gateway Registry supports two storage backends: **file-based** (default)
 - Distributed storage requirements
 - Advanced search capabilities
 
-**Setup OpenSearch backend:**
+**Setup OpenSearch Serverless backend:**
 
 ```bash
-# 1. Deploy OpenSearch infrastructure (add to terraform if not already present)
-# Or use AWS OpenSearch Service
+# 1. Deploy OpenSearch Serverless infrastructure
+# The terraform configuration includes opensearch-serverless.tf for AWS OpenSearch Serverless
+# Ensure it's deployed with: terraform apply
 
-# 2. SSH into a registry task
-./scripts/ecs-ssh.sh registry
+# 2. Build and push the OpenSearch initialization container
+make build-opensearch-init
 
-# 3. Create OpenSearch indices
-uv run python scripts/init-opensearch.py
+# 3. Run the initialization task to create indices and import scopes
+# This creates all OpenSearch indices AND imports scopes from auth_server/scopes.yml
+make run-opensearch-init-skip-build
 
-# 4. Import existing scopes.yml to OpenSearch (one-time migration)
-uv run python scripts/import-scopes-to-opensearch.py
+# Alternative: Recreate all indices (WARNING: deletes existing data)
+make run-opensearch-init-recreate
 
-# 5. Exit the SSH session
-exit
+# 4. Verify scopes were imported successfully
+aws logs tail /ecs/mcp-gateway-opensearch-init --since 5m --region us-east-1
 
-# 6. Update environment variable in ECS task definition
-# Add: STORAGE_BACKEND=opensearch
-# Then force new deployment:
-aws ecs update-service \
-  --cluster mcp-gateway-ecs-cluster \
-  --service mcp-gateway-v2-registry \
-  --force-new-deployment \
-  --region $AWS_REGION
+# 5. The registry and auth services should automatically pick up the scopes
+# Check that scopes loaded successfully:
+./terraform/aws-ecs/scripts/view-cloudwatch-logs.sh registry | grep "Loaded from OpenSearch"
+```
+
+**Full rebuild sequence (if you made changes to init scripts):**
+
+```bash
+# 1. Build all service containers
+make build-push
+
+# 2. Build the OpenSearch init container
+make build-opensearch-init
+
+# 3. Run the init task to populate OpenSearch with indices and scopes
+make run-opensearch-init-skip-build
 ```
 
 **Verify OpenSearch is working:**
 
 ```bash
 # Check indices created
-curl "https://your-opensearch-endpoint/mcp-scopes-default/_count?pretty"
+aws logs tail /ecs/mcp-gateway-opensearch-init --since 10m --region us-east-1
 
-# View registry logs
-./scripts/view-cloudwatch-logs.sh --component registry --minutes 5 --filter "opensearch"
+# View registry logs to confirm scope loading
+./terraform/aws-ecs/scripts/view-cloudwatch-logs.sh registry | grep "Loaded from OpenSearch"
+
+# Check auth server loaded scopes
+aws logs tail /ecs/mcp-gateway-v2-auth-server --since 5m --region us-east-1 | grep "Loaded from OpenSearch"
 ```
 
 **Important Notes:**
-- The `import-scopes-to-opensearch.py` script is for **one-time migration only**
-- After switching to OpenSearch, all scopes changes are made via API and stored in OpenSearch
-- `auth_server/scopes.yml` is no longer the source of truth with OpenSearch backend
-- You can switch back to file backend by changing `STORAGE_BACKEND=file`
+- The OpenSearch init task runs both index creation AND scopes import automatically
+- Scopes are imported from `auth_server/scopes.yml` during the init task
+- After OpenSearch is populated, the auth and registry services will load scopes from OpenSearch
+- The init task can be re-run safely - use `--recreate` flag to reset all indices
+- For AWS OpenSearch Serverless, the services use AWS IAM authentication with SigV4 signing
 
 See [docs/configuration.md](../../docs/configuration.md#storage-backend-configuration) for detailed backend configuration options.
 

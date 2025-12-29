@@ -1,4 +1,4 @@
-.PHONY: help test test-unit test-integration test-e2e test-fast test-coverage test-auth test-servers test-search test-health test-core install-dev lint format check-deps clean build-keycloak push-keycloak build-and-push-keycloak deploy-keycloak update-keycloak save-outputs view-logs view-logs-keycloak view-logs-registry view-logs-auth view-logs-follow list-images build push build-push generate-manifest validate-config publish-dockerhub publish-dockerhub-component publish-dockerhub-version publish-dockerhub-no-mirror publish-local compose-up-agents compose-down-agents compose-logs-agents build-agents push-agents
+.PHONY: help test test-unit test-integration test-e2e test-fast test-coverage test-auth test-servers test-search test-health test-core install-dev lint format check-deps clean build-keycloak push-keycloak build-and-push-keycloak deploy-keycloak update-keycloak build-opensearch push-opensearch build-and-push-opensearch deploy-opensearch update-opensearch save-outputs view-logs view-logs-keycloak view-logs-registry view-logs-auth view-logs-follow list-images build push build-push generate-manifest validate-config publish-dockerhub publish-dockerhub-component publish-dockerhub-version publish-dockerhub-no-mirror publish-local compose-up-agents compose-down-agents compose-logs-agents build-agents push-agents build-opensearch-cli deploy-opensearch-cli aoss-list aoss-inspect aoss-count aoss-search aoss-delete
 
 # Default target
 help:
@@ -33,6 +33,28 @@ help:
 	@echo "  build-and-push-keycloak     Build and push to ECR"
 	@echo "  deploy-keycloak             Update ECS service (after push)"
 	@echo "  update-keycloak             Build, push, and deploy in one command"
+	@echo ""
+	@echo "OpenSearch Build & Deploy:"
+	@echo "  build-opensearch            Pull OpenSearch from Docker Hub"
+	@echo "  push-opensearch             Tag and push OpenSearch to ECR"
+	@echo "  build-and-push-opensearch   Pull and push OpenSearch to ECR"
+	@echo "  deploy-opensearch           Update ECS services (after push)"
+	@echo "  update-opensearch           Pull, push, and deploy in one command"
+	@echo ""
+	@echo "OpenSearch Serverless Init:"
+	@echo "  build-opensearch-init           Build and push init container to ECR"
+	@echo "  run-opensearch-init             Build and run init task to create indices"
+	@echo "  run-opensearch-init-skip-build  Run init task (skip image build)"
+	@echo "  run-opensearch-init-recreate    Run init task (recreate existing indices)"
+	@echo ""
+	@echo "OpenSearch Serverless CLI:"
+	@echo "  build-opensearch-cli            Build and push CLI Docker image to ECR"
+	@echo "  deploy-opensearch-cli           Update task definition (after build)"
+	@echo "  aoss-list                       List all AOSS indexes"
+	@echo "  aoss-inspect index=<name>       Inspect index mapping and settings"
+	@echo "  aoss-count index=<name>         Count documents in index"
+	@echo "  aoss-search index=<name>        Search documents (default: 10 results)"
+	@echo "  aoss-delete index=<name>        Delete index (interactive confirmation)"
 	@echo ""
 	@echo "Infrastructure Documentation:"
 	@echo "  save-outputs                Save Terraform outputs as JSON"
@@ -284,3 +306,113 @@ push-agents:
 	@$(MAKE) push IMAGE=flight_booking_agent
 	@$(MAKE) push IMAGE=travel_assistant_agent
 	@echo "Both agents pushed to ECR"
+
+# ========================================
+# OpenSearch Build & Deployment
+# ========================================
+
+OPENSEARCH_VERSION ?= 2.11.1
+
+build-opensearch:
+	@echo "Pulling OpenSearch $(OPENSEARCH_VERSION) from Docker Hub..."
+	docker pull opensearchproject/opensearch:$(OPENSEARCH_VERSION)
+	@echo "✅ OpenSearch image pulled"
+
+push-opensearch: build-opensearch
+	@echo "Pushing OpenSearch to ECR..."
+	./terraform/aws-ecs/scripts/push-opensearch-to-ecr.sh
+	@echo "✅ OpenSearch image pushed to ECR"
+
+build-and-push-opensearch: push-opensearch
+
+deploy-opensearch:
+	@echo "Deploying OpenSearch cluster services..."
+	cd terraform/aws-ecs && terraform apply -auto-approve \
+		-target=aws_ecs_service.opensearch_node[0] \
+		-target=aws_ecs_service.opensearch_node[1] \
+		-target=aws_ecs_service.opensearch_node[2]
+	@echo "✅ OpenSearch cluster deployment initiated"
+
+update-opensearch: build-and-push-opensearch deploy-opensearch
+	@echo ""
+	@echo "✅ OpenSearch update complete!"
+	@echo ""
+	@echo "Check cluster status:"
+	@echo "  aws ecs describe-services --cluster mcp-gateway-opensearch-cluster --services opensearch-node-0 opensearch-node-1 opensearch-node-2 --region $(AWS_REGION) --query 'services[*].[serviceName,status,runningCount,desiredCount]' --output table"
+
+# ========================================
+# OpenSearch Serverless Init
+# ========================================
+
+build-opensearch-init:
+	@echo "Building OpenSearch Init Docker image..."
+	./terraform/aws-ecs/scripts/build-and-push-opensearch-init.sh
+	@echo "✅ OpenSearch Init image built and pushed to ECR"
+
+run-opensearch-init:
+	@echo "Running OpenSearch Init ECS task..."
+	./terraform/aws-ecs/scripts/run-opensearch-init-task.sh
+	@echo "✅ OpenSearch Init task complete"
+
+run-opensearch-init-skip-build:
+	@echo "Running OpenSearch Init ECS task (skipping build)..."
+	./terraform/aws-ecs/scripts/run-opensearch-init-task.sh --skip-build
+	@echo "✅ OpenSearch Init task complete"
+
+run-opensearch-init-recreate:
+	@echo "Running OpenSearch Init ECS task (recreating indices)..."
+	./terraform/aws-ecs/scripts/run-opensearch-init-task.sh --recreate
+	@echo "✅ OpenSearch Init task complete with index recreation"
+
+
+# OpenSearch Serverless CLI Build & Deploy
+build-opensearch-cli:
+	@echo "Building and pushing OpenSearch CLI Docker image..."
+	./terraform/aws-ecs/scripts/build-and-push-opensearch-cli.sh
+
+deploy-opensearch-cli:
+	@echo "Deploying OpenSearch CLI task definition..."
+	cd terraform/aws-ecs && terraform apply -target=aws_ecs_task_definition.opensearch_cli --auto-approve
+
+# OpenSearch Serverless CLI Commands
+# These run management commands via ECS tasks with proper IAM permissions
+
+aoss-list:
+	@echo "Listing all AOSS indexes..."
+	./terraform/aws-ecs/scripts/run-aoss-cli.sh list
+
+aoss-inspect:
+ifndef index
+	@echo "Error: index parameter is required"
+	@echo "Usage: make aoss-inspect index=mcp-servers-default"
+	@exit 1
+endif
+	@echo "Inspecting index: $(index)"
+	./terraform/aws-ecs/scripts/run-aoss-cli.sh inspect $(index)
+
+aoss-count:
+ifndef index
+	@echo "Error: index parameter is required"
+	@echo "Usage: make aoss-count index=mcp-servers-default"
+	@exit 1
+endif
+	@echo "Counting documents in index: $(index)"
+	./terraform/aws-ecs/scripts/run-aoss-cli.sh count $(index)
+
+aoss-search:
+ifndef index
+	@echo "Error: index parameter is required"
+	@echo "Usage: make aoss-search index=mcp-servers-default [size=10]"
+	@exit 1
+endif
+	@echo "Searching index: $(index)"
+	./terraform/aws-ecs/scripts/run-aoss-cli.sh search $(index) $(if $(size),$(size),10)
+
+aoss-delete:
+ifndef index
+	@echo "Error: index parameter is required"
+	@echo "Usage: make aoss-delete index=old-index-name"
+	@exit 1
+endif
+	@echo "Deleting index: $(index)"
+	./terraform/aws-ecs/scripts/run-aoss-cli.sh delete $(index)

@@ -82,3 +82,23 @@ resource "aws_iam_policy" "ecs_exec_task" {
 
   tags = local.common_tags
 }
+
+# IAM policy for ECS tasks to access OpenSearch Serverless
+resource "aws_iam_policy" "opensearch_serverless_access" {
+  name_prefix = "${local.name_prefix}-opensearch-serverless-"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "aoss:APIAccessAll"
+        ]
+        Resource = var.opensearch_serverless_collection_arn
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}

@@ -27,6 +27,12 @@ class OpenSearchSecurityScanRepository(SecurityScanRepositoryBase):
             self._client = await get_opensearch_client()
         return self._client
 
+
+    def _is_aoss(self) -> bool:
+        """Check if using AWS OpenSearch Serverless (which doesn't support custom IDs)."""
+        return settings.opensearch_auth_type == "aws_iam"
+
+
     def _path_to_doc_id(
         self,
         path: str,
@@ -114,12 +120,19 @@ class OpenSearchSecurityScanRepository(SecurityScanRepositoryBase):
 
             doc_id = self._path_to_doc_id(server_path) + "_" + scan_result["scan_timestamp"].replace(":", "-").replace(".", "-")
 
-            await client.index(
-                index=self._index_name,
-                id=doc_id,
-                body=scan_result,
-                refresh=True
-            )
+            if self._is_aoss():
+                # AOSS doesn't support custom IDs or refresh=true
+                await client.index(
+                    index=self._index_name,
+                    body=scan_result
+                )
+            else:
+                await client.index(
+                    index=self._index_name,
+                    id=doc_id,
+                    body=scan_result,
+                    refresh=True
+                )
 
             self._scans[server_path] = scan_result
 
