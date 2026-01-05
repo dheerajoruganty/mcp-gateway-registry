@@ -1515,7 +1515,6 @@ curl http://localhost:7860/health
 
 - [Complete Setup Guide](docs/complete-setup-guide.md) - Step-by-step from scratch on AWS EC2
 - [Installation Guide](docs/installation.md) - Complete setup instructions for EC2 and EKS
-- [Quick Start Tutorial](docs/quick-start.md) - Get running in 5 minutes
 - [Configuration Reference](docs/configuration.md) - Environment variables and settings
 - [Authentication Guide](docs/auth.md) - OAuth and identity provider integration
 - [Keycloak Integration](docs/keycloak-integration.md) - Enterprise identity with agent audit trails

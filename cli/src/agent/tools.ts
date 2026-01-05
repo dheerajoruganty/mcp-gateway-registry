@@ -73,7 +73,7 @@ export const anthropicTools: any[] = [
         },
         file_path: {
           type: "string",
-          description: "Specific doc file to read (e.g., 'auth.md', 'quick-start.md'). If provided, reads this file directly."
+          description: "Specific doc file to read (e.g., 'auth.md', 'complete-setup-guide.md'). If provided, reads this file directly."
         }
       }
     }

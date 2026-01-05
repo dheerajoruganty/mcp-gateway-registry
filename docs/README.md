@@ -35,10 +35,11 @@ mkdocs build
 ## Documentation Structure
 
 - `index.md` - Main landing page (generated from README.md)
+- `complete-setup-guide.md` - Step-by-step setup from scratch
 - `installation.md` - Complete installation guide
-- `quick-start.md` - Quick start tutorial
 - `auth.md` - Authentication and OAuth setup
 - `cognito.md` - Amazon Cognito configuration
+- `keycloak-integration.md` - Keycloak integration guide
 - `scopes.md` - Access control and permissions
 - `registry_api.md` - API reference
 - `dynamic-tool-discovery.md` - AI agent tool discovery
