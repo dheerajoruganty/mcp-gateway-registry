@@ -36,6 +36,13 @@ from metrics_middleware import add_auth_metrics_middleware
 # Import provider factory
 from providers.factory import get_auth_provider
 
+# Import shared scopes loader and repository factory from registry common module
+import sys
+sys.path.insert(0, '/app')
+from registry.common.scopes_loader import reload_scopes_config
+from registry.repositories.factory import get_scope_repository
+from registry.core.config import settings
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,  # Set the log level to INFO
@@ -54,28 +61,8 @@ DEFAULT_TOKEN_LIFETIME_HOURS = 8
 user_token_generation_counts = {}
 MAX_TOKENS_PER_USER_PER_HOUR = int(os.environ.get('MAX_TOKENS_PER_USER_PER_HOUR', '100'))
 
-# Load scopes configuration
-def load_scopes_config():
-    """Load the scopes configuration from scopes.yml"""
-    try:
-        # Check for environment variable first (for EFS-mounted config)
-        scopes_path = os.environ.get('SCOPES_CONFIG_PATH')
-        if scopes_path:
-            scopes_file = Path(scopes_path)
-        else:
-            # Fall back to default location (baked into image)
-            scopes_file = Path(__file__).parent / "scopes.yml"
-
-        with open(scopes_file, 'r') as f:
-            config = yaml.safe_load(f)
-            logger.info(f"Loaded scopes configuration from {scopes_file} with {len(config.get('group_mappings', {}))} group mappings")
-            return config
-    except Exception as e:
-        logger.error(f"Failed to load scopes configuration: {e}")
-        return {}
-
-# Global scopes configuration (will be reloaded dynamically)
-SCOPES_CONFIG = load_scopes_config()
+# Global scopes configuration (will be loaded during FastAPI startup)
+SCOPES_CONFIG = {}
 
 # Utility functions for GDPR/SOX compliance
 def mask_sensitive_id(value: str) -> str:
@@ -135,27 +122,40 @@ def mask_headers(headers: dict) -> dict:
             masked[key] = value
     return masked
 
-def map_groups_to_scopes(groups: List[str]) -> List[str]:
+async def map_groups_to_scopes(groups: List[str]) -> List[str]:
     """
-    Map identity provider groups to MCP scopes using the group_mappings from scopes.yml configuration.
-    
+    Map identity provider groups to MCP scopes by querying DocumentDB directly.
+
     Args:
         groups: List of group names from identity provider (Cognito, Keycloak, etc.)
-        
+
     Returns:
         List of MCP scopes
     """
     scopes = []
-    group_mappings = SCOPES_CONFIG.get('group_mappings', {})
-    
-    for group in groups:
-        if group in group_mappings:
-            group_scopes = group_mappings[group]
-            scopes.extend(group_scopes)
-            logger.debug(f"Mapped group '{group}' to scopes: {group_scopes}")
-        else:
-            logger.debug(f"No scope mapping found for group: {group}")
-    
+
+    # Query DocumentDB directly for group mappings
+    try:
+        scope_repo = get_scope_repository()
+
+        for group in groups:
+            # Query DocumentDB for this group's scope mappings
+            group_scopes = await scope_repo.get_group_mappings(group)
+            if group_scopes:
+                scopes.extend(group_scopes)
+                logger.debug(f"Mapped group '{group}' to scopes: {group_scopes}")
+            else:
+                logger.debug(f"No scope mapping found for group: {group}")
+    except Exception as e:
+        logger.error(f"Error querying group mappings from DocumentDB: {e}", exc_info=True)
+        # Fall back to in-memory config if DocumentDB query fails
+        group_mappings = SCOPES_CONFIG.get('group_mappings', {})
+        for group in groups:
+            if group in group_mappings:
+                group_scopes = group_mappings[group]
+                scopes.extend(group_scopes)
+                logger.debug(f"Mapped group '{group}' to scopes (fallback): {group_scopes}")
+
     # Remove duplicates while preserving order
     seen = set()
     unique_scopes = []
@@ -163,17 +163,17 @@ def map_groups_to_scopes(groups: List[str]) -> List[str]:
         if scope not in seen:
             seen.add(scope)
             unique_scopes.append(scope)
-    
+
     logger.info(f"Final mapped scopes: {unique_scopes}")
     return unique_scopes
 
-def validate_session_cookie(cookie_value: str) -> Dict[str, any]:
+async def validate_session_cookie(cookie_value: str) -> Dict[str, any]:
     """
     Validate session cookie using itsdangerous serializer.
-    
+
     Args:
         cookie_value: The session cookie value
-        
+
     Returns:
         Dict containing validation results matching JWT validation format:
         {
@@ -183,7 +183,7 @@ def validate_session_cookie(cookie_value: str) -> Dict[str, any]:
             'method': 'session_cookie',
             'groups': List[str]
         }
-        
+
     Raises:
         ValueError: If cookie is invalid or expired
     """
@@ -192,20 +192,20 @@ def validate_session_cookie(cookie_value: str) -> Dict[str, any]:
     if not signer:
         logger.warning("Global signer not configured for session cookie validation")
         raise ValueError("Session cookie validation not configured")
-    
+
     try:
         # Decrypt cookie (max_age=28800 for 8 hours)
         data = signer.loads(cookie_value, max_age=28800)
-        
+
         # Extract user info
         username = data.get('username')
         groups = data.get('groups', [])
-        
-        # Map groups to scopes
-        scopes = map_groups_to_scopes(groups)
-        
+
+        # Map groups to scopes (async call to query DocumentDB)
+        scopes = await map_groups_to_scopes(groups)
+
         logger.info(f"Session cookie validated for user: {hash_username(username)}")
-        
+
         return {
             'valid': True,
             'username': username,
@@ -288,16 +288,16 @@ def _server_names_match(name1: str, name2: str) -> bool:
     return normalized_name1 == _normalize_server_name(name2)
 
 
-def validate_server_tool_access(server_name: str, method: str, tool_name: str, user_scopes: List[str]) -> bool:
+async def validate_server_tool_access(server_name: str, method: str, tool_name: str, user_scopes: List[str]) -> bool:
     """
     Validate if the user has access to the specified server method/tool based on scopes.
-    
+
     Args:
         server_name: Name of the MCP server
         method: Name of the method being accessed (e.g., 'initialize', 'notifications/initialized', 'tools/list')
         tool_name: Name of the specific tool being accessed (optional, for tools/call)
         user_scopes: List of user scopes from token
-        
+
     Returns:
         True if access is allowed, False otherwise
     """
@@ -308,22 +308,21 @@ def validate_server_tool_access(server_name: str, method: str, tool_name: str, u
         logger.info(f"Requested method: '{method}'")
         logger.info(f"Requested tool: '{tool_name}'")
         logger.info(f"User scopes: {user_scopes}")
-        logger.info(f"Available scopes config keys: {list(SCOPES_CONFIG.keys()) if SCOPES_CONFIG else 'None'}")
-        
-        if not SCOPES_CONFIG:
-            logger.warning("No scopes configuration loaded, allowing access")
-            logger.info(f"=== VALIDATE_SERVER_TOOL_ACCESS END: ALLOWED (no config) ===")
-            return True
-            
+
+        # Query DocumentDB directly for server access rules
+        scope_repo = get_scope_repository()
+
         # Check each user scope to see if it grants access
         for scope in user_scopes:
             logger.info(f"--- Checking scope: '{scope}' ---")
-            scope_config = SCOPES_CONFIG.get(scope, [])
-            
+
+            # Query DocumentDB for this scope's server access rules
+            scope_config = await scope_repo.get_server_scopes(scope)
+
             if not scope_config:
-                logger.info(f"Scope '{scope}' not found in configuration")
+                logger.info(f"Scope '{scope}' not found in DocumentDB")
                 continue
-                
+
             logger.info(f"Scope '{scope}' config: {scope_config}")
             
             # The scope_config is directly a list of server configurations
@@ -458,6 +457,19 @@ app = FastAPI(
     description="Authentication server for validating JWT tokens against Amazon Cognito with header-based configuration",
     version="0.1.0"
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Load scopes configuration on startup."""
+    global SCOPES_CONFIG
+    try:
+        SCOPES_CONFIG = await reload_scopes_config()
+        logger.info(f"Loaded scopes configuration on startup with {len(SCOPES_CONFIG.get('group_mappings', {}))} group mappings")
+    except Exception as e:
+        logger.error(f"Failed to load scopes configuration on startup: {e}", exc_info=True)
+        # Fall back to empty config
+        SCOPES_CONFIG = {"group_mappings": {}}
 
 # Add metrics collection middleware
 add_auth_metrics_middleware(app)
@@ -875,8 +887,9 @@ async def validate_request(request: Request):
         original_url = request.headers.get("X-Original-URL")
         body = request.headers.get("X-Body")
         
-        # Extract server_name from original_url early for logging
+        # Extract server_name and endpoint from original_url early for logging
         server_name_from_url = None
+        endpoint_from_url = None
         if original_url:
             try:
                 from urllib.parse import urlparse
@@ -884,7 +897,9 @@ async def validate_request(request: Request):
                 path = parsed_url.path.strip('/')
                 path_parts = path.split('/') if path else []
                 server_name_from_url = path_parts[0] if path_parts else None
-                logger.info(f"Extracted server_name '{server_name_from_url}' from original_url: {original_url}")
+                # For REST API requests, the second path component is the endpoint/method
+                endpoint_from_url = path_parts[1] if len(path_parts) > 1 else None
+                logger.info(f"Extracted server_name '{server_name_from_url}' and endpoint '{endpoint_from_url}' from original_url: {original_url}")
             except Exception as e:
                 logger.warning(f"Failed to extract server_name from original_url {original_url}: {e}")
         
@@ -937,7 +952,7 @@ async def validate_request(request: Request):
             
             if cookie_value:
                 try:
-                    validation_result = validate_session_cookie(cookie_value)
+                    validation_result = await validate_session_cookie(cookie_value)
                     # Log validation result without exposing username
                     safe_result = {k: v for k, v in validation_result.items() if k != 'username'}
                     safe_result['username'] = hash_username(validation_result.get('username', ''))
@@ -1045,8 +1060,8 @@ async def validate_request(request: Request):
         user_groups = validation_result.get('groups', [])
         auth_method = validation_result.get('method', '')
         if user_groups and auth_method in ['keycloak', 'entra', 'cognito']:
-            # Map IdP groups to scopes using the group mappings
-            user_scopes = map_groups_to_scopes(user_groups)
+            # Map IdP groups to scopes using the group mappings (query DocumentDB)
+            user_scopes = await map_groups_to_scopes(user_groups)
             logger.info(f"Mapped {auth_method} groups {user_groups} to scopes: {user_scopes}")
         else:
             user_scopes = validation_result.get('scopes', [])
@@ -1054,7 +1069,12 @@ async def validate_request(request: Request):
             # For ANY server access, enforce scope validation (fail closed principle)
             # This includes MCP initialization methods that may not have a specific tool
 
-            method = tool_name if tool_name else "initialize"  # Default to initialize if no tool specified
+            # Determine the method to validate:
+            # 1. If we have a tool_name from JSON-RPC payload, use that
+            # 2. If we have an endpoint from the REST API URL, use that
+            # 3. Otherwise default to "initialize"
+            method = tool_name if tool_name else (endpoint_from_url if endpoint_from_url else "initialize")
+            logger.info(f"Method determined for validation: '{method}' (tool_name={tool_name}, endpoint_from_url={endpoint_from_url})")
             actual_tool_name = None
 
             # For tools/call, extract the actual tool name from params
@@ -1073,7 +1093,7 @@ async def validate_request(request: Request):
                     headers={"Connection": "close"}
                 )
 
-            if not validate_server_tool_access(server_name, method, actual_tool_name, user_scopes):
+            if not await validate_server_tool_access(server_name, method, actual_tool_name, user_scopes):
                 logger.warning(f"Access denied for user {hash_username(validation_result.get('username', ''))} to {server_name}.{method} (tool: {actual_tool_name})")
                 raise HTTPException(
                     status_code=403,
@@ -1347,7 +1367,7 @@ async def reload_scopes(
     # Reload the scopes configuration
     global SCOPES_CONFIG
     try:
-        SCOPES_CONFIG = load_scopes_config()
+        SCOPES_CONFIG = await reload_scopes_config()
         logger.info(f"Successfully reloaded scopes configuration by admin '{username}'")
 
         return JSONResponse(

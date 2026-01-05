@@ -107,6 +107,31 @@ Group Management (IAM):
     # Delete an IAM group
     uv run python registry_management.py group-delete --name developers --force
 
+Federation Management:
+    # Get federation configuration
+    uv run python registry_management.py federation-get
+
+    # Save federation configuration from JSON file
+    uv run python registry_management.py federation-save --config federation-config.json
+
+    # List all federation configurations
+    uv run python registry_management.py federation-list
+
+    # Add Anthropic server to federation config
+    uv run python registry_management.py federation-add-anthropic-server --server-name io.github.jgador/websharp
+
+    # Remove Anthropic server from federation config
+    uv run python registry_management.py federation-remove-anthropic-server --server-name io.github.jgador/websharp
+
+    # Add ASOR agent to federation config
+    uv run python registry_management.py federation-add-asor-agent --agent-id aws_assistant
+
+    # Remove ASOR agent from federation config
+    uv run python registry_management.py federation-remove-asor-agent --agent-id aws_assistant
+
+    # Delete federation configuration
+    uv run python registry_management.py federation-delete --config-id default --force
+
 Global Options (can be set via environment variables or command-line arguments):
     --registry-url URL       Registry base URL (overrides REGISTRY_URL env var)
     --aws-region REGION      AWS region (overrides AWS_REGION env var)
@@ -473,6 +498,7 @@ def cmd_register(args: argparse.Namespace) -> int:
             supported_transports=config.get("supported_transports"),
             headers=config.get("headers"),
             tool_list_json=config.get("tool_list_json"),
+            tags=config.get("tags"),
             overwrite=args.overwrite
         )
 
@@ -723,6 +749,46 @@ def cmd_delete_group(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_import_group(args: argparse.Namespace) -> int:
+    """
+    Import a complete group definition from JSON file.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    import json
+
+    try:
+        # Read JSON file
+        with open(args.file, 'r') as f:
+            group_definition = json.load(f)
+
+        # Validate required field
+        if "scope_name" not in group_definition:
+            logger.error("JSON file must contain 'scope_name' field")
+            return 1
+
+        client = _create_client(args)
+        response = client.import_group(group_definition)
+
+        logger.info(f"Group imported successfully: {group_definition['scope_name']}")
+        logger.info(f"Response: {json.dumps(response, indent=2)}")
+        return 0
+
+    except FileNotFoundError:
+        logger.error(f"File not found: {args.file}")
+        return 1
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in file: {e}")
+        return 1
+    except Exception as e:
+        logger.error(f"Import group failed: {e}")
+        return 1
+
+
 def cmd_list_groups(args: argparse.Namespace) -> int:
     """
     List all user groups.
@@ -733,6 +799,8 @@ def cmd_list_groups(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success, 1 for failure)
     """
+    import json
+
     try:
         client = _create_client(args)
         response = client.list_groups(
@@ -740,24 +808,136 @@ def cmd_list_groups(args: argparse.Namespace) -> int:
             include_scopes=not args.no_scopes
         )
 
-        if not response.groups:
-            logger.info("No groups found")
+        # If JSON output requested, print raw response and exit
+        if hasattr(args, 'json') and args.json:
+            print(json.dumps(response.model_dump(), indent=2, default=str))
             return 0
 
-        logger.info(f"Found {len(response.groups)} groups:\n")
+        # Display synchronized groups
+        if response.synchronized:
+            print("\n=== Synchronized Groups (in both Keycloak and Scopes) ===")
+            for group_name in response.synchronized:
+                print(f"  - {group_name}")
+                # Show details from scopes if available
+                if group_name in response.scopes_groups:
+                    group_info = response.scopes_groups[group_name]
+                    if 'description' in group_info:
+                        print(f"    Description: {group_info['description']}")
+                    if 'server_count' in group_info:
+                        print(f"    Servers: {group_info['server_count']}")
 
-        for group in response.groups:
-            print(f"Group: {group.get('name', 'Unknown')}")
-            if 'description' in group:
-                print(f"  Description: {group['description']}")
-            if 'servers' in group:
-                print(f"  Servers: {', '.join(group['servers']) if group['servers'] else 'None'}")
-            print()
+        # Display Keycloak-only groups
+        if response.keycloak_only:
+            print("\n=== Keycloak-Only Groups (not in Scopes) ===")
+            for group_name in response.keycloak_only:
+                print(f"  - {group_name}")
+
+        # Display Scopes-only groups
+        if response.scopes_only:
+            print("\n=== Scopes-Only Groups (not in Keycloak) ===")
+            for group_name in response.scopes_only:
+                print(f"  - {group_name}")
+                if group_name in response.scopes_groups:
+                    group_info = response.scopes_groups[group_name]
+                    if 'description' in group_info:
+                        print(f"    Description: {group_info['description']}")
+
+        # Summary
+        total_keycloak = len(response.keycloak_groups)
+        total_scopes = len(response.scopes_groups)
+        print(f"\n=== Summary ===")
+        print(f"Total Keycloak groups: {total_keycloak}")
+        print(f"Total Scopes groups: {total_scopes}")
+        print(f"Synchronized: {len(response.synchronized)}")
+        print(f"Keycloak-only: {len(response.keycloak_only)}")
+        print(f"Scopes-only: {len(response.scopes_only)}")
 
         return 0
 
     except Exception as e:
         logger.error(f"List groups failed: {e}")
+        return 1
+
+
+def cmd_describe_group(args: argparse.Namespace) -> int:
+    """
+    Describe a specific group with all details.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    import json
+
+    try:
+        client = _create_client(args)
+        group_name = args.name
+
+        # Get full group details from scopes storage
+        try:
+            group_data = client.get_group(group_name)
+        except Exception as e:
+            if "404" in str(e):
+                logger.error(f"Group '{group_name}' not found in scopes storage")
+                group_data = None
+            else:
+                raise
+
+        # If JSON output requested
+        if hasattr(args, 'json') and args.json:
+            if group_data:
+                print(json.dumps(group_data, indent=2, default=str))
+                return 0
+            else:
+                print(json.dumps({"error": "Group not found", "group_name": group_name}, indent=2))
+                return 1
+
+        # Human-readable output
+        if not group_data:
+            print(f"\nGroup '{group_name}' not found in scopes storage\n")
+            return 1
+
+        print(f"\n=== Group: {group_name} ===\n")
+        print(f"Scope Type: {group_data.get('scope_type', 'N/A')}")
+        print(f"Description: {group_data.get('description', 'N/A')}")
+        print(f"Created: {group_data.get('created_at', 'N/A')}")
+        print(f"Updated: {group_data.get('updated_at', 'N/A')}")
+
+        print("\nServer Access:")
+        server_access = group_data.get('server_access', [])
+        if server_access:
+            for idx, access in enumerate(server_access, 1):
+                print(f"  {idx}. Server: {access.get('server', 'N/A')}")
+                if 'methods' in access:
+                    print(f"     Methods: {', '.join(access['methods'])}")
+                if 'tools' in access:
+                    print(f"     Tools: {', '.join(access['tools'])}")
+                if 'agents' in access:
+                    print(f"     Agents: {json.dumps(access['agents'], indent=6)}")
+        else:
+            print("  None")
+
+        print("\nGroup Mappings:")
+        group_mappings = group_data.get('group_mappings', [])
+        if group_mappings:
+            for mapping in group_mappings:
+                print(f"  - {mapping}")
+        else:
+            print("  None")
+
+        print("\nUI Permissions:")
+        ui_permissions = group_data.get('ui_permissions', {})
+        if ui_permissions:
+            print(json.dumps(ui_permissions, indent=2))
+        else:
+            print("  None")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Describe group failed: {e}")
         return 1
 
 
@@ -915,6 +1095,48 @@ def cmd_rescan(args: argparse.Namespace) -> int:
 
     except Exception as e:
         logger.error(f"Failed to trigger security scan: {e}")
+        return 1
+
+
+def cmd_server_search(args: argparse.Namespace) -> int:
+    """
+    Perform semantic search for servers.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.semantic_search_servers(
+            query=args.query,
+            max_results=args.max_results
+        )
+
+        if args.json:
+            # Output raw JSON
+            print(json.dumps(response.model_dump(), indent=2, default=str))
+            return 0
+
+        if not response.servers:
+            logger.info("No servers found matching the query")
+            return 0
+
+        logger.info(f"Found {len(response.servers)} matching servers:\n")
+        for server in response.servers:
+            print(f"{server.server_name} ({server.path})")
+            print(f"  Relevance: {server.relevance_score:.2%}")
+            if server.tags:
+                print(f"  Tags: {', '.join(server.tags)}")
+            print(f"  {server.description[:100]}...")
+            print()
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Semantic search failed: {e}")
         return 1
 
 
@@ -1318,15 +1540,27 @@ def cmd_agent_search(args: argparse.Namespace) -> int:
         )
 
         if not response.agents:
-            logger.info("No agents found matching the query")
+            if args.json:
+                print(json.dumps({"agents": [], "query": args.query}, indent=2))
+            else:
+                logger.info("No agents found matching the query")
             return 0
 
-        logger.info(f"Found {len(response.agents)} matching agents:\n")
-        for agent in response.agents:
-            print(f"{agent.name} ({agent.path})")
-            print(f"  Relevance: {agent.relevance_score:.2%}")
-            print(f"  {agent.description[:100]}...")
-            print()
+        if args.json:
+            # Output full JSON response
+            output = {
+                "query": args.query,
+                "agents": [agent.model_dump() for agent in response.agents]
+            }
+            print(json.dumps(output, indent=2, default=str))
+        else:
+            # Human-readable output
+            logger.info(f"Found {len(response.agents)} matching agents:\n")
+            for agent in response.agents:
+                print(f"{agent.name} ({agent.path})")
+                print(f"  Relevance: {agent.relevance_score:.2%}")
+                print(f"  {agent.description[:100]}...")
+                print()
 
         return 0
 
@@ -1836,17 +2070,290 @@ def cmd_group_list(args: argparse.Namespace) -> int:
         logger.info(f"Found {response.total} IAM groups:\n")
 
         for group in response.groups:
-            print(f"Group: {group.name}")
-            print(f"  ID: {group.id}")
-            print(f"  Path: {group.path}")
-            if group.attributes:
-                print(f"  Attributes: {json.dumps(group.attributes, indent=4)}")
+            print(f"Group: {group['name']}")
+            print(f"  ID: {group['id']}")
+            print(f"  Path: {group['path']}")
+            if group.get('attributes'):
+                print(f"  Attributes: {json.dumps(group['attributes'], indent=4)}")
             print()
 
         return 0
 
     except Exception as e:
         logger.error(f"List IAM groups failed: {e}")
+        return 1
+
+
+def cmd_federation_get(args: argparse.Namespace) -> int:
+    """
+    Get federation configuration.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        config = client.get_federation_config(config_id=args.config_id)
+
+        print(json.dumps(config, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Get federation config failed: {e}")
+        return 1
+
+
+def cmd_federation_save(args: argparse.Namespace) -> int:
+    """
+    Save federation configuration from JSON file.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+
+        # Load config from file
+        with open(args.config, 'r') as f:
+            config_data = json.load(f)
+
+        response = client.save_federation_config(
+            config=config_data,
+            config_id=args.config_id
+        )
+
+        logger.info(f"Federation config saved successfully: {args.config_id}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except FileNotFoundError:
+        logger.error(f"Config file not found: {args.config}")
+        return 1
+    except Exception as e:
+        logger.error(f"Save federation config failed: {e}")
+        return 1
+
+
+def cmd_federation_delete(args: argparse.Namespace) -> int:
+    """
+    Delete federation configuration.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+
+        if not args.force:
+            confirm = input(f"Delete federation config '{args.config_id}'? (y/N): ")
+            if confirm.lower() != 'y':
+                logger.info("Cancelled")
+                return 0
+
+        response = client.delete_federation_config(config_id=args.config_id)
+
+        logger.info(f"Federation config deleted: {args.config_id}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Delete federation config failed: {e}")
+        return 1
+
+
+def cmd_federation_list(args: argparse.Namespace) -> int:
+    """
+    List all federation configurations.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.list_federation_configs()
+
+        if args.json:
+            # Output raw JSON
+            print(json.dumps(response, indent=2, default=str))
+            return 0
+
+        if not response.get('configs'):
+            logger.info("No federation configs found")
+            return 0
+
+        logger.info(f"Found {response.get('total', 0)} federation configs:\n")
+
+        for config in response['configs']:
+            print(f"Config ID: {config.get('id')}")
+            print(f"  Created: {config.get('created_at')}")
+            print(f"  Updated: {config.get('updated_at')}")
+            print()
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"List federation configs failed: {e}")
+        return 1
+
+
+def cmd_federation_add_anthropic_server(args: argparse.Namespace) -> int:
+    """
+    Add Anthropic server to federation config.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.add_anthropic_server(
+            server_name=args.server_name,
+            config_id=args.config_id
+        )
+
+        logger.info(f"Anthropic server added: {args.server_name}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Add Anthropic server failed: {e}")
+        return 1
+
+
+def cmd_federation_remove_anthropic_server(args: argparse.Namespace) -> int:
+    """
+    Remove Anthropic server from federation config.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.remove_anthropic_server(
+            server_name=args.server_name,
+            config_id=args.config_id
+        )
+
+        logger.info(f"Anthropic server removed: {args.server_name}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Remove Anthropic server failed: {e}")
+        return 1
+
+
+def cmd_federation_add_asor_agent(args: argparse.Namespace) -> int:
+    """
+    Add ASOR agent to federation config.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.add_asor_agent(
+            agent_id=args.agent_id,
+            config_id=args.config_id
+        )
+
+        logger.info(f"ASOR agent added: {args.agent_id}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Add ASOR agent failed: {e}")
+        return 1
+
+
+def cmd_federation_remove_asor_agent(args: argparse.Namespace) -> int:
+    """
+    Remove ASOR agent from federation config.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.remove_asor_agent(
+            agent_id=args.agent_id,
+            config_id=args.config_id
+        )
+
+        logger.info(f"ASOR agent removed: {args.agent_id}")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Remove ASOR agent failed: {e}")
+        return 1
+
+
+def cmd_federation_sync(args: argparse.Namespace) -> int:
+    """
+    Trigger manual federation sync to import servers/agents.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.sync_federation(
+            config_id=args.config_id,
+            source=args.source
+        )
+
+        if args.json:
+            # Output raw JSON
+            print(json.dumps(response, indent=2, default=str))
+        else:
+            # Formatted output
+            logger.info(f"Federation sync completed: {response.get('message')}")
+            print(f"\nSync Results:")
+            print(f"  Config ID: {response.get('config_id')}")
+            print(f"  Total Synced: {response.get('total_synced', 0)}")
+
+            results = response.get('results', {})
+            if results.get('anthropic', {}).get('count', 0) > 0:
+                print(f"\n  Anthropic Servers ({results['anthropic']['count']}):")
+                for server in results['anthropic'].get('servers', []):
+                    print(f"    - {server}")
+
+            if results.get('asor', {}).get('count', 0) > 0:
+                print(f"\n  ASOR Agents ({results['asor']['count']}):")
+                for agent in results['asor'].get('agents', []):
+                    print(f"    - {agent}")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Federation sync failed: {e}")
         return 1
 
 
@@ -2033,6 +2540,17 @@ Examples:
         help="Force deletion of system groups and skip confirmation"
     )
 
+    # Import group command
+    import_group_parser = subparsers.add_parser(
+        "import-group",
+        help="Import a complete group definition from JSON file"
+    )
+    import_group_parser.add_argument(
+        "--file",
+        required=True,
+        help="Path to JSON file containing group definition"
+    )
+
     # List groups command
     list_groups_parser = subparsers.add_parser("list-groups", help="List all groups")
     list_groups_parser.add_argument(
@@ -2044,6 +2562,27 @@ Examples:
         "--no-scopes",
         action="store_true",
         help="Exclude scope information"
+    )
+    list_groups_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON response"
+    )
+
+    # Describe group command
+    describe_group_parser = subparsers.add_parser(
+        "describe-group",
+        help="Show detailed information about a specific group"
+    )
+    describe_group_parser.add_argument(
+        "--name",
+        required=True,
+        help="Group name to describe"
+    )
+    describe_group_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON response"
     )
 
     # Server rate command
@@ -2090,6 +2629,25 @@ Examples:
         help="Server path (e.g., /cloudflare-docs)"
     )
     rescan_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON"
+    )
+
+    # Server search command
+    server_search_parser = subparsers.add_parser("server-search", help="Semantic search for servers")
+    server_search_parser.add_argument(
+        "--query",
+        required=True,
+        help="Natural language search query"
+    )
+    server_search_parser.add_argument(
+        "--max-results",
+        type=int,
+        default=10,
+        help="Maximum number of results (default: 10)"
+    )
+    server_search_parser.add_argument(
         "--json",
         action="store_true",
         help="Output raw JSON"
@@ -2200,6 +2758,11 @@ Examples:
         type=int,
         default=10,
         help="Maximum number of results (default: 10)"
+    )
+    agent_search_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON"
     )
 
     # Agent rate command
@@ -2412,6 +2975,152 @@ Examples:
     # List IAM groups command
     group_list_parser = subparsers.add_parser("group-list", help="List IAM groups")
 
+    # Federation Management Commands
+
+    # Get federation config command
+    federation_get_parser = subparsers.add_parser(
+        "federation-get",
+        help="Get federation configuration"
+    )
+    federation_get_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+    federation_get_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
+    # Save federation config command
+    federation_save_parser = subparsers.add_parser(
+        "federation-save",
+        help="Save federation configuration from JSON file"
+    )
+    federation_save_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to federation config JSON file"
+    )
+    federation_save_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+
+    # Delete federation config command
+    federation_delete_parser = subparsers.add_parser(
+        "federation-delete",
+        help="Delete federation configuration"
+    )
+    federation_delete_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID to delete (default: default)"
+    )
+    federation_delete_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Skip confirmation prompt"
+    )
+
+    # List federation configs command
+    federation_list_parser = subparsers.add_parser(
+        "federation-list",
+        help="List all federation configurations"
+    )
+    federation_list_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
+    # Add Anthropic server command
+    federation_add_anthropic_parser = subparsers.add_parser(
+        "federation-add-anthropic-server",
+        help="Add Anthropic server to federation config"
+    )
+    federation_add_anthropic_parser.add_argument(
+        "--server-name",
+        required=True,
+        help="Anthropic server name (e.g., io.github.jgador/websharp)"
+    )
+    federation_add_anthropic_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+
+    # Remove Anthropic server command
+    federation_remove_anthropic_parser = subparsers.add_parser(
+        "federation-remove-anthropic-server",
+        help="Remove Anthropic server from federation config"
+    )
+    federation_remove_anthropic_parser.add_argument(
+        "--server-name",
+        required=True,
+        help="Anthropic server name to remove"
+    )
+    federation_remove_anthropic_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+
+    # Add ASOR agent command
+    federation_add_asor_parser = subparsers.add_parser(
+        "federation-add-asor-agent",
+        help="Add ASOR agent to federation config"
+    )
+    federation_add_asor_parser.add_argument(
+        "--agent-id",
+        required=True,
+        help="ASOR agent ID (e.g., aws_assistant)"
+    )
+    federation_add_asor_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+
+    # Remove ASOR agent command
+    federation_remove_asor_parser = subparsers.add_parser(
+        "federation-remove-asor-agent",
+        help="Remove ASOR agent from federation config"
+    )
+    federation_remove_asor_parser.add_argument(
+        "--agent-id",
+        required=True,
+        help="ASOR agent ID to remove"
+    )
+    federation_remove_asor_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+
+    # Federation sync command
+    federation_sync_parser = subparsers.add_parser(
+        "federation-sync",
+        help="Trigger manual federation sync to import servers/agents"
+    )
+    federation_sync_parser.add_argument(
+        "--config-id",
+        default="default",
+        help="Configuration ID (default: default)"
+    )
+    federation_sync_parser.add_argument(
+        "--source",
+        choices=["anthropic", "asor"],
+        help="Optional source filter (anthropic or asor). Syncs all enabled sources if not specified."
+    )
+    federation_sync_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
     args = parser.parse_args()
 
     # Enable debug logging if requested
@@ -2433,11 +3142,14 @@ Examples:
         "remove-from-groups": cmd_remove_from_groups,
         "create-group": cmd_create_group,
         "delete-group": cmd_delete_group,
+        "import-group": cmd_import_group,
         "list-groups": cmd_list_groups,
+        "describe-group": cmd_describe_group,
         "server-rate": cmd_server_rate,
         "server-rating": cmd_server_rating,
         "security-scan": cmd_security_scan,
         "rescan": cmd_rescan,
+        "server-search": cmd_server_search,
         "agent-register": cmd_agent_register,
         "agent-list": cmd_agent_list,
         "agent-get": cmd_agent_get,
@@ -2460,6 +3172,15 @@ Examples:
         "group-create": cmd_group_create,
         "group-delete": cmd_group_delete,
         "group-list": cmd_group_list,
+        "federation-get": cmd_federation_get,
+        "federation-save": cmd_federation_save,
+        "federation-delete": cmd_federation_delete,
+        "federation-list": cmd_federation_list,
+        "federation-add-anthropic-server": cmd_federation_add_anthropic_server,
+        "federation-remove-anthropic-server": cmd_federation_remove_anthropic_server,
+        "federation-add-asor-agent": cmd_federation_add_asor_agent,
+        "federation-remove-asor-agent": cmd_federation_remove_asor_agent,
+        "federation-sync": cmd_federation_sync,
     }
 
     handler = command_handlers.get(args.command)

@@ -46,10 +46,8 @@ const StarRatingWidget: React.FC<StarRatingWidgetProps> = ({
 
   // Load current rating on mount
   useEffect(() => {
-    if (authToken) {
-      loadCurrentRating();
-    }
-  }, [resourceType, path, authToken]);
+    loadCurrentRating();
+  }, [resourceType, path]);
 
 
   // Close dropdown when clicking outside
@@ -72,6 +70,7 @@ const StarRatingWidget: React.FC<StarRatingWidgetProps> = ({
 
   const loadCurrentRating = async () => {
     try {
+      // Build headers - use Bearer token if provided, otherwise rely on cookies
       const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
       // Both servers and agents now use consistent path parameter pattern
       const url = `/api/${resourceType}${path}/rating`;
@@ -83,11 +82,11 @@ const StarRatingWidget: React.FC<StarRatingWidgetProps> = ({
       setAverageRating(response.data.num_stars);
       setRatingCount(response.data.rating_details.length);
 
-      // Find current user's rating
-      // Extract username from JWT token (simplified - in production use proper JWT parsing)
-      if (authToken && response.data.rating_details) {
-        // For now, check if any rating exists - in production, match by username
-        const userRating = response.data.rating_details[0]; // Simplified
+      // Find current user's rating from the rating details
+      // The backend should return rating_details for the current authenticated user
+      if (response.data.rating_details && response.data.rating_details.length > 0) {
+        // For now, use the first rating (should be the current user's rating from backend)
+        const userRating = response.data.rating_details[0];
         if (userRating) {
           setCurrentUserRating(userRating.rating);
           setSelectedRating(userRating.rating);
@@ -101,14 +100,15 @@ const StarRatingWidget: React.FC<StarRatingWidgetProps> = ({
 
   const handleSubmitRating = async () => {
     console.log('handleSubmitRating called', { selectedRating, authToken: !!authToken });
-    if (!selectedRating || !authToken) {
-      console.log('Validation failed - no rating or token');
+    if (!selectedRating) {
+      console.log('Validation failed - no rating selected');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const headers = { Authorization: `Bearer ${authToken}` };
+      // Build headers - use Bearer token if provided, otherwise rely on cookies
+      const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
       // Both servers and agents now use consistent path parameter pattern
       const url = `/api/${resourceType}${path}/rate`;
       console.log('Submitting rating to:', url, { rating: selectedRating });
@@ -116,7 +116,7 @@ const StarRatingWidget: React.FC<StarRatingWidgetProps> = ({
       const response = await axios.post(
         url,
         { rating: selectedRating },
-        { headers }
+        headers ? { headers } : undefined
       );
 
       console.log('Rating response:', response.data);

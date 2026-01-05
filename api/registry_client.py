@@ -64,6 +64,7 @@ class InternalServiceRegistration(BaseModel):
     supported_transports: Optional[List[str]] = Field(None, description="Supported transports")
     headers: Optional[Dict[str, str]] = Field(None, description="Custom headers")
     tool_list_json: Optional[str] = Field(None, description="Tool list as JSON string")
+    tags: Optional[List[str]] = Field(None, description="Categorization tags")
     overwrite: Optional[bool] = Field(False, description="Overwrite if exists")
 
     model_config = ConfigDict(populate_by_name=True)
@@ -174,6 +175,7 @@ class GroupListResponse(BaseModel):
     """Group list response model."""
 
     groups: List[Dict[str, Any]] = Field(..., description="List of groups")
+    total: int = Field(..., description="Total number of groups")
 
 
 # Agent Management Models
@@ -326,7 +328,7 @@ class AgentCard(BaseModel):
     path: str = Field(..., description="Agent path")
     url: str = Field(..., description="Agent URL")
     num_skills: int = Field(..., description="Number of skills")
-    registered_at: datetime = Field(..., description="Registration timestamp")
+    registered_at: Optional[datetime] = Field(None, description="Registration timestamp")
     is_enabled: bool = Field(..., description="Whether agent is enabled")
 
 
@@ -464,18 +466,60 @@ class AgentDiscoveryResponse(BaseModel):
 
 
 class SemanticDiscoveredAgent(BaseModel):
-    """Semantically discovered agent model."""
+    """Semantically discovered agent model with full AgentCard fields."""
 
+    # Core identification
     path: str = Field(..., description="Agent path")
     name: str = Field(..., description="Agent name")
-    relevance_score: float = Field(..., description="Semantic similarity score (0.0 to 1.0)")
     description: str = Field(..., description="Agent description")
+    url: str = Field(..., description="Agent endpoint URL")
+
+    # Semantic search relevance
+    relevance_score: float = Field(..., description="Semantic similarity score")
+
+    # Agent metadata
+    tags: List[str] = Field(default_factory=list, description="Agent tags")
+    skills: List[Dict[str, Any]] = Field(default_factory=list, description="Agent skills")
+    provider: Optional[Dict[str, str]] = Field(None, description="Provider information")
+    capabilities: Dict[str, Any] = Field(default_factory=dict, description="Agent capabilities")
+    trust_level: str = Field("unverified", description="Trust level")
+    num_stars: float = Field(0.0, description="Average rating")
+    version: Optional[str] = Field(None, description="Agent version")
+
+    # Security and authentication
+    security_schemes: Dict[str, Any] = Field(default_factory=dict, description="Security schemes")
+
+    # Timestamps
+    created_at: Optional[str] = Field(None, description="Creation timestamp")
+    updated_at: Optional[str] = Field(None, description="Last update timestamp")
+
+    class Config:
+        extra = "allow"  # Allow additional fields from API
 
 
 class AgentSemanticDiscoveryResponse(BaseModel):
     """Agent semantic discovery response model."""
 
     agents: List[SemanticDiscoveredAgent] = Field(..., description="Semantically discovered agents")
+
+
+class SemanticDiscoveredServer(BaseModel):
+    """Semantically discovered server model."""
+
+    path: str = Field(..., description="Server path")
+    server_name: str = Field(..., description="Server name")
+    relevance_score: float = Field(..., description="Semantic similarity score")
+    description: str = Field(..., description="Server description")
+    tags: List[str] = Field(default_factory=list, description="Server tags")
+    num_tools: int = Field(..., description="Number of tools")
+    is_enabled: bool = Field(..., description="Whether server is enabled")
+
+
+class ServerSemanticSearchResponse(BaseModel):
+    """Server semantic search response model."""
+
+    query: str = Field(..., description="Search query")
+    servers: List[SemanticDiscoveredServer] = Field(..., description="Matching servers")
 
 
 class RatingDetail(BaseModel):
@@ -678,11 +722,14 @@ class KeycloakGroupSummary(BaseModel):
     attributes: Optional[Dict[str, Any]] = Field(None, description="Group attributes")
 
 
-class GroupListResponse(BaseModel):
-    """Response model for list groups endpoint."""
+class GroupSyncStatusResponse(BaseModel):
+    """Response model for list groups endpoint with sync status."""
 
-    groups: List[KeycloakGroupSummary] = Field(default_factory=list, description="List of groups")
-    total: int = Field(..., description="Total number of groups")
+    keycloak_groups: List[Dict[str, Any]] = Field(default_factory=list, description="Groups from Keycloak")
+    scopes_groups: Dict[str, Any] = Field(default_factory=dict, description="Groups from scopes storage")
+    synchronized: List[str] = Field(default_factory=list, description="Groups in both Keycloak and scopes")
+    keycloak_only: List[str] = Field(default_factory=list, description="Groups only in Keycloak")
+    scopes_only: List[str] = Field(default_factory=list, description="Groups only in scopes")
 
 
 class GroupDeleteResponse(BaseModel):
@@ -763,16 +810,20 @@ class RegistryClient:
         logger.debug(f"{method} {url}")
 
         # Determine content type based on endpoint
-        # Agent and Management API endpoints use JSON, server registration uses form data
-        if endpoint.startswith("/api/agents") or endpoint.startswith("/api/management"):
-            # Send as JSON for agent and management endpoints
+        # Agent, Management, Search, Federation, and group import endpoints use JSON, server registration uses form data
+        if (endpoint.startswith("/api/agents") or
+            endpoint.startswith("/api/management") or
+            endpoint.startswith("/api/search") or
+            endpoint.startswith("/api/federation") or
+            endpoint == "/api/servers/groups/import"):
+            # Send as JSON for agent, management, search, federation, and import endpoints
             response = requests.request(
                 method=method,
                 url=url,
                 headers=headers,
                 json=data,
                 params=params,
-                timeout=30
+                timeout=120
             )
         else:
             # Send as form-encoded for server registration
@@ -782,7 +833,7 @@ class RegistryClient:
                 headers=headers,
                 data=data,
                 params=params,
-                timeout=30
+                timeout=120
             )
 
         try:
@@ -816,10 +867,17 @@ class RegistryClient:
         """
         logger.info(f"Registering service: {registration.service_path}")
 
+        # Convert model to dict
+        data = registration.model_dump(exclude_none=True, by_alias=True)
+
+        # Convert tags list to comma-separated string for form encoding
+        if "tags" in data and isinstance(data["tags"], list):
+            data["tags"] = ",".join(data["tags"])
+
         response = self._make_request(
             method="POST",
             endpoint="/api/servers/register",
-            data=registration.model_dump(exclude_none=True, by_alias=True)
+            data=data
         )
 
         logger.info(f"Service registered successfully: {registration.service_path}")
@@ -1062,11 +1120,51 @@ class RegistryClient:
         logger.info(f"Group deleted successfully: {group_name}")
         return response.json()
 
+
+    def import_group(
+        self,
+        group_definition: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Import a complete group definition.
+
+        Args:
+            group_definition: Complete group definition including:
+                - scope_name (required): Name of the scope/group
+                - scope_type (optional): Type of scope (default: "server_scope")
+                - description (optional): Description of the group
+                - server_access (optional): List of server access definitions
+                - group_mappings (optional): List of group mappings
+                - ui_permissions (optional): Dictionary of UI permissions
+                - create_in_keycloak (optional): Whether to create in Keycloak (default: true)
+
+        Returns:
+            Response data
+
+        Raises:
+            requests.HTTPError: If import fails
+        """
+        scope_name = group_definition.get("scope_name")
+        if not scope_name:
+            raise ValueError("scope_name is required in group_definition")
+
+        logger.info(f"Importing group definition: {scope_name}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint="/api/servers/groups/import",
+            data=group_definition
+        )
+
+        logger.info(f"Group imported successfully: {scope_name}")
+        return response.json()
+
+
     def list_groups(
         self,
         include_keycloak: bool = True,
         include_scopes: bool = True
-    ) -> GroupListResponse:
+    ) -> GroupSyncStatusResponse:
         """
         List all user groups.
 
@@ -1075,7 +1173,7 @@ class RegistryClient:
             include_scopes: Include scope information
 
         Returns:
-            Group list response
+            Group list response with sync status
 
         Raises:
             requests.HTTPError: If list operation fails
@@ -1093,9 +1191,34 @@ class RegistryClient:
             params=params
         )
 
-        result = GroupListResponse(**response.json())
-        logger.info(f"Retrieved {len(result.groups)} groups")
+        result = GroupSyncStatusResponse(**response.json())
+        total_groups = len(result.scopes_groups) + len(result.keycloak_groups)
+        logger.info(f"Retrieved {total_groups} groups ({len(result.keycloak_groups)} from Keycloak, {len(result.scopes_groups)} from scopes)")
         return result
+
+
+    def get_group(self, group_name: str) -> Dict[str, Any]:
+        """
+        Get full details of a specific group.
+
+        Args:
+            group_name: Name of the group
+
+        Returns:
+            Complete group definition with server_access, group_mappings, and ui_permissions
+
+        Raises:
+            requests.HTTPError: If get operation fails (404 if group not found)
+        """
+        logger.info(f"Getting group details: {group_name}")
+
+        response = self._make_request(
+            method="GET",
+            endpoint=f"/api/servers/groups/{group_name}"
+        )
+
+        logger.info(f"Retrieved group details for {group_name}")
+        return response.json()
 
     # Agent Management Methods
 
@@ -1350,6 +1473,43 @@ class RegistryClient:
 
         result = AgentSemanticDiscoveryResponse(**response.json())
         logger.info(f"Discovered {len(result.agents)} agents via semantic search")
+        return result
+
+
+    def semantic_search_servers(
+        self,
+        query: str,
+        max_results: int = 10
+    ) -> ServerSemanticSearchResponse:
+        """
+        Search for servers using semantic search (vector search).
+
+        Args:
+            query: Natural language query (e.g., "time and date services")
+            max_results: Maximum number of results (default: 10, max: 100)
+
+        Returns:
+            Server semantic search response
+
+        Raises:
+            requests.HTTPError: If search fails (400 for bad request, 500 for search error)
+        """
+        logger.info(f"Searching servers semantically: {query}")
+
+        request_data = {
+            "query": query,
+            "entity_types": ["mcp_server"],
+            "max_results": max_results
+        }
+
+        response = self._make_request(
+            method="POST",
+            endpoint="/api/search/semantic",
+            data=request_data
+        )
+
+        result = ServerSemanticSearchResponse(**response.json())
+        logger.info(f"Found {len(result.servers)} servers via semantic search")
         return result
 
 
@@ -1993,4 +2153,272 @@ class RegistryClient:
 
         result = GroupDeleteResponse(**response.json())
         logger.info(f"Group deleted successfully: {name}")
+        return result
+
+
+    def get_federation_config(
+        self,
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Get federation configuration by ID.
+
+        Args:
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Federation configuration dictionary
+
+        Raises:
+            requests.HTTPError: If not found (404) or request fails
+        """
+        logger.info(f"Getting federation config: {config_id}")
+
+        response = self._make_request(
+            method="GET",
+            endpoint=f"/api/federation/config",
+            params={"config_id": config_id}
+        )
+
+        result = response.json()
+        logger.info(f"Retrieved federation config: {config_id}")
+        return result
+
+
+    def save_federation_config(
+        self,
+        config: Dict[str, Any],
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Create or update federation configuration.
+
+        Args:
+            config: Federation configuration dictionary
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Saved configuration response
+
+        Raises:
+            requests.HTTPError: If validation fails (422) or request fails
+        """
+        logger.info(f"Saving federation config: {config_id}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint="/api/federation/config",
+            params={"config_id": config_id},
+            data=config
+        )
+
+        result = response.json()
+        logger.info(f"Federation config saved successfully: {config_id}")
+        return result
+
+
+    def delete_federation_config(
+        self,
+        config_id: str = "default"
+    ) -> Dict[str, str]:
+        """
+        Delete federation configuration.
+
+        Args:
+            config_id: Configuration ID to delete
+
+        Returns:
+            Deletion confirmation message
+
+        Raises:
+            requests.HTTPError: If not found (404) or request fails
+        """
+        logger.info(f"Deleting federation config: {config_id}")
+
+        response = self._make_request(
+            method="DELETE",
+            endpoint=f"/api/federation/config/{config_id}"
+        )
+
+        result = response.json()
+        logger.info(f"Federation config deleted successfully: {config_id}")
+        return result
+
+
+    def list_federation_configs(self) -> Dict[str, Any]:
+        """
+        List all federation configurations.
+
+        Returns:
+            Dictionary with configs list and total count
+
+        Raises:
+            requests.HTTPError: If request fails
+        """
+        logger.info("Listing federation configs")
+
+        response = self._make_request(
+            method="GET",
+            endpoint="/api/federation/configs"
+        )
+
+        result = response.json()
+        logger.info(f"Retrieved {result.get('total', 0)} federation configs")
+        return result
+
+
+    def add_anthropic_server(
+        self,
+        server_name: str,
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Add Anthropic server to federation configuration.
+
+        Args:
+            server_name: Server name (e.g., "io.github.jgador/websharp")
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Updated configuration
+
+        Raises:
+            requests.HTTPError: If config not found (404), already exists (400), or request fails
+        """
+        logger.info(f"Adding Anthropic server '{server_name}' to config: {config_id}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint=f"/api/federation/config/{config_id}/anthropic/servers",
+            params={"server_name": server_name}
+        )
+
+        result = response.json()
+        logger.info(f"Anthropic server added successfully: {server_name}")
+        return result
+
+
+    def remove_anthropic_server(
+        self,
+        server_name: str,
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Remove Anthropic server from federation configuration.
+
+        Args:
+            server_name: Server name to remove
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Updated configuration
+
+        Raises:
+            requests.HTTPError: If config or server not found (404) or request fails
+        """
+        logger.info(f"Removing Anthropic server '{server_name}' from config: {config_id}")
+
+        response = self._make_request(
+            method="DELETE",
+            endpoint=f"/api/federation/config/{config_id}/anthropic/servers/{server_name}"
+        )
+
+        result = response.json()
+        logger.info(f"Anthropic server removed successfully: {server_name}")
+        return result
+
+
+    def add_asor_agent(
+        self,
+        agent_id: str,
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Add ASOR agent to federation configuration.
+
+        Args:
+            agent_id: Agent ID (e.g., "aws_assistant")
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Updated configuration
+
+        Raises:
+            requests.HTTPError: If config not found (404), already exists (400), or request fails
+        """
+        logger.info(f"Adding ASOR agent '{agent_id}' to config: {config_id}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint=f"/api/federation/config/{config_id}/asor/agents",
+            params={"agent_id": agent_id}
+        )
+
+        result = response.json()
+        logger.info(f"ASOR agent added successfully: {agent_id}")
+        return result
+
+
+    def remove_asor_agent(
+        self,
+        agent_id: str,
+        config_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Remove ASOR agent from federation configuration.
+
+        Args:
+            agent_id: Agent ID to remove
+            config_id: Configuration ID (default: "default")
+
+        Returns:
+            Updated configuration
+
+        Raises:
+            requests.HTTPError: If config or agent not found (404) or request fails
+        """
+        logger.info(f"Removing ASOR agent '{agent_id}' from config: {config_id}")
+
+        response = self._make_request(
+            method="DELETE",
+            endpoint=f"/api/federation/config/{config_id}/asor/agents/{agent_id}"
+        )
+
+        result = response.json()
+        logger.info(f"ASOR agent removed successfully: {agent_id}")
+        return result
+
+
+    def sync_federation(
+        self,
+        config_id: str = "default",
+        source: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Trigger manual federation sync to import servers/agents.
+
+        Args:
+            config_id: Configuration ID (default: "default")
+            source: Optional source filter ("anthropic" or "asor"). None syncs all enabled sources.
+
+        Returns:
+            Sync results with counts of synced items
+
+        Raises:
+            requests.HTTPError: If config not found (404) or request fails
+        """
+        logger.info(f"Triggering federation sync for config: {config_id}")
+
+        params = {}
+        if source:
+            params["source"] = source
+
+        response = self._make_request(
+            method="POST",
+            endpoint=f"/api/federation/sync",
+            params={"config_id": config_id, **params}
+        )
+
+        result = response.json()
+        logger.info(f"Federation sync completed: {result.get('total_synced', 0)} items synced")
         return result

@@ -1,0 +1,25 @@
+{
+  "anthropic": {
+    "enabled": true,
+    "endpoint": "https://registry.modelcontextprotocol.io",
+    "sync_on_startup": true,
+    "servers": [
+      {"name": "io.github.jgador/websharp"},
+      {"name": "ai.smithery/smithery-ai-github"},
+      {"name": "ai.smithery/Hint-Services-obsidian-github-mcp"},
+      {"name": "ai.smithery/data-mindset-sts-google-forms-mcp"},
+      {"name": "ai.smithery/saidsef-mcp-github-pr-issue-analyser"},
+      {"name": "ai.shawndurrani/mcp-merchant"}
+    ]
+  },
+  "asor": {
+    "enabled": true,
+    "endpoint": "https://wcpdev-services1.wd103.myworkday.com/ccx/api/asor/v1/awsasor_wcpdev1",
+    "auth_env_var": "ASOR_ACCESS_TOKEN",
+    "sync_on_startup": true,
+    "agents": [
+      {"id": "aws_assistant"},
+      {"id": "data_analyst"}
+    ]
+  }
+}

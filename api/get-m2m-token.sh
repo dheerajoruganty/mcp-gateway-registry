@@ -125,15 +125,20 @@ is_token_expired() {
     fi
 }
 
-# Step 1: Try to get cached token from SSM Parameter Store
-echo -e "${YELLOW}Step 1: Checking SSM Parameter Store for cached token...${NC}" >&2
+# Step 1: Try to get cached token from SSM Parameter Store (skip for local mode)
+if [ "$AWS_REGION" != "local" ]; then
+    echo -e "${YELLOW}Step 1: Checking SSM Parameter Store for cached token...${NC}" >&2
 
-# Get the SSM parameter value (which is a JSON string)
-# Try the original client name first
-SSM_PARAM_VALUE=$(aws ssm get-parameter \
-    --name "$SSM_TOKEN_PARAM" \
-    --with-decryption \
-    --region "$AWS_REGION" 2>/dev/null | jq -r '.Parameter.Value // empty' 2>/dev/null || echo "")
+    # Get the SSM parameter value (which is a JSON string)
+    # Try the original client name first
+    SSM_PARAM_VALUE=$(aws ssm get-parameter \
+        --name "$SSM_TOKEN_PARAM" \
+        --with-decryption \
+        --region "$AWS_REGION" 2>/dev/null | jq -r '.Parameter.Value // empty' 2>/dev/null || echo "")
+else
+    echo -e "${YELLOW}Step 1: Skipping SSM cache check (local mode)${NC}" >&2
+    SSM_PARAM_VALUE=""
+fi
 
 # If not found, try with service-account- prefix
 if [ -z "$SSM_PARAM_VALUE" ] || [ "$SSM_PARAM_VALUE" = "null" ]; then
@@ -167,8 +172,13 @@ if [ -n "$SSM_PARAM_VALUE" ] && [ "$SSM_PARAM_VALUE" != "null" ]; then
             echo "" >&2
             echo -e "${GREEN}Successfully retrieved cached token!${NC}" >&2
 
-            # Output token to stdout and exit
-            echo "$CACHED_ACCESS_TOKEN"
+            # Output token to file or stdout
+            if [ -n "$OUTPUT_FILE" ]; then
+                echo "$CACHED_ACCESS_TOKEN" > "$OUTPUT_FILE"
+                echo "  Token saved to: $OUTPUT_FILE" >&2
+            else
+                echo "$CACHED_ACCESS_TOKEN"
+            fi
             exit 0
         else
             echo -e "${YELLOW}Cached token is expired or will expire soon${NC}" >&2
@@ -189,14 +199,18 @@ echo "" >&2
 echo -e "${YELLOW}Step 2: Fetching new token from Keycloak...${NC}" >&2
 echo "Keycloak URL: $KEYCLOAK_URL" >&2
 
-# Get Keycloak admin password from SSM
-KEYCLOAK_ADMIN_PASSWORD=$(aws ssm get-parameter \
-    --name "/keycloak/admin_password" \
-    --with-decryption \
-    --region "$AWS_REGION" 2>/dev/null | jq -r '.Parameter.Value // empty' 2>/dev/null)
+# Get Keycloak admin password from environment variable first, then SSM
+if [ -z "$KEYCLOAK_ADMIN_PASSWORD" ]; then
+    echo "Attempting to retrieve Keycloak admin password from SSM..." >&2
+    KEYCLOAK_ADMIN_PASSWORD=$(aws ssm get-parameter \
+        --name "/keycloak/admin_password" \
+        --with-decryption \
+        --region "$AWS_REGION" 2>/dev/null | jq -r '.Parameter.Value // empty' 2>/dev/null)
+fi
 
 if [ -z "$KEYCLOAK_ADMIN_PASSWORD" ] || [ "$KEYCLOAK_ADMIN_PASSWORD" = "null" ]; then
-    echo -e "${RED}Error: Could not retrieve Keycloak admin password from SSM${NC}" >&2
+    echo -e "${RED}Error: Could not retrieve Keycloak admin password${NC}" >&2
+    echo -e "${RED}Set KEYCLOAK_ADMIN_PASSWORD environment variable or ensure SSM parameter exists${NC}" >&2
     exit 1
 fi
 
@@ -280,11 +294,12 @@ EXPIRES_AT=$((CURRENT_TIME + EXPIRES_IN))
 echo -e "${GREEN}Successfully obtained new access token!${NC}" >&2
 echo "Expires in: ${EXPIRES_IN} seconds" >&2
 
-# Step 3: Store token in SSM Parameter Store
-echo "" >&2
-echo -e "${YELLOW}Step 3: Storing token in SSM Parameter Store...${NC}" >&2
+# Step 3: Store token in SSM Parameter Store (skip for local mode)
+if [ "$AWS_REGION" != "local" ]; then
+    echo "" >&2
+    echo -e "${YELLOW}Step 3: Storing token in SSM Parameter Store...${NC}" >&2
 
-TOKEN_JSON=$(cat <<EOF
+    TOKEN_JSON=$(cat <<EOF
 {
   "access_token": "$ACCESS_TOKEN",
   "expires_in": $EXPIRES_IN,
@@ -295,18 +310,22 @@ TOKEN_JSON=$(cat <<EOF
 EOF
 )
 
-# Store in SSM (overwrite if exists)
-aws ssm put-parameter \
-    --name "$SSM_TOKEN_PARAM" \
-    --value "$TOKEN_JSON" \
-    --type "SecureString" \
-    --overwrite \
-    --region "$AWS_REGION" >/dev/null 2>&1
+    # Store in SSM (overwrite if exists)
+    aws ssm put-parameter \
+        --name "$SSM_TOKEN_PARAM" \
+        --value "$TOKEN_JSON" \
+        --type "SecureString" \
+        --overwrite \
+        --region "$AWS_REGION" >/dev/null 2>&1
 
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}Token stored in SSM: $SSM_TOKEN_PARAM${NC}" >&2
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}Token stored in SSM: $SSM_TOKEN_PARAM${NC}" >&2
+    else
+        echo -e "${YELLOW}Warning: Failed to store token in SSM (continuing anyway)${NC}" >&2
+    fi
 else
-    echo -e "${YELLOW}Warning: Failed to store token in SSM (continuing anyway)${NC}" >&2
+    echo "" >&2
+    echo -e "${YELLOW}Step 3: Skipping SSM token storage (local mode)${NC}" >&2
 fi
 
 echo "" >&2
@@ -327,4 +346,11 @@ else
     echo "" >&2
     # Output the token to stdout for consumption by other scripts
     echo "$ACCESS_TOKEN"
+fi
+
+# Also save to .token file in the script directory for local convenience
+if [ "$AWS_REGION" = "local" ]; then
+    TOKEN_FILE="${SCRIPT_DIR}/.token"
+    echo "$ACCESS_TOKEN" > "$TOKEN_FILE"
+    echo "  Token also saved to: $TOKEN_FILE" >&2
 fi

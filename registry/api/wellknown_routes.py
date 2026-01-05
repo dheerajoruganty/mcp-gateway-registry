@@ -26,14 +26,14 @@ async def get_wellknown_mcp_servers(
         raise HTTPException(status_code=404, detail="Well-known discovery is disabled")
 
     # Step 2: Get all servers from server_service
-    all_servers = server_service.get_all_servers()
+    all_servers = await server_service.get_all_servers()
 
     # Step 3: Filter based on discoverability and permissions
     discoverable_servers = []
     for server_path, server_info in all_servers.items():
         # For now, include all enabled servers
         # TODO: Add discoverability flag to server configs if needed
-        if server_service.is_service_enabled(server_path):
+        if await server_service.is_service_enabled(server_path):
             formatted_server = _format_server_discovery(server_info, request)
             discoverable_servers.append(formatted_server)
 

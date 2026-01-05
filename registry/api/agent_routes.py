@@ -15,6 +15,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Request,
     status,
     Query,
 )
@@ -31,6 +32,13 @@ from ..schemas.agent_models import (
 )
 from pydantic import BaseModel
 from ..core.config import settings
+from ..repositories.factory import get_search_repository
+from ..repositories.interfaces import SearchRepositoryBase
+
+
+def get_search_repo() -> SearchRepositoryBase:
+    """Get search repository instance."""
+    return get_search_repository()
 
 
 # Configure logging with basicConfig
@@ -69,7 +77,7 @@ async def _perform_agent_security_scan_on_registration(
         bool: True if agent should remain enabled, False if disabled due to scan
     """
     from ..services.agent_scanner import agent_scanner_service
-    from ..search.service import faiss_service
+    from ..repositories.factory import get_search_repository
 
     scan_config = agent_scanner_service.get_scan_config()
     if not (scan_config.enabled and scan_config.scan_on_registration):
@@ -101,24 +109,23 @@ async def _perform_agent_security_scan_on_registration(
                     current_tags.append("security-pending")
                     agent_card.tags = current_tags
                     # Update agent with new tags
-                    agent_info = agent_service.get_agent_info(path)
+                    agent_info = await agent_service.get_agent_info(path)
                     if agent_info:
                         updated_card = agent_info.model_dump()
                         updated_card["tags"] = current_tags
                         from ..schemas.agent_models import AgentCard as AgentCardModel
 
-                        agent_service.register_agent(AgentCardModel(**updated_card))
+                        await agent_service.register_agent(AgentCardModel(**updated_card))
                     logger.info(f"Added 'security-pending' tag to agent {path}")
 
             # Disable agent if configured
             if scan_config.block_unsafe_agents:
-                agent_service.toggle_agent(path, False)
+                await agent_service.toggle_agent(path, False)
                 logger.warning(f"Disabled agent {path} due to failed security scan")
 
-                # Update FAISS with disabled state
-                await faiss_service.add_or_update_entity(
-                    path, agent_card_dict, "a2a_agent", False
-                )
+                # Update search index with disabled state
+                search_repo = get_search_repository()
+                await search_repo.index_agent(path, agent_card_dict, is_enabled=False)
                 return False  # Agent disabled
 
         else:
@@ -293,7 +300,7 @@ async def register_agent(
 
     path = _normalize_path(request.path, request.name)
 
-    if agent_service.get_agent_info(path):
+    if await agent_service.get_agent_info(path):
         logger.error(f"Agent registration failed: path '{path}' already exists")
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
@@ -356,7 +363,7 @@ async def register_agent(
             detail=f"Invalid agent card: {str(e)}",
         )
 
-    success = agent_service.register_agent(agent_card)
+    success = await agent_service.register_agent(agent_card)
 
     if not success:
         return JSONResponse(
@@ -410,6 +417,7 @@ async def register_agent(
 
 @router.get("/agents")
 async def list_agents(
+    request: Request,
     query: Optional[str] = Query(None, description="Search query string"),
     enabled_only: bool = Query(False, description="Show only enabled agents"),
     visibility: Optional[str] = Query(None, description="Filter by visibility"),
@@ -427,15 +435,20 @@ async def list_agents(
     Returns:
         List of agent info objects
     """
-    # CRITICAL DIAGNOSTIC: Log user_context received by endpoint (for comparison with /servers)
-    logger.debug(f"[GET_AGENTS_DEBUG] Received user_context: {user_context}")
-    logger.debug(f"[GET_AGENTS_DEBUG] user_context type: {type(user_context)}")
-    if user_context:
-        logger.debug(f"[GET_AGENTS_DEBUG] Username: {user_context.get('username', 'NOT PRESENT')}")
-        logger.debug(f"[GET_AGENTS_DEBUG] Scopes: {user_context.get('scopes', 'NOT PRESENT')}")
-        logger.debug(f"[GET_AGENTS_DEBUG] Auth method: {user_context.get('auth_method', 'NOT PRESENT')}")
+    # CRITICAL DIAGNOSTIC: Log that we reached this endpoint
+    logger.info(f"[GET_AGENTS_ENTRY] GET /api/agents called from {request.client.host if request.client else 'unknown'}")
+    logger.info(f"[GET_AGENTS_ENTRY] Request headers: {dict(request.headers)}")
 
-    all_agents = agent_service.get_all_agents()
+    # CRITICAL DIAGNOSTIC: Log user_context received by endpoint (for comparison with /servers)
+    logger.info(f"[GET_AGENTS_DEBUG] Received user_context: {user_context}")
+    logger.info(f"[GET_AGENTS_DEBUG] user_context type: {type(user_context)}")
+    if user_context:
+        logger.info(f"[GET_AGENTS_DEBUG] Username: {user_context.get('username', 'NOT PRESENT')}")
+        logger.info(f"[GET_AGENTS_DEBUG] Scopes: {user_context.get('scopes', 'NOT PRESENT')}")
+        logger.info(f"[GET_AGENTS_DEBUG] Auth method: {user_context.get('auth_method', 'NOT PRESENT')}")
+        logger.info(f"[GET_AGENTS_DEBUG] Accessible agents: {user_context.get('accessible_agents', 'NOT PRESENT')}")
+
+    all_agents = await agent_service.get_all_agents()
 
     accessible_agents = _filter_agents_by_access(all_agents, user_context)
 
@@ -500,7 +513,7 @@ async def check_agent_health(
     """Perform a live /ping health check against an agent endpoint."""
     path = _normalize_path(path)
 
-    agent_card = agent_service.get_agent_info(path)
+    agent_card = await agent_service.get_agent_info(path)
     if not agent_card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -579,7 +592,7 @@ async def rate_agent(
     """Save integer ratings to agent card."""
     path = _normalize_path(path)
 
-    agent_card = agent_service.get_agent_info(path)
+    agent_card = await agent_service.get_agent_info(path)
     if not agent_card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -597,7 +610,7 @@ async def rate_agent(
         )
 
     try:
-        avg_rating = agent_service.update_rating(path, user_context["username"], request.rating)
+        avg_rating = await agent_service.update_rating(path, user_context["username"], request.rating)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -624,7 +637,7 @@ async def get_agent_rating(
     """Get agent rating information."""
     path = _normalize_path(path)
 
-    agent_card = agent_service.get_agent_info(path)
+    agent_card = await agent_service.get_agent_info(path)
     if not agent_card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -668,7 +681,7 @@ async def toggle_agent(
     """
     path = _normalize_path(path)
 
-    agent_card = agent_service.get_agent_info(path)
+    agent_card = await agent_service.get_agent_info(path)
     if not agent_card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -677,7 +690,7 @@ async def toggle_agent(
 
     _check_agent_permission("toggle_service", agent_card.name, user_context)
 
-    success = agent_service.toggle_agent(path, enabled)
+    success = await agent_service.toggle_agent(path, enabled)
 
     if not success:
         return JSONResponse(
@@ -729,7 +742,7 @@ async def get_agent(
     """
     path = _normalize_path(path)
 
-    agent_card = agent_service.get_agent_info(path)
+    agent_card = await agent_service.get_agent_info(path)
     if not agent_card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -782,7 +795,7 @@ async def update_agent(
     """
     path = _normalize_path(path)
 
-    existing_agent = agent_service.get_agent_info(path)
+    existing_agent = await agent_service.get_agent_info(path)
     if not existing_agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -848,7 +861,7 @@ async def update_agent(
             detail=f"Invalid agent card: {str(e)}",
         )
 
-    success = agent_service.update_agent(path, updated_agent)
+    success = await agent_service.update_agent(path, updated_agent)
 
     if not success:
         return JSONResponse(
@@ -896,7 +909,7 @@ async def delete_agent(
     """
     path = _normalize_path(path)
 
-    existing_agent = agent_service.get_agent_info(path)
+    existing_agent = await agent_service.get_agent_info(path)
     if not existing_agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -915,7 +928,7 @@ async def delete_agent(
             detail="Only admins or agent owners can delete agents",
         )
 
-    success = agent_service.remove_agent(path)
+    success = await agent_service.remove_agent(path)
 
     if not success:
         return JSONResponse(
@@ -973,7 +986,7 @@ async def discover_agents_by_skills(
         f"User {user_context['username']} discovering agents with skills: {skills}"
     )
 
-    all_agents = agent_service.get_all_agents()
+    all_agents = await agent_service.get_all_agents()
     accessible_agents = _filter_agents_by_access(all_agents, user_context)
 
     matched_agents = []
@@ -1053,16 +1066,18 @@ async def discover_agents_semantic(
     query: str,
     max_results: int = Query(10, ge=1, le=100),
     user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
+    search_repo: SearchRepositoryBase = Depends(get_search_repo),
 ):
     """
     Discover agents using natural language semantic search.
 
-    Uses FAISS vector search to find agents matching the query intent.
+    Uses search repository (FAISS or DocumentDB) to find agents matching the query intent.
 
     Args:
         query: Natural language query describing needed capabilities
         max_results: Maximum number of results
         user_context: Authenticated user context
+        search_repo: Search repository dependency
 
     Returns:
         List of matching agents with relevance scores
@@ -1080,17 +1095,17 @@ async def discover_agents_semantic(
         f"User {user_context['username']} semantic search for agents: {query}"
     )
 
-    from ..search.service import faiss_service
-
     try:
-        results = await faiss_service.search_entities(
+        search_results = await search_repo.search(
             query=query,
             entity_types=["a2a_agent"],
-            enabled_only=True,
             max_results=max_results,
         )
 
-        all_agents = agent_service.get_all_agents()
+        # Extract agents from search results
+        results = search_results.get("agents", [])
+
+        all_agents = await agent_service.get_all_agents()
         agent_map = {agent.path: agent for agent in all_agents}
 
         accessible_results = []
@@ -1102,27 +1117,11 @@ async def discover_agents_semantic(
             if not _filter_agents_by_access([agent_card], user_context):
                 continue
 
-            agent_info = AgentInfo(
-                name=agent_card.name,
-                description=agent_card.description,
-                path=agent_card.path,
-                url=str(agent_card.url),
-                tags=agent_card.tags,
-                skills=[s.name for s in agent_card.skills],
-                num_skills=len(agent_card.skills),
-                num_stars=agent_card.num_stars,
-                is_enabled=True,
-                provider=agent_card.provider,
-                streaming=agent_card.streaming,
-                trust_level=agent_card.trust_level,
-            )
+            # Return full agent card with relevance score
+            agent_data = agent_card.model_dump()
+            agent_data["relevance_score"] = result.get("relevance_score", 0.0)
 
-            accessible_results.append(
-                {
-                    **agent_info.model_dump(),
-                    "score": result.get("relevance_score", 0.0),
-                }
-            )
+            accessible_results.append(agent_data)
 
         logger.info(
             f"Semantic search returned {len(accessible_results)} agents for query: {query}"
@@ -1172,7 +1171,7 @@ async def get_agent_security_scan(
         path = "/" + path
 
     # Check if agent exists
-    agent_info = agent_service.get_agent_info(path)
+    agent_info = await agent_service.get_agent_info(path)
     if not agent_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1189,7 +1188,7 @@ async def get_agent_security_scan(
     # Get scan results
     from ..services.agent_scanner import agent_scanner_service
 
-    scan_result = agent_scanner_service.get_scan_result(path)
+    scan_result = await agent_scanner_service.get_scan_result(path)
     if not scan_result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1238,7 +1237,7 @@ async def rescan_agent(
         path = "/" + path
 
     # Check if agent exists
-    agent_info = agent_service.get_agent_info(path)
+    agent_info = await agent_service.get_agent_info(path)
     if not agent_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

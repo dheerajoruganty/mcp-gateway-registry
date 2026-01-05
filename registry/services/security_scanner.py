@@ -18,6 +18,7 @@ from typing import Optional
 
 from ..core.config import settings
 from ..schemas.security import SecurityScanResult, SecurityScanConfig
+from ..repositories.factory import get_security_scan_repository
 
 
 logger = logging.getLogger(__name__)
@@ -140,6 +141,7 @@ class SecurityScannerService:
     def __init__(self) -> None:
         """Initialize the security scanner service."""
         self._ensure_output_directory()
+        self._scan_repo = get_security_scan_repository()
 
     def _ensure_output_directory(self) -> Path:
         """Ensure output directory exists."""
@@ -162,6 +164,7 @@ class SecurityScannerService:
     async def scan_server(
         self,
         server_url: str,
+        server_path: Optional[str] = None,
         analyzers: Optional[str] = None,
         api_key: Optional[str] = None,
         headers: Optional[str] = None,
@@ -220,12 +223,10 @@ class SecurityScannerService:
                 raw_output
             )
 
-            # Save detailed output
-            output_file = self._save_scan_output(server_url, raw_output)
-
             # Create result object
             result = SecurityScanResult(
                 server_url=server_url,
+                server_path=server_path or server_url,  # Use server_path if provided, fallback to URL
                 scan_timestamp=datetime.now(timezone.utc)
                 .isoformat()
                 .replace("+00:00", "Z"),
@@ -236,9 +237,12 @@ class SecurityScannerService:
                 low_severity=low,
                 analyzers_used=analyzers.split(","),
                 raw_output=raw_output,
-                output_file=output_file,
+                output_file="",  # Repository handles storage
                 scan_failed=False,
             )
+
+            # Save scan result via repository
+            await self._scan_repo.create(result.model_dump())
 
             logger.info(
                 f"Security scan completed for {server_url}. "
@@ -263,11 +267,8 @@ class SecurityScannerService:
                 "scan_failed": True,
             }
 
-            # Save error output
-            output_file = self._save_scan_output(server_url, raw_output)
-
             # Return error result
-            return SecurityScanResult(
+            result = SecurityScanResult(
                 server_url=server_url,
                 scan_timestamp=datetime.now(timezone.utc)
                 .isoformat()
@@ -279,10 +280,15 @@ class SecurityScannerService:
                 low_severity=0,
                 analyzers_used=analyzers.split(",") if analyzers else [],
                 raw_output=raw_output,
-                output_file=output_file,
+                output_file="",  # Repository handles storage
                 scan_failed=True,
                 error_message=str(e),
             )
+
+            # Save error result via repository
+            await self._scan_repo.create(result)
+
+            return result
         except Exception as e:
             logger.exception(f"Unexpected error during security scan for {server_url}")
 
@@ -294,11 +300,8 @@ class SecurityScannerService:
                 "scan_failed": True,
             }
 
-            # Save error output
-            output_file = self._save_scan_output(server_url, raw_output)
-
             # Return error result
-            return SecurityScanResult(
+            result = SecurityScanResult(
                 server_url=server_url,
                 scan_timestamp=datetime.now(timezone.utc)
                 .isoformat()
@@ -310,10 +313,15 @@ class SecurityScannerService:
                 low_severity=0,
                 analyzers_used=analyzers.split(",") if analyzers else [],
                 raw_output=raw_output,
-                output_file=output_file,
+                output_file="",  # Repository handles storage
                 scan_failed=True,
                 error_message=str(e),
             )
+
+            # Save error result via repository
+            await self._scan_repo.create(result)
+
+            return result
 
     def _run_mcp_scanner(
         self,
@@ -460,87 +468,9 @@ class SecurityScannerService:
 
         return is_safe, critical_count, high_count, medium_count, low_count
 
-    def _save_scan_output(self, server_url: str, raw_output: dict) -> str:
-        """
-        Save detailed scan output to JSON file.
-
-        Saves in two locations:
-        1. security_scans/YYYY-MM-DD/scan_<server>_<timestamp>.json (archived)
-        2. security_scans/scan_<server>_latest.json (always current)
-
-        Args:
-            server_url: URL of the scanned server
-            raw_output: Dictionary containing scan results
-
-        Returns:
-            Path to saved output file (latest version)
-        """
-        output_dir = self._ensure_output_directory()
-
-        # Generate safe filename from server URL
-        safe_url = (
-            server_url.replace("https://", "").replace("http://", "").replace("/", "_")
-        )
-
-        # Create date-based subdirectory for archival
-        timestamp = datetime.now(timezone.utc)
-        date_folder = timestamp.strftime("%Y-%m-%d")
-        archive_dir = output_dir / date_folder
-        archive_dir.mkdir(exist_ok=True)
-
-        # Save timestamped version in date folder (archived)
-        timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S")
-        archived_filename = f"scan_{safe_url}_{timestamp_str}.json"
-        archived_file = archive_dir / archived_filename
-
-        with open(archived_file, "w") as f:
-            json.dump(raw_output, f, indent=2, default=str)
-
-        logger.info(f"Archived scan output saved to: {archived_file}")
-
-        # Save latest version in root security_scans folder (always current)
-        server_name = safe_url.replace("localhost_", "")
-        latest_filename = f"{server_name}.json"
-        latest_file = output_dir / latest_filename
-
-        with open(latest_file, "w") as f:
-            json.dump(raw_output, f, indent=2, default=str)
-
-        logger.info(f"Latest scan output saved to: {latest_file}")
-
-        return str(latest_file)
-
-    def _server_url_to_filename(self, server_url: str) -> str:
-        """
-        Convert server URL to scan result filename.
-
-        Args:
-            server_url: Server URL (e.g., https://docs.mcp.cloudflare.com/mcp)
-
-        Returns:
-            Filename for scan results (e.g., docs.mcp.cloudflare.com_mcp.json)
-        """
-        # Normalize URL: strip trailing slash, ensure /mcp suffix (same as scanner)
-        normalized_url = server_url.rstrip("/")
-        if not normalized_url.endswith("/mcp"):
-            normalized_url = f"{normalized_url}/mcp"
-
-        # Generate safe filename from server URL (same logic as _save_scan_output)
-        safe_url = (
-            normalized_url.replace("https://", "")
-            .replace("http://", "")
-            .replace("/", "_")
-        )
-        server_name = safe_url.replace("localhost_", "")
-        return f"{server_name}.json"
-
-    def get_scan_result(self, server_path: str) -> Optional[dict]:
+    async def get_scan_result(self, server_path: str) -> Optional[dict]:
         """
         Get the latest scan result for a server.
-
-        Looks for scan files in the security_scans directory. The scan file
-        is named based on the server URL, not the path, so we need to find it
-        by loading server info and matching URLs, or by using a stored mapping.
 
         Args:
             server_path: Server path (e.g., /cloudflare-docs)
@@ -548,42 +478,20 @@ class SecurityScannerService:
         Returns:
             Dictionary containing scan results, or None if no scan found
         """
-        # Import here to avoid circular dependency
-        from .server_service import server_service
-
-        # Get server info to retrieve URL
-        server_info = server_service.get_server_info(server_path)
-        if not server_info:
-            logger.warning(f"Server not found: {server_path}")
-            return None
-
-        server_url = server_info.get("proxy_pass_url")
-        if not server_url:
-            logger.warning(f"Server {server_path} has no proxy_pass_url configured")
-            return None
-
-        output_dir = self._ensure_output_directory()
-        filename = self._server_url_to_filename(server_url)
-        scan_file = output_dir / filename
-
-        # Check if the file exists
-        if not scan_file.exists():
-            logger.warning(
-                f"No security scan results found for server {server_path} "
-                f"(URL: {server_url}, expected file: {scan_file})"
-            )
-            return None
-
         try:
-            with open(scan_file, "r") as f:
-                scan_data = json.load(f)
-            logger.info(f"Loaded security scan results for {server_path} from {scan_file}")
-            return scan_data
-        except json.JSONDecodeError as e:
-            logger.error(
-                f"Failed to parse security scan results for {server_path}: {e}"
-            )
+            # Get latest scan from repository
+            scan_result = await self._scan_repo.get_latest(server_path)
+
+            if scan_result:
+                logger.info(f"Loaded security scan results for {server_path} from repository")
+                # Convert to dict if needed
+                if hasattr(scan_result, 'model_dump'):
+                    return scan_result.model_dump()
+                return scan_result
+
+            logger.warning(f"No security scan results found for server {server_path}")
             return None
+
         except Exception as e:
             logger.exception(
                 f"Unexpected error loading security scan results for {server_path}"

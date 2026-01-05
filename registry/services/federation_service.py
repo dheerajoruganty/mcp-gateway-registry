@@ -110,7 +110,7 @@ class FederationService:
             logger.error(f"Failed to load federation config: {e}")
             return FederationConfig()
 
-    def sync_all(self) -> Dict[str, List[Dict[str, Any]]]:
+    async def sync_all(self) -> Dict[str, List[Dict[str, Any]]]:
         """
         Sync servers from all enabled federated registries.
 
@@ -127,7 +127,7 @@ class FederationService:
 
         # Sync ASOR agents
         logger.info("Syncing agents from ASOR...")
-        asor_agents = self._sync_asor()
+        asor_agents = await self._sync_asor()
         results["asor"] = asor_agents
         logger.info(f"Synced {len(asor_agents)} agents from ASOR")
 
@@ -176,7 +176,7 @@ class FederationService:
 
         return servers
 
-    def _sync_asor(self) -> List[Dict[str, Any]]:
+    async def _sync_asor(self) -> List[Dict[str, Any]]:
         """
         Sync agents from Workday ASOR.
 
@@ -239,9 +239,9 @@ class FederationService:
                 if agent_path in agent_service.registered_agents:
                     logger.debug(f"ASOR agent {agent_path} already exists, skipping registration")
                     continue
-                
+
                 # Register the agent using the proper method
-                agent_service.register_agent(agent_card)
+                await agent_service.register_agent(agent_card)
                 logger.info(f"Registered ASOR agent: {agent_card.name} at {agent_card.path}")
                 
             except Exception as e:
@@ -249,7 +249,7 @@ class FederationService:
 
         return agents
 
-    def get_federated_servers(
+    async def get_federated_servers(
         self,
         source: Optional[str] = None,
         force_refresh: bool = False
@@ -270,11 +270,11 @@ class FederationService:
             servers.extend(self._sync_anthropic())
 
         if source is None or source == "asor":
-            servers.extend(self._sync_asor())
+            servers.extend(await self._sync_asor())
 
         return servers
 
-    def get_federated_items(
+    async def get_federated_items(
         self,
         source: Optional[str] = None,
         force_refresh: bool = False
@@ -296,7 +296,7 @@ class FederationService:
 
         if source is None or source == "asor":
             # ASOR provides agents, not servers
-            asor_agents = self._sync_asor()
+            asor_agents = await self._sync_asor()
             result["agents"].extend(asor_agents)
 
         return result

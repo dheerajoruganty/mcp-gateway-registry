@@ -134,11 +134,12 @@ create_clients() {
     local token=$1
     
     echo "Creating OAuth2 clients..."
-    
+
     # Create web client
     # Ensure we're using HTTPS URLs for redirect URIs
     local registry_url="${REGISTRY_URL:-http://localhost:7860}"
-    local auth_callback_url="${registry_url}/oauth2/callback/keycloak"
+    local auth_server_url="${AUTH_SERVER_EXTERNAL_URL:-http://localhost:8888}"
+    local auth_callback_url="${auth_server_url}/oauth2/callback/keycloak"
 
     local web_client_json='{
         "clientId": "mcp-gateway-web",
@@ -147,13 +148,16 @@ create_clients() {
         "clientAuthenticatorType": "client-secret",
         "redirectUris": [
             "'${auth_callback_url}'",
+            "'${auth_server_url}'/*",
             "'${registry_url}'/*",
             "http://localhost:7860/*",
             "http://localhost:8888/*"
         ],
         "webOrigins": [
+            "'${auth_server_url}'",
             "'${registry_url}'",
             "http://localhost:7860",
+            "http://localhost:8888",
             "+"
         ],
         "protocol": "openid-connect",

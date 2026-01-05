@@ -29,6 +29,8 @@ ENV BUILD_VERSION=$BUILD_VERSION
 RUN pip install uv && \
     uv venv .venv --python 3.12 && \
     . .venv/bin/activate && \
+    uv pip install --index-url https://download.pytorch.org/whl/cpu \
+    "torch>=1.6.0" && \
     uv pip install \
     "fastapi>=0.115.12" \
     "itsdangerous>=2.2.0" \
@@ -43,13 +45,18 @@ RUN pip install uv && \
     "sentence-transformers>=2.2.2" \
     "websockets>=15.0.1" \
     "scikit-learn>=1.3.0" \
-    "torch>=1.6.0" \
     "huggingface-hub[cli,hf_xet]>=0.31.1" \
     "hf_xet>=0.1.0" \
-    "cisco-ai-mcp-scanner==3.2.3"
+    "cisco-ai-mcp-scanner==3.2.3" \
+    "motor>=3.3.0" \
+    "pymongo>=4.6.0" \
+    "dnspython>=2.4.0"
 
 # Copy the application code
 COPY . /app/
+
+# Copy scopes.yml to /app/config/ to avoid EFS mount overwriting it
+RUN mkdir -p /app/config && cp /app/auth_server/scopes.yml /app/config/scopes.yml
 
 # Copy nginx configurations (both HTTP-only and HTTP+HTTPS versions)
 COPY docker/nginx_rev_proxy_http_only.conf /app/docker/nginx_rev_proxy_http_only.conf

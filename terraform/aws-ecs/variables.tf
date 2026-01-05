@@ -50,6 +50,12 @@ variable "base_domain" {
   default     = "mycorp.click"
 }
 
+variable "certificate_arn" {
+  description = "ARN of ACM certificate for HTTPS. Leave empty to disable HTTPS"
+  type        = string
+  default     = ""
+}
+
 variable "keycloak_domain" {
   description = "Full domain for Keycloak (e.g., kc.example.com). Used when use_regional_domains is false"
   type        = string
@@ -237,5 +243,104 @@ variable "session_cookie_domain" {
   description = "Domain for session cookies (e.g., '.example.com' for cross-subdomain sharing). Leave empty for single-domain deployments (cookie scoped to exact host only)."
   type        = string
   default     = ""
+}
+
+
+# =============================================================================
+# DOCUMENTDB ELASTIC CLUSTER CONFIGURATION
+# =============================================================================
+
+variable "documentdb_admin_username" {
+  description = "DocumentDB Elastic Cluster admin username"
+  type        = string
+  sensitive   = true
+  default     = "docdbadmin"
+}
+
+variable "documentdb_admin_password" {
+  description = "DocumentDB Elastic Cluster admin password (minimum 8 characters)"
+  type        = string
+  sensitive   = true
+}
+
+variable "documentdb_shard_capacity" {
+  description = "vCPU capacity per shard (2, 4, 8, 16, 32, or 64)"
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = contains([2, 4, 8, 16, 32, 64], var.documentdb_shard_capacity)
+    error_message = "Shard capacity must be one of: 2, 4, 8, 16, 32, 64"
+  }
+}
+
+variable "documentdb_shard_count" {
+  description = "Number of shards (1-32). Start with 1, scale as needed."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.documentdb_shard_count >= 1 && var.documentdb_shard_count <= 32
+    error_message = "Shard count must be between 1 and 32"
+  }
+}
+
+variable "documentdb_instance_class" {
+  description = "Instance class for DocumentDB cluster instances (e.g., db.t3.medium, db.r5.large)"
+  type        = string
+  default     = "db.t3.medium"
+
+  validation {
+    condition     = can(regex("^db\\.(t3|t4g|r5|r6g)\\.(medium|large|xlarge|2xlarge|4xlarge|8xlarge|12xlarge|16xlarge)$", var.documentdb_instance_class))
+    error_message = "Instance class must be a valid DocumentDB instance type (e.g., db.t3.medium, db.r5.large)"
+  }
+}
+
+variable "documentdb_replica_count" {
+  description = "Number of read replica instances (0-15). Start with 0, add replicas for HA."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.documentdb_replica_count >= 0 && var.documentdb_replica_count <= 15
+    error_message = "Replica count must be between 0 and 15"
+  }
+}
+
+
+# Storage Backend Configuration
+variable "storage_backend" {
+  description = "Storage backend to use: 'file' or 'documentdb'"
+  type        = string
+  default     = "file"
+
+  validation {
+    condition     = contains(["file", "documentdb"], var.storage_backend)
+    error_message = "Storage backend must be either 'file' or 'documentdb'."
+  }
+}
+
+variable "documentdb_database" {
+  description = "DocumentDB database name"
+  type        = string
+  default     = "mcp_registry"
+}
+
+variable "documentdb_namespace" {
+  description = "DocumentDB namespace for collections"
+  type        = string
+  default     = "default"
+}
+
+variable "documentdb_use_tls" {
+  description = "Use TLS for DocumentDB connections"
+  type        = bool
+  default     = true
+}
+
+variable "documentdb_use_iam" {
+  description = "Use IAM authentication for DocumentDB"
+  type        = bool
+  default     = false
 }
 

@@ -1,8 +1,8 @@
 {
-  "/currenttime": true,
-  "/fininfo": true,
-  "/mcpgw/": true,
-  "/realserverfaketools/": true,
-  "/sre-gateway/": true,
-  "/atlassian": true
+  "/sre-gateway/": false,
+  "/atlassian": false,
+  "/realserverfaketools/": false,
+  "/mcpgw/": false,
+  "/fininfo": false,
+  "/currenttime/": false
 }

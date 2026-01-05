@@ -34,9 +34,12 @@ class ToolInfo(BaseModel):
     """Tool information model."""
     name: str
     parsed_description: ToolDescription
-    schema: Dict[str, Any] = Field(default_factory=dict)
+    tool_schema: Dict[str, Any] = Field(default_factory=dict, alias="schema")
     server_path: Optional[str] = None
     server_name: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
 
 
 class HealthStatus(BaseModel):

@@ -77,6 +77,7 @@ module "ecs_service_auth" {
       memory                 = tonumber(var.memory)
       essential              = true
       image                  = var.auth_server_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -98,7 +99,7 @@ module "ecs_service_auth" {
         },
         {
           name  = "AUTH_SERVER_EXTERNAL_URL"
-          value = "https://${var.domain_name}"
+          value = "https://${var.domain_name}:8888"
         },
         {
           name  = "AWS_REGION"
@@ -135,6 +136,38 @@ module "ecs_service_auth" {
         {
           name  = "SESSION_COOKIE_DOMAIN"
           value = var.session_cookie_domain
+        },
+        {
+          name  = "STORAGE_BACKEND"
+          value = var.storage_backend
+        },
+        {
+          name  = "DOCUMENTDB_HOST"
+          value = var.documentdb_endpoint
+        },
+        {
+          name  = "DOCUMENTDB_PORT"
+          value = "27017"
+        },
+        {
+          name  = "DOCUMENTDB_DATABASE"
+          value = var.documentdb_database
+        },
+        {
+          name  = "DOCUMENTDB_NAMESPACE"
+          value = var.documentdb_namespace
+        },
+        {
+          name  = "DOCUMENTDB_USE_TLS"
+          value = tostring(var.documentdb_use_tls)
+        },
+        {
+          name  = "DOCUMENTDB_USE_IAM"
+          value = tostring(var.documentdb_use_iam)
+        },
+        {
+          name  = "DOCUMENTDB_TLS_CA_FILE"
+          value = "/app/global-bundle.pem"
         }
       ]
 
@@ -146,6 +179,14 @@ module "ecs_service_auth" {
         {
           name      = "KEYCLOAK_CLIENT_SECRET"
           valueFrom = "${aws_secretsmanager_secret.keycloak_client_secret.arn}:client_secret::"
+        },
+        {
+          name      = "DOCUMENTDB_USERNAME"
+          valueFrom = "${var.documentdb_credentials_secret_arn}:username::"
+        },
+        {
+          name      = "DOCUMENTDB_PASSWORD"
+          valueFrom = "${var.documentdb_credentials_secret_arn}:password::"
         }
       ]
 
@@ -298,6 +339,7 @@ module "ecs_service_registry" {
       memory                 = tonumber(var.memory)
       essential              = true
       image                  = var.registry_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -333,7 +375,7 @@ module "ecs_service_registry" {
         },
         {
           name  = "AUTH_SERVER_EXTERNAL_URL"
-          value = var.domain_name != "" ? "https://${var.domain_name}" : "http://${module.alb.dns_name}"
+          value = var.domain_name != "" ? "https://${var.domain_name}:8888" : "http://${module.alb.dns_name}:8888"
         },
         {
           name  = "KEYCLOAK_URL"
@@ -414,6 +456,38 @@ module "ecs_service_registry" {
         {
           name  = "KEYCLOAK_ADMIN"
           value = "admin"
+        },
+        {
+          name  = "STORAGE_BACKEND"
+          value = var.storage_backend
+        },
+        {
+          name  = "DOCUMENTDB_HOST"
+          value = var.documentdb_endpoint
+        },
+        {
+          name  = "DOCUMENTDB_PORT"
+          value = "27017"
+        },
+        {
+          name  = "DOCUMENTDB_DATABASE"
+          value = var.documentdb_database
+        },
+        {
+          name  = "DOCUMENTDB_NAMESPACE"
+          value = var.documentdb_namespace
+        },
+        {
+          name  = "DOCUMENTDB_USE_TLS"
+          value = tostring(var.documentdb_use_tls)
+        },
+        {
+          name  = "DOCUMENTDB_USE_IAM"
+          value = tostring(var.documentdb_use_iam)
+        },
+        {
+          name  = "DOCUMENTDB_TLS_CA_FILE"
+          value = "/app/global-bundle.pem"
         }
       ]
 
@@ -441,6 +515,14 @@ module "ecs_service_registry" {
         {
           name      = "EMBEDDINGS_API_KEY"
           valueFrom = aws_secretsmanager_secret.embeddings_api_key.arn
+        },
+        {
+          name      = "DOCUMENTDB_USERNAME"
+          valueFrom = "${var.documentdb_credentials_secret_arn}:username::"
+        },
+        {
+          name      = "DOCUMENTDB_PASSWORD"
+          valueFrom = "${var.documentdb_credentials_secret_arn}:password::"
         }
       ]
 
@@ -650,6 +732,7 @@ module "ecs_service_currenttime" {
       memory                 = 1024
       essential              = true
       image                  = var.currenttime_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -773,6 +856,7 @@ module "ecs_service_mcpgw" {
       memory                 = 1024
       essential              = true
       image                  = var.mcpgw_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -923,6 +1007,7 @@ module "ecs_service_realserverfaketools" {
       memory                 = 1024
       essential              = true
       image                  = var.realserverfaketools_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -1044,6 +1129,7 @@ module "ecs_service_flight_booking_agent" {
       memory                 = 1024
       essential              = true
       image                  = var.flight_booking_agent_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -1165,6 +1251,7 @@ module "ecs_service_travel_assistant_agent" {
       memory                 = 1024
       essential              = true
       image                  = var.travel_assistant_agent_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [

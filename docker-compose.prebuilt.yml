@@ -290,9 +290,47 @@ services:
       retries: 3
       start_period: 60s
 
+  # MongoDB Community Edition 8.2 for local development - using mirrored pre-built image
+  mongodb:
+    image: ${DOCKERHUB_ORG:-mcpgateway}/mongo:${MONGODB_VERSION:-latest}
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    environment:
+      MONGO_INITDB_DATABASE: mcp_registry
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./scripts/generate-mongodb-keyfile.sh:/docker-entrypoint-initdb.d/01-generate-keyfile.sh:ro
+      - ./scripts/mongodb-entrypoint.sh:/docker-entrypoint-initdb.d/02-init-replica.sh:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # MongoDB initialization service
+  mongodb-init:
+    image: ${DOCKERHUB_ORG:-mcpgateway}/mongo:${MONGODB_VERSION:-latest}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./scripts/init-mongodb-ce.py:/app/init-mongodb-ce.py:ro
+      - ./auth_server/scopes.yml:/app/scopes.yml:ro
+    environment:
+      DOCUMENTDB_HOST: mongodb
+      DOCUMENTDB_PORT: 27017
+      DOCUMENTDB_DATABASE: mcp_registry
+      SCOPES_FILE: /app/scopes.yml
+    command: ["python3", "/app/init-mongodb-ce.py"]
+    restart: "no"
+
 volumes:
   ssl_data:
   keycloak_db_data:
   metrics-db-data:
   prometheus-data:
   grafana-data:
+  mongodb_data:

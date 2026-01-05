@@ -1,8 +1,10 @@
 #!/bin/bash
 # Build and push Docker images from build-config.yaml to AWS ECR
-# Usage: ./scripts/build-images.sh [build|push|build-push] [IMAGE=name]
+# Usage: ./scripts/build-images.sh [build|push|build-push] [IMAGE=name] [NO_CACHE=true]
 # Example: ./scripts/build-images.sh build IMAGE=registry
 # Example: ./scripts/build-images.sh build-push
+# Example: NO_CACHE=true ./scripts/build-images.sh build IMAGE=registry
+# Example: NO_CACHE=true make build-push IMAGE=registry
 
 set -e
 
@@ -110,6 +112,8 @@ if command -v git &> /dev/null && [ -d "${REPO_ROOT}/.git" ]; then
     else
         # Not on a tag - include branch name and commit info
         GIT_BRANCH=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+        # Sanitize branch name for Docker tag (replace / with -)
+        GIT_BRANCH="${GIT_BRANCH//\//-}"
         GIT_DESCRIBE=$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null || echo "dev")
 
         # Format: version-branch or describe-branch
@@ -155,9 +159,9 @@ try:
         context = image_config.get('context', '.')
         build_args = image_config.get('build_args', {})
 
+        # Skip external images (they don't have dockerfiles, only external_image)
         if not repo_name or not dockerfile:
-            print(f"ERROR: Image '{name}' missing repo_name or dockerfile", file=sys.stderr)
-            sys.exit(1)
+            continue
 
         # Format build_args as key=value pairs separated by spaces
         build_args_str = ' '.join([f"{k}={v}" for k, v in build_args.items()])
@@ -276,11 +280,20 @@ build_image() {
     fi
     log_info "BUILD_VERSION=$BUILD_VERSION"
 
+    # Construct cache flags
+    local cache_flags=""
+    if [[ "${NO_CACHE:-}" == "true" ]]; then
+        cache_flags="--no-cache"
+        log_warning "Building without cache (NO_CACHE=true)"
+    fi
+
     # Build the Docker image using buildx (faster, better caching, future-proof)
+    # Tag with :latest only (ECS will pull fresh images with imagePullPolicy: always)
     docker buildx build \
         --load \
         -f "$REPO_ROOT/$dockerfile" \
         -t "$repo_name:latest" \
+        $cache_flags \
         $build_arg_flags \
         "$REPO_ROOT/$context" || {
         log_error "Failed to build $image_name"
@@ -301,7 +314,7 @@ push_image() {
     local image_name="$1"
     local repo_name="$2"
 
-    local ecr_uri="${ECR_REGISTRY}/${repo_name}:latest"
+    local ecr_uri_latest="${ECR_REGISTRY}/${repo_name}:latest"
 
     log_info "Pushing $image_name to ECR..."
 
@@ -325,19 +338,20 @@ push_image() {
         return 1
     }
 
-    # Tag image for ECR
-    docker tag "$repo_name:latest" "$ecr_uri" || {
+    # Tag image for ECR (:latest only)
+    docker tag "$repo_name:latest" "$ecr_uri_latest" || {
         log_error "Failed to tag image for ECR"
         return 1
     }
 
     # Push to ECR
-    docker push "$ecr_uri" || {
+    log_info "Pushing $ecr_uri_latest..."
+    docker push "$ecr_uri_latest" || {
         log_error "Failed to push image to ECR"
         return 1
     }
 
-    log_success "Pushed $ecr_uri"
+    log_success "Pushed $ecr_uri_latest"
 }
 
 # Process images

@@ -26,6 +26,7 @@ The following external images are pulled from their original sources:
 | Grafana | `grafana/grafana:latest` | Docker Hub Official | Metrics visualization and dashboards | 3000 |
 | PostgreSQL | `postgres:16-alpine` | Docker Hub Official | Database for Keycloak | 5432 (internal) |
 | Keycloak | `quay.io/keycloak/keycloak:25.0` | Quay.io | Identity and access management service | 8080 |
+| MongoDB CE | `mongo:8.2` | Docker Hub Official | MongoDB Community Edition 8.2 with replica set support for local development | 27017 (internal) |
 
 ## Manual Download Commands
 
@@ -48,6 +49,7 @@ docker pull prom/prometheus:latest
 docker pull grafana/grafana:latest
 docker pull postgres:16-alpine
 docker pull quay.io/keycloak/keycloak:25.0
+docker pull mongo:8.2
 ```
 
 ## HTTPS Configuration

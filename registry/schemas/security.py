@@ -32,6 +32,7 @@ class SecurityScanResult(BaseModel):
     """Complete security scan result for an MCP server."""
 
     server_url: str = Field(..., description="URL of the scanned MCP server")
+    server_path: str = Field(..., description="Registry path of the MCP server (e.g., /context7)")
     scan_timestamp: str = Field(..., description="ISO timestamp of the scan")
     is_safe: bool = Field(..., description="Overall safety assessment")
     critical_issues: int = Field(default=0, description="Count of critical severity issues")

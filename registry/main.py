@@ -26,15 +26,19 @@ from registry.api.wellknown_routes import router as wellknown_router
 from registry.api.registry_routes import router as registry_router
 from registry.api.agent_routes import router as agent_router
 from registry.api.management_routes import router as management_router
+from registry.api.federation_routes import router as federation_router
 from registry.health.routes import router as health_router
 
 # Import auth dependencies
-from registry.auth.dependencies import enhanced_auth
+from registry.auth.dependencies import (
+    enhanced_auth,
+    get_ui_permissions_for_user,
+)
 
 # Import services for initialization
 from registry.services.server_service import server_service
 from registry.services.agent_service import agent_service
-from registry.search.service import faiss_service
+from registry.repositories.factory import get_search_repository
 from registry.health.service import health_service
 from registry.core.nginx_service import nginx_service
 from registry.services.federation_service import get_federation_service
@@ -98,72 +102,126 @@ logger.info(f"Logging configured. Writing to file: {log_file_path}")
 async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle management."""
     logger.info("🚀 Starting MCP Gateway Registry...")
-    
+
     try:
+        # Load scopes configuration from repository
+        logger.info("🔐 Loading scopes configuration from repository...")
+        from registry.auth.dependencies import reload_scopes_from_repository
+        await reload_scopes_from_repository()
+
         # Initialize services in order
         logger.info("📚 Loading server definitions and state...")
-        server_service.load_servers_and_state()
-        
-        logger.info("🔍 Initializing FAISS search service...")
-        await faiss_service.initialize()
-        
-        logger.info("📊 Updating FAISS index with all registered services...")
-        all_servers = server_service.get_all_servers()
+        await server_service.load_servers_and_state()
+
+        # Get repository based on STORAGE_BACKEND configuration
+        search_repo = get_search_repository()
+        backend_name = "DocumentDB" if settings.storage_backend == "documentdb" else "FAISS"
+
+        logger.info(f"🔍 Initializing {backend_name} search service...")
+        await search_repo.initialize()
+
+        logger.info(f"📊 Updating {backend_name} index with all registered services...")
+        all_servers = await server_service.get_all_servers()
         for service_path, server_info in all_servers.items():
-            is_enabled = server_service.is_service_enabled(service_path)
+            is_enabled = await server_service.is_service_enabled(service_path)
             try:
-                await faiss_service.add_or_update_service(service_path, server_info, is_enabled)
-                logger.debug(f"Updated FAISS index for service: {service_path}")
+                await search_repo.index_server(service_path, server_info, is_enabled)
+                logger.debug(f"Updated {backend_name} index for service: {service_path}")
             except Exception as e:
-                logger.error(f"Failed to update FAISS index for service {service_path}: {e}", exc_info=True)
-        
-        logger.info(f"✅ FAISS index updated with {len(all_servers)} services")
+                logger.error(f"Failed to update {backend_name} index for service {service_path}: {e}", exc_info=True)
+
+        logger.info(f"✅ {backend_name} index updated with {len(all_servers)} services")
 
         logger.info("📋 Loading agent cards and state...")
-        agent_service.load_agents_and_state()
+        await agent_service.load_agents_and_state()
 
-        logger.info("📊 Updating FAISS index with all registered agents...")
+        logger.info(f"📊 Updating {backend_name} index with all registered agents...")
         all_agents = agent_service.list_agents()
         for agent_card in all_agents:
             is_enabled = agent_service.is_agent_enabled(agent_card.path)
             try:
-                await faiss_service.add_or_update_agent(agent_card.path, agent_card)
-                logger.debug(f"Updated FAISS index for agent: {agent_card.path}")
+                await search_repo.index_agent(agent_card.path, agent_card, is_enabled)
+                logger.debug(f"Updated {backend_name} index for agent: {agent_card.path}")
             except Exception as e:
-                logger.error(f"Failed to update FAISS index for agent {agent_card.path}: {e}", exc_info=True)
+                logger.error(f"Failed to update {backend_name} index for agent {agent_card.path}: {e}", exc_info=True)
 
-        logger.info(f"✅ FAISS index updated with {len(all_agents)} agents")
+        logger.info(f"✅ {backend_name} index updated with {len(all_agents)} agents")
 
         logger.info("🏥 Initializing health monitoring service...")
         await health_service.initialize()
 
-        logger.info("🔗 Initializing federation service...")
-        federation_service = get_federation_service()
-        if federation_service.config.is_any_federation_enabled():
-            logger.info(f"Federation enabled for: {', '.join(federation_service.config.get_enabled_federations())}")
+        logger.info("🔗 Checking federation configuration...")
+        from registry.repositories.factory import get_federation_config_repository
 
-            # Sync on startup if configured
-            sync_on_startup = (
-                (federation_service.config.anthropic.enabled and federation_service.config.anthropic.sync_on_startup) or
-                (federation_service.config.asor.enabled and federation_service.config.asor.sync_on_startup)
-            )
-            
-            if sync_on_startup:
-                logger.info("🔄 Syncing servers from federated registries on startup...")
-                try:
-                    sync_results = federation_service.sync_all()
-                    for source, servers in sync_results.items():
-                        logger.info(f"✅ Synced {len(servers)} servers from {source}")
-                except Exception as e:
-                    logger.error(f"⚠️ Federation sync failed (continuing with startup): {e}", exc_info=True)
-        else:
-            logger.info("Federation is disabled")
+        try:
+            # Load federation config
+            federation_repo = get_federation_config_repository()
+            federation_config = await federation_repo.get_config("default")
+
+            if federation_config and federation_config.is_any_federation_enabled():
+                logger.info(f"Federation enabled for: {', '.join(federation_config.get_enabled_federations())}")
+
+                # Sync on startup if configured
+                sync_on_startup = (
+                    (federation_config.anthropic.enabled and federation_config.anthropic.sync_on_startup) or
+                    (federation_config.asor.enabled and federation_config.asor.sync_on_startup)
+                )
+
+                if sync_on_startup:
+                    logger.info("🔄 Syncing servers from federated registries on startup...")
+                    try:
+                        from registry.services.federation.anthropic_client import AnthropicFederationClient
+
+                        # Sync Anthropic servers if enabled and sync_on_startup is true
+                        if federation_config.anthropic.enabled and federation_config.anthropic.sync_on_startup:
+                            logger.info("Syncing from Anthropic MCP Registry...")
+                            anthropic_client = AnthropicFederationClient(
+                                endpoint=federation_config.anthropic.endpoint
+                            )
+                            servers = anthropic_client.fetch_all_servers(
+                                federation_config.anthropic.servers
+                            )
+
+                            # Register servers
+                            synced_count = 0
+                            for server_data in servers:
+                                try:
+                                    server_path = server_data.get("path")
+                                    if not server_path:
+                                        continue
+
+                                    # Register or update server
+                                    success = await server_service.register_server(server_data)
+                                    if not success:
+                                        success = await server_service.update_server(server_path, server_data)
+
+                                    if success:
+                                        # Enable the server
+                                        await server_service.toggle_service(server_path, True)
+                                        synced_count += 1
+                                        logger.info(f"Synced: {server_data.get('server_name', server_path)}")
+                                except Exception as e:
+                                    logger.error(f"Failed to sync server {server_data.get('server_name', 'unknown')}: {e}")
+
+                            logger.info(f"✅ Synced {synced_count} servers from Anthropic")
+
+                        # ASOR sync would go here if needed
+
+                    except Exception as e:
+                        logger.error(f"⚠️ Federation sync failed (continuing with startup): {e}", exc_info=True)
+            else:
+                logger.info("Federation is disabled or not configured")
+        except Exception as e:
+            logger.error(f"Failed to load federation config: {e}")
+            logger.info("Continuing without federation")
 
         logger.info("🌐 Generating initial Nginx configuration...")
-        enabled_servers = {
-            path: server_service.get_server_info(path)
-            for path in server_service.get_enabled_services()
-        }
+        enabled_service_paths = await server_service.get_enabled_services()
+        enabled_servers = {}
+        for path in enabled_service_paths:
+            server_info = await server_service.get_server_info(path)
+            if server_info:
+                enabled_servers[path] = server_info
         await nginx_service.generate_config_async(enabled_servers)
 
         logger.info("✅ All services initialized successfully!")
@@ -222,6 +280,10 @@ app = FastAPI(
         {
             "name": "Anthropic Registry API",
             "description": "Anthropic-compatible registry API (v0.1) for MCP server discovery"
+        },
+        {
+            "name": "federation",
+            "description": "Federation configuration management API for Anthropic and ASOR integrations"
         }
     ]
 )
@@ -241,6 +303,7 @@ app.include_router(servers_router, prefix="/api", tags=["Server Management"])
 app.include_router(agent_router, prefix="/api", tags=["Agent Management"])
 app.include_router(management_router, prefix="/api")
 app.include_router(search_router, prefix="/api/search", tags=["Semantic Search"])
+app.include_router(federation_router, prefix="/api", tags=["federation"])
 app.include_router(health_router, prefix="/api/health", tags=["Health Monitoring"])
 
 # Register Anthropic MCP Registry API (public API for MCP servers only)
@@ -296,15 +359,25 @@ app.openapi = custom_openapi
 @app.get("/api/auth/me")
 async def get_current_user(user_context: Dict[str, Any] = Depends(enhanced_auth)):
     """Get current user information for React auth context"""
-    # Return user info with scopes for token generation
+    # Get user's scopes
+    user_scopes = user_context.get("scopes", [])
+
+    # Get UI permissions for the user based on their scopes
+    ui_permissions = await get_ui_permissions_for_user(user_scopes)
+
+    # Return user info with scopes and UI permissions for token generation
     return {
         "username": user_context["username"],
         "auth_method": user_context.get("auth_method", "basic"),
         "provider": user_context.get("provider"),
-        "scopes": user_context.get("scopes", []),
+        "scopes": user_scopes,
         "groups": user_context.get("groups", []),
         "can_modify_servers": user_context.get("can_modify_servers", False),
-        "is_admin": user_context.get("is_admin", False)
+        "is_admin": user_context.get("is_admin", False),
+        "ui_permissions": ui_permissions,
+        "accessible_servers": user_context.get("accessible_servers", []),
+        "accessible_services": user_context.get("accessible_services", []),
+        "accessible_agents": user_context.get("accessible_agents", [])
     }
 
 # Basic health check endpoint

@@ -3,6 +3,33 @@ set -e # Exit immediately if a command exits with a non-zero status.
 
 echo "Starting Registry Service Setup..."
 
+# --- DocumentDB CA Bundle Download (needed for both init mode and normal mode) ---
+if [[ "${DOCUMENTDB_HOST}" == *"docdb-elastic.amazonaws.com"* ]]; then
+    echo "Detected DocumentDB Elastic cluster"
+    echo "Downloading DocumentDB Elastic CA bundle..."
+    CA_BUNDLE_URL="https://www.amazontrust.com/repository/SFSRootCAG2.pem"
+    CA_BUNDLE_PATH="/app/global-bundle.pem"
+    if [ ! -f "$CA_BUNDLE_PATH" ]; then
+        curl -fsSL "$CA_BUNDLE_URL" -o "$CA_BUNDLE_PATH"
+        echo "DocumentDB Elastic CA bundle (SFSRootCAG2.pem) downloaded successfully to $CA_BUNDLE_PATH"
+    fi
+elif [[ "${DOCUMENTDB_HOST}" == *"docdb.amazonaws.com"* ]]; then
+    echo "Detected regular DocumentDB cluster"
+    echo "Downloading regular DocumentDB CA bundle..."
+    CA_BUNDLE_URL="https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem"
+    CA_BUNDLE_PATH="/app/global-bundle.pem"
+    if [ ! -f "$CA_BUNDLE_PATH" ]; then
+        curl -fsSL "$CA_BUNDLE_URL" -o "$CA_BUNDLE_PATH"
+        echo "DocumentDB CA bundle (global-bundle.pem) downloaded successfully to $CA_BUNDLE_PATH"
+    fi
+fi
+
+# Check if we're in init mode (for running DocumentDB initialization scripts)
+if [ "$RUN_INIT_SCRIPTS" = "true" ]; then
+    echo "Running in init mode - executing initialization scripts..."
+    exec "$@"
+fi
+
 # --- Environment Variable Setup ---
 echo "Setting up environment variables..."
 
@@ -27,6 +54,8 @@ echo "SECRET_KEY=${SECRET_KEY}" > "$REGISTRY_ENV_FILE"
 echo "ADMIN_USER=${ADMIN_USER_VALUE}" >> "$REGISTRY_ENV_FILE"
 echo "ADMIN_PASSWORD=${ADMIN_PASSWORD}" >> "$REGISTRY_ENV_FILE"
 echo "Registry .env created."
+
+# DocumentDB CA Bundle already downloaded at the beginning of this script
 
 # --- SSL Certificate Check ---
 # These paths match REGISTRY_CONSTANTS.SSL_CERT_PATH and SSL_KEY_PATH in registry/constants.py

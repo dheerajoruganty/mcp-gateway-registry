@@ -74,6 +74,24 @@ class Settings(BaseSettings):
     agent_security_add_pending_tag: bool = True
     a2a_scanner_llm_api_key: str = ""  # Optional Azure OpenAI API key for LLM-based analysis
     
+    # Storage Backend Configuration
+    storage_backend: str = "file"  # Options: "file", "documentdb"
+
+    # DocumentDB Configuration (only used when storage_backend="documentdb")
+    documentdb_host: str = "localhost"
+    documentdb_port: int = 27017
+    documentdb_database: str = "mcp_registry"
+    documentdb_username: Optional[str] = None
+    documentdb_password: Optional[str] = None
+    documentdb_use_tls: bool = True
+    documentdb_tls_ca_file: str = "global-bundle.pem"
+    documentdb_use_iam: bool = False
+    documentdb_replica_set: Optional[str] = None
+    documentdb_read_preference: str = "secondaryPreferred"
+
+    # DocumentDB Namespace (for multi-tenancy support)
+    documentdb_namespace: str = "default"
+
     # Container paths - adjust for local development
     container_app_dir: Path = Path("/app")
     container_registry_dir: Path = Path("/app/registry")
@@ -163,5 +181,92 @@ class Settings(BaseSettings):
         return self.agents_dir / "agent_state.json"
 
 
+class EmbeddingConfig:
+    """Helper class for embedding configuration and metadata generation."""
+
+    def __init__(
+        self,
+        settings_instance: Settings
+    ):
+        self.settings = settings_instance
+
+
+    @property
+    def model_family(self) -> str:
+        """Extract model family from model name.
+
+        Examples:
+            - "openai/text-embedding-ada-002" -> "openai"
+            - "all-MiniLM-L6-v2" -> "sentence-transformers"
+            - "amazon.titan-embed-text-v2:0" -> "amazon-bedrock"
+        """
+        model_name = self.settings.embeddings_model_name
+
+        if "/" in model_name:
+            # Format: "provider/model-name"
+            return model_name.split("/")[0]
+        elif "amazon." in model_name or "titan" in model_name.lower():
+            return "amazon-bedrock"
+        elif self.settings.embeddings_provider == "litellm":
+            return "litellm"
+        else:
+            return self.settings.embeddings_provider
+
+
+    @property
+    def index_name(self) -> str:
+        """Generate dimension-specific collection/index name.
+
+        Returns index name in format: mcp-embeddings-{dimensions}-{namespace}
+        Example: mcp-embeddings-1536-default
+        """
+        base_name = "mcp-embeddings"
+        dimensions = self.settings.embeddings_model_dimensions
+        namespace = self.settings.documentdb_namespace
+
+        # Replace base name with dimension-specific name
+        return f"{base_name}-{dimensions}-{namespace}"
+
+
+    def get_embedding_metadata(self) -> dict:
+        """Generate embedding metadata for document storage.
+
+        Returns:
+            Dictionary with embedding metadata including:
+            - provider: Embedding provider (e.g., "litellm", "sentence-transformers")
+            - model: Full model name
+            - model_family: Extracted model family
+            - dimensions: Embedding dimension count
+            - version: Model version (extracted if available, else "v1")
+            - created_at: Current timestamp in ISO format
+            - indexing_strategy: Search strategy (currently "hybrid")
+        """
+        from datetime import datetime, timezone
+
+        model_name = self.settings.embeddings_model_name
+
+        # Extract version if present in model name
+        version = "v1"
+        if "v2" in model_name.lower():
+            version = "v2"
+        elif "v3" in model_name.lower():
+            version = "v3"
+        elif "ada-002" in model_name:
+            version = "ada-002"
+
+        return {
+            "provider": self.settings.embeddings_provider,
+            "model": model_name,
+            "model_family": self.model_family,
+            "dimensions": self.settings.embeddings_model_dimensions,
+            "version": version,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "indexing_strategy": "hybrid"
+        }
+
+
 # Global settings instance
-settings = Settings() 
+settings = Settings()
+
+# Global embedding config instance
+embedding_config = EmbeddingConfig(settings) 

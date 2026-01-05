@@ -169,6 +169,142 @@ SESSION_COOKIE_DOMAIN=  # Empty string or unset
 | `SRE_GATEWAY_AUTH_TOKEN` | SRE Gateway auth token | Auto-populated from credentials | - |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude models | `sk-ant-api03-...` | For AI functionality |
 
+### Storage Backend Configuration
+
+The MCP Gateway Registry supports three storage backends for servers, agents, and scopes management.
+
+| Variable | Description | Values | Default |
+|----------|-------------|--------|---------|
+| `STORAGE_BACKEND` | Storage backend for registry data | `file`, `mongodb-ce`, or `documentdb` | `file` |
+
+> **⚠️ DEPRECATION WARNING:** File-based storage is deprecated and will be removed in a future release. MongoDB CE is now the recommended backend for local development and testing.
+
+**Backend Options:**
+
+#### File Backend (Deprecated)
+- **Status**: **DEPRECATED** - Will be removed in a future release
+- **Migration Path**: Switch to MongoDB CE for local development or DocumentDB for production
+- **Pros**: Simple, no external dependencies, human-readable JSON files
+- **Cons**: Limited concurrent writes, no distributed access, FAISS-based vector search, **deprecated**
+
+```bash
+STORAGE_BACKEND=file  # DEPRECATED - Use mongodb-ce instead
+```
+
+**Data stored in:**
+- Servers: `~/mcp-gateway/servers/*.json`
+- Agents: `~/mcp-gateway/agents/*.json`
+- Scopes: `auth_server/scopes.yml`
+- Security scans: `~/mcp-gateway/security_scans/*.json`
+
+#### MongoDB CE Backend (Recommended for Local Development)
+- **Status**: **RECOMMENDED** for all local development and testing
+- **Best for**: Local development, feature development, testing, CI/CD pipelines
+- **Pros**: Docker-based, no cloud dependencies, replica set support, application-level vector search, production-like environment
+- **Cons**: Limited to ~10,000 documents, O(n) vector search performance (acceptable for development)
+
+```bash
+STORAGE_BACKEND=mongodb-ce
+DOCUMENTDB_HOST=mongodb       # Docker service name
+DOCUMENTDB_PORT=27017
+DOCUMENTDB_DATABASE=mcp_registry
+DOCUMENTDB_NAMESPACE=default
+DOCUMENTDB_USE_TLS=false      # No TLS for local dev
+```
+
+**MongoDB Collections Created:**
+- `mcp_servers_{namespace}` - Server definitions
+- `mcp_agents_{namespace}` - A2A agent cards
+- `mcp_scopes_{namespace}` - Authorization scopes
+- `mcp_embeddings_1536_{namespace}` - Vector embeddings (1536 dimensions)
+- `mcp_security_scans_{namespace}` - Security scan results
+- `mcp_federation_config_{namespace}` - Federation configuration
+
+**First-Time MongoDB CE Setup:**
+
+```bash
+# 1. Start MongoDB container
+docker-compose up -d mongodb
+sleep 5
+
+# 2. Initialize collections and indexes
+docker-compose up mongodb-init
+
+# 3. Verify setup
+docker exec mcp-mongodb mongosh --eval "use mcp_registry; show collections"
+
+# 4. Switch backend and restart
+export STORAGE_BACKEND=mongodb-ce
+docker-compose restart registry
+```
+
+#### DocumentDB Backend (Production, Recommended)
+- **Best for**: Production deployments, high concurrency, large-scale systems
+- **Pros**: Native HNSW vector search, distributed storage, AWS-managed, clustering support
+- **Cons**: Requires AWS infrastructure, uses AWS pricing
+
+```bash
+STORAGE_BACKEND=documentdb
+DOCUMENTDB_HOST=cluster.docdb.amazonaws.com
+DOCUMENTDB_PORT=27017
+DOCUMENTDB_DATABASE=mcp_registry
+DOCUMENTDB_NAMESPACE=production
+DOCUMENTDB_USERNAME=admin
+DOCUMENTDB_PASSWORD=<secure-password>
+DOCUMENTDB_USE_TLS=true
+DOCUMENTDB_TLS_CA_FILE=global-bundle.pem
+DOCUMENTDB_REPLICA_SET=rs0
+```
+
+**DocumentDB Collections Created:**
+Same as MongoDB CE (above), but with native HNSW vector indexes for sub-100ms semantic search.
+
+**First-Time DocumentDB Setup:**
+
+```bash
+# 1. Deploy DocumentDB cluster via Terraform
+cd terraform/aws-ecs
+terraform apply
+
+# 2. Collections and indexes are created automatically on first application startup
+
+# 3. Verify setup (from bastion host or EC2 with access)
+mongosh --host <cluster-endpoint> \
+        --username admin \
+        --password <password> \
+        --tls \
+        --tlsCAFile global-bundle.pem \
+        --eval "use mcp_registry; show collections"
+```
+
+**Important Notes:**
+- MongoDB CE uses application-level vector search (Python cosine similarity)
+- DocumentDB uses native HNSW vector indexes for production performance
+- Both backends use the same repository code (`DocumentDBServerRepository`, etc.)
+- `auth_server/scopes.yml` is no longer the source of truth when using mongodb-ce or documentdb backend
+
+**Switching Between Backends:**
+
+You can switch between backends at any time by changing `STORAGE_BACKEND`:
+
+```bash
+# Switch to file backend
+export STORAGE_BACKEND=file
+docker-compose restart registry
+
+# Switch to MongoDB CE backend
+export STORAGE_BACKEND=mongodb-ce
+docker-compose restart registry
+
+# Switch to DocumentDB backend
+export STORAGE_BACKEND=documentdb
+docker-compose restart registry
+```
+
+**For AWS ECS Deployments:** See [terraform/aws-ecs/README.md](../terraform/aws-ecs/README.md) for automated Terraform deployment with DocumentDB.
+
+**For Detailed Architecture:** See [Storage Architecture: MongoDB CE & AWS DocumentDB](design/storage-architecture-mongodb-documentdb.md) for comprehensive implementation details.
+
 ### Container Registry Configuration (Optional - for CI/CD and local builds)
 
 | Variable | Description | Example | Required |

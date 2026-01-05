@@ -194,6 +194,16 @@ fi
 
 log "Found .env file"
 
+# Load environment variables from .env file early so we can check STORAGE_BACKEND
+source .env
+
+# Check if docker compose is installed
+if ! docker compose version &> /dev/null; then
+    log "ERROR: docker compose is not available"
+    log "Please install Docker Compose v2: https://docs.docker.com/compose/install/"
+    exit 1
+fi
+
 # Stop and remove existing services if they exist
 log "Stopping existing services (if any)..."
 $COMPOSE_CMD $COMPOSE_FILES down --remove-orphans || log "No existing services to stop"
@@ -237,6 +247,17 @@ if [ "$FAISS_EXISTS" = true ]; then
 else
     log "No existing FAISS index files found - will be created on first startup"
 fi
+
+# Clean up any root-owned directories from previous Docker runs
+log "Checking for root-owned directories from previous Docker runs..."
+
+# Check and remove root-owned directories
+for dir in "$MCPGATEWAY_SERVERS_DIR" "${HOME}/mcp-gateway/agents" "${HOME}/mcp-gateway/auth_server" "${HOME}/mcp-gateway/security_scans" "${HOME}/mcp-gateway/federation.json"; do
+    if [ -e "$dir" ] && [ "$(stat -c '%U' "$dir" 2>/dev/null)" = "root" ]; then
+        log "Removing root-owned: $dir"
+        sudo rm -rf "$dir"
+    fi
+done
 
 # Copy JSON files from registry/servers to ${HOME}/mcp-gateway/servers with environment variable substitution
 log "Copying JSON files from registry/servers to $MCPGATEWAY_SERVERS_DIR..."
@@ -335,6 +356,16 @@ if [ -f "auth_server/scopes.yml" ]; then
 else
     log "WARNING: auth_server/scopes.yml not found in codebase"
 fi
+
+# Create empty security_scans directory for Docker mount
+SECURITY_SCANS_DIR="${HOME}/mcp-gateway/security_scans"
+log "Creating empty security_scans directory for Docker mount"
+mkdir -p "$SECURITY_SCANS_DIR"
+
+# Create empty federation.json file for Docker mount
+FEDERATION_JSON_FILE="${HOME}/mcp-gateway/federation.json"
+log "Creating empty federation.json for Docker mount"
+touch "$FEDERATION_JSON_FILE"
 
 # Setup SSL certificate directory structure
 SSL_DIR="${HOME}/mcp-gateway/ssl"

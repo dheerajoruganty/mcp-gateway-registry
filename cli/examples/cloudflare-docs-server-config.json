@@ -3,5 +3,6 @@
   "description": "Search Cloudflare documentation and get migration guides",
   "path": "/cloudflare-docs",
   "proxy_pass_url": "https://docs.mcp.cloudflare.com/mcp",
-  "supported_transports": ["streamable-http"]
+  "supported_transports": ["streamable-http"],
+  "tags": ["documentation", "cloudflare", "cdn", "workers", "pages", "migration-guide"]
 }

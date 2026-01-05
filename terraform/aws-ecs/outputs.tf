@@ -91,7 +91,7 @@ output "deployment_summary" {
   description = "Summary of deployed components"
   value = {
     mcp_gateway_deployed = true
-    https_enabled        = aws_acm_certificate.registry.arn != ""
+    https_enabled        = false
     monitoring_enabled   = var.enable_monitoring
     multi_az_nat         = true
     autoscaling_enabled  = true
@@ -131,16 +131,54 @@ output "registry_url" {
   value       = "https://registry.${local.root_domain}"
 }
 
-output "registry_certificate_arn" {
-  description = "ACM certificate ARN for registry subdomain"
-  value       = aws_acm_certificate.registry.arn
+# Disabled for testing without certificates
+# output "registry_certificate_arn" {
+#   description = "ACM certificate ARN for registry subdomain"
+#   value       = ""
+# }
+
+# output "registry_dns_record" {
+#   description = "Registry DNS A record details"
+#   value = {}
+# }
+
+#
+# DocumentDB Cluster Outputs
+#
+
+output "documentdb_cluster_endpoint" {
+  description = "DocumentDB Cluster endpoint"
+  value       = aws_docdb_cluster.registry.endpoint
 }
 
-output "registry_dns_record" {
-  description = "Registry DNS A record details"
-  value = {
-    name    = aws_route53_record.registry.name
-    type    = aws_route53_record.registry.type
-    zone_id = aws_route53_record.registry.zone_id
-  }
+output "documentdb_cluster_arn" {
+  description = "DocumentDB Cluster ARN"
+  value       = aws_docdb_cluster.registry.arn
 }
+
+output "documentdb_reader_endpoint" {
+  description = "DocumentDB Cluster reader endpoint"
+  value       = aws_docdb_cluster.registry.reader_endpoint
+}
+
+output "documentdb_security_group_id" {
+  description = "DocumentDB security group ID"
+  value       = aws_security_group.documentdb.id
+}
+
+output "documentdb_kms_key_id" {
+  description = "KMS key ID for DocumentDB encryption"
+  value       = aws_kms_key.documentdb.id
+}
+
+output "documentdb_kms_key_arn" {
+  description = "KMS key ARN for DocumentDB encryption"
+  value       = aws_kms_key.documentdb.arn
+}
+
+output "documentdb_secrets_manager_secret_arn" {
+  description = "Secrets Manager secret ARN for DocumentDB credentials"
+  value       = aws_secretsmanager_secret.documentdb_credentials.arn
+  sensitive   = true
+}
+

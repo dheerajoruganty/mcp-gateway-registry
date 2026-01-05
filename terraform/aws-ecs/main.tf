@@ -81,4 +81,13 @@ module "mcp_gateway" {
   # Session cookie security configuration
   session_cookie_secure = var.session_cookie_secure
   session_cookie_domain = var.session_cookie_domain
+
+  # DocumentDB configuration
+  storage_backend                   = var.storage_backend
+  documentdb_endpoint               = var.storage_backend == "documentdb" ? aws_docdb_cluster.registry.endpoint : ""
+  documentdb_database               = var.documentdb_database
+  documentdb_namespace              = var.documentdb_namespace
+  documentdb_use_tls                = var.documentdb_use_tls
+  documentdb_use_iam                = var.documentdb_use_iam
+  documentdb_credentials_secret_arn = var.storage_backend == "documentdb" ? aws_secretsmanager_secret.documentdb_credentials.arn : ""
 }

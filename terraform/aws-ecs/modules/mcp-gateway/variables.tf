@@ -392,3 +392,51 @@ variable "security_add_pending_tag" {
   type        = bool
   default     = true
 }
+
+
+# DocumentDB Configuration
+variable "storage_backend" {
+  description = "Storage backend to use: 'file' or 'documentdb'"
+  type        = string
+  default     = "file"
+  validation {
+    condition     = contains(["file", "documentdb"], var.storage_backend)
+    error_message = "Storage backend must be either 'file' or 'documentdb'."
+  }
+}
+
+variable "documentdb_endpoint" {
+  description = "DocumentDB cluster endpoint (required when storage_backend is 'documentdb')"
+  type        = string
+  default     = ""
+}
+
+variable "documentdb_database" {
+  description = "DocumentDB database name"
+  type        = string
+  default     = "mcp_registry"
+}
+
+variable "documentdb_namespace" {
+  description = "DocumentDB namespace for collections"
+  type        = string
+  default     = "default"
+}
+
+variable "documentdb_use_tls" {
+  description = "Use TLS for DocumentDB connections"
+  type        = bool
+  default     = true
+}
+
+variable "documentdb_use_iam" {
+  description = "Use IAM authentication for DocumentDB"
+  type        = bool
+  default     = false
+}
+
+variable "documentdb_credentials_secret_arn" {
+  description = "ARN of the Secrets Manager secret containing DocumentDB credentials"
+  type        = string
+  default     = ""
+}

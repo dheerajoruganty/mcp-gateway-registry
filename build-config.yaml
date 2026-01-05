@@ -74,6 +74,20 @@ images:
     build_args: {}
 
   # ========================================
+  # Infrastructure Services
+  # ========================================
+
+  # MongoDB Community Edition 8.2
+  mongodb:
+    repo_name: "mongodb"
+    external_image: "mongo:8.2"
+    description: "MongoDB Community Edition 8.2 with replica set support for local development (mirrored from Docker Hub)"
+    tags:
+      - "8.2"
+      - latest
+    build_args: {}
+
+  # ========================================
   # MCP Servers (5)
   # ========================================
 
