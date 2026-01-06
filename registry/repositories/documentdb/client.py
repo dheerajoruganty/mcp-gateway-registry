@@ -79,7 +79,12 @@ async def get_documentdb_client() -> AsyncIOMotorDatabase:
 
     # Create client with TLS options
     # IMPORTANT: DocumentDB does not support retryable writes
-    _client = AsyncIOMotorClient(connection_string, retryWrites=False, **tls_options)
+    # Use directConnection only for single-node MongoDB (tests), not for DocumentDB clusters
+    client_options = {"retryWrites": False}
+    if settings.documentdb_direct_connection:
+        client_options["directConnection"] = True
+
+    _client = AsyncIOMotorClient(connection_string, **client_options, **tls_options)
     _database = _client[settings.documentdb_database]
 
     # Verify connection

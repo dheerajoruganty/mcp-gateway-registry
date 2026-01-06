@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     documentdb_use_iam: bool = False
     documentdb_replica_set: Optional[str] = None
     documentdb_read_preference: str = "secondaryPreferred"
+    documentdb_direct_connection: bool = False  # Set to True only for single-node MongoDB (tests)
 
     # DocumentDB Namespace (for multi-tenancy support)
     documentdb_namespace: str = "default"

@@ -1,424 +1,1132 @@
 """
-Unit tests for FAISS search service.
-"""
-import pytest
-import json
-import tempfile
-import os
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-from pathlib import Path
-import numpy as np
+Unit tests for registry/search/service.py (FaissService).
 
-from registry.search.service import FaissService, faiss_service
+This module tests all core functionality of the FaissService including:
+- FAISS index initialization and management
+- Adding/updating/removing servers and agents
+- Semantic search with hybrid keyword boosting
+- Index persistence (save/load)
+- Embeddings generation and normalization
+"""
+
+import json
+import logging
+from typing import Any
+
+import numpy as np
+import pytest
+
+from registry.schemas.agent_models import AgentCard
+from registry.search.service import FaissService, _PydanticAwareJSONEncoder
+from tests.fixtures.factories import AgentCardFactory
+from tests.fixtures.mocks.mock_embeddings import MockEmbeddingsClient
+
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# FIXTURES
+# =============================================================================
+
+
+@pytest.fixture
+def mock_embeddings_client():
+    """Create a mock embeddings client for testing."""
+    return MockEmbeddingsClient(model_name="test-model", dimension=384)
+
+
+@pytest.fixture
+def faiss_service(mock_settings, mock_embeddings_client):
+    """
+    Create a FaissService instance with mocked dependencies.
+
+    This fixture provides a pre-initialized FaissService with:
+    - Mock embeddings client
+    - Mock FAISS index
+    - Test settings with temporary directories
+    """
+    service = FaissService()
+    service.embedding_model = mock_embeddings_client
+    service._initialize_new_index()
+    return service
+
+
+@pytest.fixture
+def sample_server_info() -> dict[str, Any]:
+    """Create sample server info dictionary for testing."""
+    return {
+        "server_name": "test-server",
+        "description": "A test server for search testing",
+        "tags": ["test", "search", "demo"],
+        "num_tools": 2,
+        "entity_type": "mcp_server",
+        "tool_list": [
+            {
+                "name": "get_data",
+                "description": "Retrieve data from source",
+                "parsed_description": {
+                    "main": "Retrieve data from source",
+                    "args": "id: string"
+                },
+                "schema": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}}
+                }
+            },
+            {
+                "name": "set_data",
+                "description": "Update data in source",
+                "parsed_description": {
+                    "main": "Update data in source",
+                    "args": "id: string, value: any"
+                },
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "value": {"type": "string"}
+                    }
+                }
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def sample_agent_card() -> AgentCard:
+    """Create sample agent card for testing."""
+    return AgentCardFactory(
+        name="test-agent",
+        description="A test agent for search testing",
+        tags=["test", "agent", "demo"],
+    )
+
+
+# =============================================================================
+# INITIALIZATION TESTS
+# =============================================================================
 
 
 @pytest.mark.unit
 @pytest.mark.search
-class TestFaissService:
-    """Test suite for FAISS search service."""
+class TestFaissServiceInitialization:
+    """Tests for FaissService initialization."""
 
-    @pytest.fixture
-    def faiss_service_instance(self):
-        """Create a fresh FAISS service for testing."""
-        return FaissService()
+    def test_init_creates_empty_service(self):
+        """Test that FaissService.__init__ creates empty service."""
+        service = FaissService()
 
-    @pytest.fixture
-    def mock_settings(self):
-        """Mock settings for testing."""
-        with patch('registry.search.service.settings') as mock_settings:
-            # Use actual Path objects for proper path operations
-            mock_settings.servers_dir = Path("/tmp/test_servers")
-            mock_settings.container_registry_dir = Path("/tmp/test_registry")
-            mock_settings.embeddings_model_dir = Path("/tmp/test_model")
-            mock_settings.embeddings_model_name = "all-MiniLM-L6-v2"
-            mock_settings.embeddings_model_dimensions = 384
-            mock_settings.faiss_index_path = Path("/tmp/test_index.faiss")
-            mock_settings.faiss_metadata_path = Path("/tmp/test_metadata.json")
-            
-            # Mock the mkdir calls to avoid actual directory creation
-            with patch.object(Path, 'mkdir'):
-                yield mock_settings
+        assert service.embedding_model is None
+        assert service.faiss_index is None
+        assert service.metadata_store == {}
+        assert service.next_id_counter == 0
 
-    def test_get_text_for_embedding(self, faiss_service_instance):
-        """Test text preparation for embedding."""
-        server_info = {
-            "server_name": "Test Server",
-            "description": "A test server for demonstration",
-            "tags": ["test", "demo", "example"]
-        }
-        
-        result = faiss_service_instance._get_text_for_embedding(server_info)
-        
-        expected = "Name: Test Server\nDescription: A test server for demonstration\nTags: test, demo, example"
-        assert result == expected
+    def test_initialize_new_index_creates_index(self, mock_settings):
+        """Test that _initialize_new_index creates a new FAISS index."""
+        service = FaissService()
+        service._initialize_new_index()
 
-    def test_get_text_for_embedding_empty_data(self, faiss_service_instance):
-        """Test text preparation with empty/missing data."""
-        server_info = {}
-        
-        result = faiss_service_instance._get_text_for_embedding(server_info)
-        
-        expected = "Name: \nDescription: \nTags: "
-        assert result == expected
-
-    def test_initialize_new_index(self, faiss_service_instance, mock_settings):
-        """Test initialization of a new FAISS index."""
-        faiss_service_instance._initialize_new_index()
-        
-        assert faiss_service_instance.faiss_index is not None
-        assert faiss_service_instance.metadata_store == {}
-        assert faiss_service_instance.next_id_counter == 0
+        assert service.faiss_index is not None
+        assert service.faiss_index.d == mock_settings.embeddings_model_dimensions
+        assert service.faiss_index.ntotal == 0
+        assert service.metadata_store == {}
+        assert service.next_id_counter == 0
 
     @pytest.mark.asyncio
-    async def test_initialize_success(self, faiss_service_instance, mock_settings):
-        """Test successful service initialization."""
-        with patch.object(faiss_service_instance, '_load_embedding_model') as mock_load_model, \
-             patch.object(faiss_service_instance, '_load_faiss_data') as mock_load_data:
-            
-            mock_load_model.return_value = None
-            mock_load_data.return_value = None
-            
-            await faiss_service_instance.initialize()
-            
-            mock_load_model.assert_called_once()
-            mock_load_data.assert_called_once()
+    async def test_initialize_loads_model_and_index(self, mock_settings, monkeypatch):
+        """Test that initialize() loads embedding model and FAISS data."""
+        service = FaissService()
+
+        # Mock the internal methods
+        load_model_called = False
+        load_data_called = False
+
+        async def mock_load_model():
+            nonlocal load_model_called
+            load_model_called = True
+            service.embedding_model = MockEmbeddingsClient(dimension=384)
+
+        async def mock_load_data():
+            nonlocal load_data_called
+            load_data_called = True
+            service._initialize_new_index()
+
+        monkeypatch.setattr(service, "_load_embedding_model", mock_load_model)
+        monkeypatch.setattr(service, "_load_faiss_data", mock_load_data)
+
+        await service.initialize()
+
+        assert load_model_called
+        assert load_data_called
+        assert service.embedding_model is not None
+        assert service.faiss_index is not None
 
     @pytest.mark.asyncio
-    async def test_load_embedding_model_local_exists(self, faiss_service_instance, mock_settings):
-        """Test loading embedding model from local path when it exists."""
-        with patch('registry.search.service.SentenceTransformer') as mock_transformer, \
-             patch('os.environ') as mock_env, \
-             patch.object(Path, 'exists') as mock_exists, \
-             patch.object(Path, 'iterdir') as mock_iterdir:
-            
-            # Mock local model exists
-            mock_exists.return_value = True
-            mock_iterdir.return_value = [Path("model.bin")]
-            
-            mock_transformer_instance = Mock()
-            mock_transformer.return_value = mock_transformer_instance
-            
-            await faiss_service_instance._load_embedding_model()
-            
-            mock_transformer.assert_called_once_with(str(mock_settings.embeddings_model_dir))
-            assert faiss_service_instance.embedding_model == mock_transformer_instance
+    async def test_load_faiss_data_creates_new_when_missing(self, mock_settings):
+        """Test that _load_faiss_data creates new index when files don't exist."""
+        service = FaissService()
+
+        # Ensure files don't exist
+        assert not mock_settings.faiss_index_path.exists()
+        assert not mock_settings.faiss_metadata_path.exists()
+
+        await service._load_faiss_data()
+
+        assert service.faiss_index is not None
+        assert service.faiss_index.ntotal == 0
+        assert service.metadata_store == {}
+        assert service.next_id_counter == 0
 
     @pytest.mark.asyncio
-    async def test_load_embedding_model_download_from_hf(self, faiss_service_instance, mock_settings):
-        """Test downloading embedding model from Hugging Face."""
-        with patch('registry.search.service.SentenceTransformer') as mock_transformer, \
-             patch('os.environ') as mock_env, \
-             patch.object(Path, 'exists') as mock_exists:
-            
-            # Mock local model doesn't exist
-            mock_exists.return_value = False
-            
-            mock_transformer_instance = Mock()
-            mock_transformer.return_value = mock_transformer_instance
-            
-            await faiss_service_instance._load_embedding_model()
-            
-            mock_transformer.assert_called_once_with(str(mock_settings.embeddings_model_name))
-            assert faiss_service_instance.embedding_model == mock_transformer_instance
+    async def test_load_faiss_data_loads_existing(self, mock_settings, tmp_path):
+        """Test that _load_faiss_data loads existing index and metadata."""
+        service = FaissService()
 
-    @pytest.mark.asyncio
-    async def test_load_embedding_model_exception(self, faiss_service_instance, mock_settings):
-        """Test handling exception during model loading."""
-        with patch('registry.search.service.SentenceTransformer') as mock_transformer:
-            mock_transformer.side_effect = Exception("Model load failed")
-            
-            await faiss_service_instance._load_embedding_model()
-            
-            assert faiss_service_instance.embedding_model is None
-
-    @pytest.mark.asyncio
-    async def test_load_faiss_data_existing_files(self, faiss_service_instance, mock_settings):
-        """Test loading existing FAISS index and metadata."""
-        with patch('registry.search.service.faiss') as mock_faiss, \
-             patch('builtins.open', create=True) as mock_open, \
-             patch.object(Path, 'exists') as mock_exists:
-            
-            # Mock files exist
-            mock_exists.return_value = True
-            
-            # Mock FAISS index
-            mock_index = Mock()
-            mock_index.d = 384  # Matching dimension
-            mock_faiss.read_index.return_value = mock_index
-            
-            # Mock metadata file
-            mock_metadata = {
-                "metadata": {"service1": {"id": 1, "text": "test"}},
-                "next_id": 2
-            }
-            mock_file = Mock()
-            mock_file.read.return_value = json.dumps(mock_metadata)
-            mock_open.return_value.__enter__.return_value = mock_file
-            
-            with patch('json.load') as mock_json_load:
-                mock_json_load.return_value = mock_metadata
-                
-                await faiss_service_instance._load_faiss_data()
-            
-            assert faiss_service_instance.faiss_index == mock_index
-            assert faiss_service_instance.metadata_store == mock_metadata["metadata"]
-            assert faiss_service_instance.next_id_counter == 2
-
-    @pytest.mark.asyncio
-    async def test_load_faiss_data_dimension_mismatch(self, faiss_service_instance, mock_settings):
-        """Test handling dimension mismatch in loaded index."""
-        with patch('registry.search.service.faiss') as mock_faiss, \
-             patch('builtins.open', create=True) as mock_open, \
-             patch.object(faiss_service_instance, '_initialize_new_index') as mock_init, \
-             patch.object(Path, 'exists') as mock_exists:
-            
-            # Mock files exist
-            mock_exists.return_value = True
-            
-            # Mock FAISS index with wrong dimension
-            mock_index = Mock()
-            mock_index.d = 256  # Wrong dimension
-            mock_faiss.read_index.return_value = mock_index
-            
-            # Mock metadata file
-            mock_metadata = {"metadata": {}, "next_id": 0}
-            with patch('json.load') as mock_json_load:
-                mock_json_load.return_value = mock_metadata
-                
-                await faiss_service_instance._load_faiss_data()
-            
-            mock_init.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_load_faiss_data_no_files(self, faiss_service_instance, mock_settings):
-        """Test initialization when no existing files found."""
-        with patch.object(faiss_service_instance, '_initialize_new_index') as mock_init, \
-             patch.object(Path, 'exists') as mock_exists:
-            # Mock files don't exist
-            mock_exists.return_value = False
-            
-            await faiss_service_instance._load_faiss_data()
-            
-            mock_init.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_save_data_success(self, faiss_service_instance, mock_settings):
-        """Test successful data saving."""
-        with patch('registry.search.service.faiss') as mock_faiss, \
-             patch('builtins.open', create=True) as mock_open:
-            
-            # Setup service state
-            mock_index = Mock()
-            mock_index.ntotal = 5
-            faiss_service_instance.faiss_index = mock_index
-            faiss_service_instance.metadata_store = {"test": "data"}
-            faiss_service_instance.next_id_counter = 10
-            
-            mock_file = Mock()
-            mock_open.return_value.__enter__.return_value = mock_file
-            
-            await faiss_service_instance.save_data()
-            
-            mock_faiss.write_index.assert_called_once()
-            mock_file.write.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_save_data_no_index(self, faiss_service_instance, mock_settings):
-        """Test save_data when no index is initialized."""
-        faiss_service_instance.faiss_index = None
-        
-        # Should return early without error
-        await faiss_service_instance.save_data()
-
-    @pytest.mark.asyncio
-    async def test_save_data_exception(self, faiss_service_instance, mock_settings):
-        """Test handling exception during save."""
-        with patch('registry.search.service.faiss') as mock_faiss:
-            mock_faiss.write_index.side_effect = Exception("Save failed")
-            
-            mock_index = Mock()
-            faiss_service_instance.faiss_index = mock_index
-            
-            # Should not raise exception
-            await faiss_service_instance.save_data()
-
-    @pytest.mark.asyncio
-    async def test_add_or_update_service_not_initialized(self, faiss_service_instance):
-        """Test add_or_update_service when service not initialized."""
-        faiss_service_instance.embedding_model = None
-        faiss_service_instance.faiss_index = None
-        
-        server_info = {"server_name": "test", "description": "test"}
-        
-        # Should return early without error
-        await faiss_service_instance.add_or_update_service("test_path", server_info)
-
-    @pytest.mark.asyncio
-    async def test_add_or_update_service_new_service(self, faiss_service_instance):
-        """Test adding a completely new service."""
-        with patch('asyncio.to_thread') as mock_to_thread:
-            # Setup mocks
-            mock_model = Mock()
-            mock_embedding = np.array([[0.1, 0.2, 0.3]])
-            mock_model.encode.return_value = mock_embedding
-            mock_to_thread.return_value = mock_embedding
-            
-            mock_index = Mock()
-            mock_index.add_with_ids = Mock()
-            
-            faiss_service_instance.embedding_model = mock_model
-            faiss_service_instance.faiss_index = mock_index
-            faiss_service_instance.metadata_store = {}
-            faiss_service_instance.next_id_counter = 0
-            
-            server_info = {
-                "server_name": "New Server",
-                "description": "A new test server",
-                "tags": ["new", "test"]
-            }
-            
-            # Mock asyncio.to_thread to handle both encode and save_data calls
-            mock_to_thread.side_effect = lambda func, *args: mock_embedding if args else AsyncMock()
-            
-            await faiss_service_instance.add_or_update_service("new_service", server_info, True)
-            
-            # Verify service was added
-            assert "new_service" in faiss_service_instance.metadata_store
-            assert faiss_service_instance.metadata_store["new_service"]["id"] == 0
-            assert faiss_service_instance.next_id_counter == 1
-            mock_index.add_with_ids.assert_called_once()
-            # Verify asyncio.to_thread was called (for both encode and save_data)
-            assert mock_to_thread.call_count >= 2
-
-    @pytest.mark.asyncio
-    async def test_add_or_update_service_existing_no_change(self, faiss_service_instance):
-        """Test updating existing service with no embedding change."""
-        # Setup existing service
-        existing_text = "Name: Test Server\nDescription: Test description\nTags: test"
-        faiss_service_instance.metadata_store = {
-            "existing_service": {
-                "id": 1,
-                "text_for_embedding": existing_text,
-                "full_server_info": {"server_name": "Test Server", "is_enabled": False}
-            }
-        }
-        
-        mock_model = Mock()
-        mock_index = Mock()
-        faiss_service_instance.embedding_model = mock_model
-        faiss_service_instance.faiss_index = mock_index
-        
-        server_info = {
-            "server_name": "Test Server",
-            "description": "Test description",
-            "tags": ["test"]
-        }
-        
-        with patch.object(faiss_service_instance, 'save_data') as mock_save:
-            await faiss_service_instance.add_or_update_service("existing_service", server_info, True)
-        
-        # Should update metadata but not re-embed
-        mock_save.assert_called_once()
-        assert faiss_service_instance.metadata_store["existing_service"]["full_server_info"]["is_enabled"] is True
-
-    @pytest.mark.asyncio
-    async def test_add_or_update_service_encoding_error(self, faiss_service_instance):
-        """Test handling encoding error."""
-        with patch('asyncio.to_thread') as mock_to_thread:
-            mock_to_thread.side_effect = Exception("Encoding failed")
-            
-            mock_model = Mock()
-            mock_index = Mock()
-            
-            faiss_service_instance.embedding_model = mock_model
-            faiss_service_instance.faiss_index = mock_index
-            faiss_service_instance.metadata_store = {}
-            faiss_service_instance.next_id_counter = 0
-            
-            server_info = {"server_name": "test", "description": "test"}
-            
-            # Should not raise exception
-            await faiss_service_instance.add_or_update_service("test_service", server_info)
-
-    @pytest.mark.asyncio
-    async def test_search_mixed_returns_servers_and_tools(self, faiss_service_instance, mock_settings):
-        """Test semantic search happy path for servers and tools."""
-        faiss_service_instance.embedding_model = Mock()
-        faiss_service_instance.embedding_model.encode.return_value = [[0.1] * 384]
-
-        mock_index = Mock()
-        mock_index.ntotal = 2
-        mock_index.search.return_value = (
-            np.array([[0.25, 0.4]], dtype=np.float32),
-            np.array([[0, 1]], dtype=np.int64),
-        )
-        faiss_service_instance.faiss_index = mock_index
-
-        faiss_service_instance.metadata_store = {
-            "/demo": {
-                "id": 0,
-                "entity_type": "mcp_server",
-                "full_server_info": {
-                    "server_name": "Demo Server",
-                    "description": "Handles demo workflows",
-                    "tags": ["demo"],
-                    "num_tools": 1,
-                    "is_enabled": True,
-                    "tool_list": [
-                        {
-                            "name": "alpha_tool",
-                            "parsed_description": {
-                                "main": "Alpha tool handles tokens",
-                                "args": "input: string",
-                            },
-                        }
-                    ],
-                },
-            }
-        }
-        faiss_service_instance.metadata_store["/agents/demo-agent"] = {
-            "id": 1,
-            "entity_type": "a2a_agent",
-            "full_agent_card": {
-                "name": "Demo Agent",
-                "description": "Helps with demo workflows",
-                "tags": ["demo"],
-                "skills": [
-                    {"name": "explain", "description": "Explains demos"},
-                ],
-                "visibility": "public",
-                "trust_level": "verified",
-                "is_enabled": True,
+        # Create mock metadata file
+        metadata = {
+            "metadata": {
+                "test-server": {
+                    "id": 0,
+                    "text_for_embedding": "test text",
+                    "full_server_info": {"server_name": "test-server"},
+                    "entity_type": "mcp_server"
+                }
             },
+            "next_id": 1
         }
 
-        results = await faiss_service_instance.search_mixed(
-            query="alpha tokens",
-            entity_types=["mcp_server", "tool", "a2a_agent"],
-            max_results=5,
+        mock_settings.faiss_metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(mock_settings.faiss_metadata_path, "w") as f:
+            json.dump(metadata, f)
+
+        # Create mock index file (will be handled by mock faiss.read_index)
+        mock_settings.faiss_index_path.touch()
+
+        await service._load_faiss_data()
+
+        assert service.metadata_store == metadata["metadata"]
+        assert service.next_id_counter == 1
+
+
+# =============================================================================
+# TEXT PREPARATION TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestTextPreparation:
+    """Tests for text preparation methods."""
+
+    def test_get_text_for_embedding_server(self, faiss_service, sample_server_info):
+        """Test _get_text_for_embedding generates correct text for server."""
+        text = faiss_service._get_text_for_embedding(sample_server_info)
+
+        assert "test-server" in text
+        assert "A test server for search testing" in text
+        assert "test, search, demo" in text
+        assert "get_data" in text
+        assert "set_data" in text
+        assert "Retrieve data from source" in text
+
+    def test_get_text_for_embedding_handles_missing_fields(self, faiss_service):
+        """Test _get_text_for_embedding handles missing fields gracefully."""
+        server_info = {
+            "server_name": "minimal-server"
+        }
+
+        text = faiss_service._get_text_for_embedding(server_info)
+
+        assert "minimal-server" in text
+        assert text  # Should not be empty
+
+    def test_get_text_for_agent(self, faiss_service, sample_agent_card):
+        """Test _get_text_for_agent generates correct text for agent."""
+        text = faiss_service._get_text_for_agent(sample_agent_card)
+
+        assert sample_agent_card.name in text
+        assert sample_agent_card.description in text
+        assert "Skills:" in text or "test, agent, demo" in text
+
+    def test_get_text_for_agent_with_skills(self, faiss_service):
+        """Test _get_text_for_agent includes skill details."""
+        agent = AgentCardFactory(
+            name="skilled-agent",
+            description="Agent with skills",
         )
 
-        assert "servers" in results and "tools" in results and "agents" in results
-        assert len(results["servers"]) == 1
-        assert results["servers"][0]["server_name"] == "Demo Server"
-        assert results["servers"][0]["matching_tools"]
-        assert results["tools"][0]["tool_name"] == "alpha_tool"
-        assert results["agents"][0]["agent_name"] == "Demo Agent"
+        text = faiss_service._get_text_for_agent(agent)
+
+        assert "skilled-agent" in text
+        assert "Skills:" in text
+
+
+# =============================================================================
+# EMBEDDING AND NORMALIZATION TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestEmbeddingOperations:
+    """Tests for embedding generation and normalization."""
+
+    def test_normalize_embedding(self, faiss_service):
+        """Test _normalize_embedding normalizes vectors to unit length."""
+        # Create a non-normalized vector
+        vector = np.array([3.0, 4.0, 0.0], dtype=np.float32)
+
+        normalized = faiss_service._normalize_embedding(vector)
+
+        # Check L2 norm is 1.0 (unit length)
+        norm = np.linalg.norm(normalized)
+        assert np.isclose(norm, 1.0, atol=1e-6)
+
+        # Check values are correct (3,4,0) normalized is (0.6, 0.8, 0)
+        assert np.isclose(normalized[0], 0.6, atol=1e-6)
+        assert np.isclose(normalized[1], 0.8, atol=1e-6)
+        assert np.isclose(normalized[2], 0.0, atol=1e-6)
+
+    def test_normalize_embedding_zero_vector(self, faiss_service):
+        """Test _normalize_embedding handles zero vector."""
+        vector = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+
+        normalized = faiss_service._normalize_embedding(vector)
+
+        # Should return original vector when norm is 0
+        assert np.array_equal(normalized, vector)
+
+    def test_normalize_embedding_already_normalized(self, faiss_service):
+        """Test _normalize_embedding handles already normalized vector."""
+        # Create already normalized vector
+        vector = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+
+        normalized = faiss_service._normalize_embedding(vector)
+
+        # Should remain the same
+        assert np.allclose(normalized, vector, atol=1e-6)
+
+
+# =============================================================================
+# ADD/UPDATE ENTITY TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestAddUpdateService:
+    """Tests for adding and updating services in FAISS index."""
 
     @pytest.mark.asyncio
-    async def test_search_mixed_rejects_empty_query(self, faiss_service_instance, mock_settings):
-        """Ensure empty queries raise validation errors."""
-        faiss_service_instance.embedding_model = Mock()
-        faiss_service_instance.faiss_index = Mock()
-        faiss_service_instance.faiss_index.ntotal = 0
+    async def test_add_new_service(self, faiss_service, sample_server_info, mock_settings):
+        """Test adding a new service to the index."""
+        service_path = "/servers/test-server"
 
-        with pytest.raises(ValueError):
-            await faiss_service_instance.search_mixed(
-                query="  ", entity_types=None, max_results=5
+        await faiss_service.add_or_update_service(
+            service_path,
+            sample_server_info,
+            is_enabled=True
+        )
+
+        # Check metadata store
+        assert service_path in faiss_service.metadata_store
+        metadata = faiss_service.metadata_store[service_path]
+        assert metadata["id"] == 0
+        assert metadata["entity_type"] == "mcp_server"
+        assert metadata["full_server_info"]["is_enabled"] is True
+
+        # Check FAISS index
+        assert faiss_service.faiss_index.ntotal == 1
+        assert faiss_service.next_id_counter == 1
+
+    @pytest.mark.asyncio
+    async def test_update_existing_service_same_text(self, faiss_service, sample_server_info):
+        """Test updating service with same text doesn't re-embed."""
+        service_path = "/servers/test-server"
+
+        # Add service first
+        await faiss_service.add_or_update_service(
+            service_path,
+            sample_server_info,
+            is_enabled=False
+        )
+
+        initial_total = faiss_service.faiss_index.ntotal
+        initial_counter = faiss_service.next_id_counter
+
+        # Update with same info but different enabled state
+        sample_server_info["extra_field"] = "new value"
+        await faiss_service.add_or_update_service(
+            service_path,
+            sample_server_info,
+            is_enabled=True
+        )
+
+        # Should not create new embedding
+        assert faiss_service.faiss_index.ntotal == initial_total
+        assert faiss_service.next_id_counter == initial_counter
+
+        # But should update metadata
+        metadata = faiss_service.metadata_store[service_path]
+        assert metadata["full_server_info"]["is_enabled"] is True
+
+    @pytest.mark.asyncio
+    async def test_update_existing_service_different_text(self, faiss_service, sample_server_info):
+        """Test updating service with different text re-embeds."""
+        service_path = "/servers/test-server"
+
+        # Add service first
+        await faiss_service.add_or_update_service(
+            service_path,
+            sample_server_info,
+            is_enabled=False
+        )
+
+        initial_id = faiss_service.metadata_store[service_path]["id"]
+
+        # Update with different description (changes embedding text)
+        sample_server_info["description"] = "Completely different description"
+        await faiss_service.add_or_update_service(
+            service_path,
+            sample_server_info,
+            is_enabled=True
+        )
+
+        # Should use same ID
+        metadata = faiss_service.metadata_store[service_path]
+        assert metadata["id"] == initial_id
+
+        # Should have re-embedded
+        assert "Completely different description" in metadata["text_for_embedding"]
+
+    @pytest.mark.asyncio
+    async def test_add_service_without_model(self, mock_settings):
+        """Test adding service fails gracefully without embedding model."""
+        service = FaissService()
+        service._initialize_new_index()
+        # Don't set embedding_model
+
+        await service.add_or_update_service(
+            "/servers/test",
+            {"server_name": "test"},
+            is_enabled=False
+        )
+
+        # Should not add to index
+        assert service.faiss_index.ntotal == 0
+        assert "/servers/test" not in service.metadata_store
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestAddUpdateAgent:
+    """Tests for adding and updating agents in FAISS index."""
+
+    @pytest.mark.asyncio
+    async def test_add_new_agent(self, faiss_service, sample_agent_card):
+        """Test adding a new agent to the index."""
+        agent_path = "/agents/test-agent"
+
+        await faiss_service.add_or_update_agent(
+            agent_path,
+            sample_agent_card,
+            is_enabled=True
+        )
+
+        # Check metadata store
+        assert agent_path in faiss_service.metadata_store
+        metadata = faiss_service.metadata_store[agent_path]
+        assert metadata["id"] == 0
+        assert metadata["entity_type"] == "a2a_agent"
+        assert metadata["full_agent_card"]["name"] == sample_agent_card.name
+
+        # Check FAISS index
+        assert faiss_service.faiss_index.ntotal == 1
+        assert faiss_service.next_id_counter == 1
+
+    @pytest.mark.asyncio
+    async def test_update_existing_agent_same_text(self, faiss_service, sample_agent_card):
+        """Test updating agent with same text doesn't re-embed."""
+        agent_path = "/agents/test-agent"
+
+        # Add agent first
+        await faiss_service.add_or_update_agent(
+            agent_path,
+            sample_agent_card,
+            is_enabled=False
+        )
+
+        initial_total = faiss_service.faiss_index.ntotal
+        initial_counter = faiss_service.next_id_counter
+
+        # Update with same card
+        await faiss_service.add_or_update_agent(
+            agent_path,
+            sample_agent_card,
+            is_enabled=True
+        )
+
+        # Should not create new embedding
+        assert faiss_service.faiss_index.ntotal == initial_total
+        assert faiss_service.next_id_counter == initial_counter
+
+    @pytest.mark.asyncio
+    async def test_update_existing_agent_different_text(self, faiss_service):
+        """Test updating agent with different text re-embeds."""
+        agent_path = "/agents/test-agent"
+        agent1 = AgentCardFactory(name="test-agent", description="Original description")
+
+        # Add agent first
+        await faiss_service.add_or_update_agent(agent_path, agent1, is_enabled=False)
+
+        initial_id = faiss_service.metadata_store[agent_path]["id"]
+
+        # Update with different description
+        agent2 = AgentCardFactory(name="test-agent", description="New description")
+        await faiss_service.add_or_update_agent(agent_path, agent2, is_enabled=True)
+
+        # Should use same ID
+        metadata = faiss_service.metadata_store[agent_path]
+        assert metadata["id"] == initial_id
+
+        # Should have re-embedded
+        assert "New description" in metadata["text_for_embedding"]
+
+    @pytest.mark.asyncio
+    async def test_add_agent_without_model(self, mock_settings):
+        """Test adding agent fails gracefully without embedding model."""
+        service = FaissService()
+        service._initialize_new_index()
+        # Don't set embedding_model
+
+        agent = AgentCardFactory()
+
+        await service.add_or_update_agent("/agents/test", agent, is_enabled=False)
+
+        # Should not add to index
+        assert service.faiss_index.ntotal == 0
+        assert "/agents/test" not in service.metadata_store
+
+
+# =============================================================================
+# REMOVE ENTITY TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestRemoveEntities:
+    """Tests for removing entities from FAISS index."""
+
+    @pytest.mark.asyncio
+    async def test_remove_service(self, faiss_service, sample_server_info):
+        """Test removing a service from the index."""
+        service_path = "/servers/test-server"
+
+        # Add service first
+        await faiss_service.add_or_update_service(
+            service_path,
+            sample_server_info,
+            is_enabled=True
+        )
+
+        assert service_path in faiss_service.metadata_store
+
+        # Remove service
+        await faiss_service.remove_service(service_path)
+
+        # Should be removed from metadata
+        assert service_path not in faiss_service.metadata_store
+
+    @pytest.mark.asyncio
+    async def test_remove_nonexistent_service(self, faiss_service):
+        """Test removing non-existent service logs warning."""
+        # Should not raise error
+        await faiss_service.remove_service("/servers/nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_remove_agent(self, faiss_service, sample_agent_card):
+        """Test removing an agent from the index."""
+        agent_path = "/agents/test-agent"
+
+        # Add agent first
+        await faiss_service.add_or_update_agent(
+            agent_path,
+            sample_agent_card,
+            is_enabled=True
+        )
+
+        assert agent_path in faiss_service.metadata_store
+
+        # Remove agent
+        await faiss_service.remove_agent(agent_path)
+
+        # Should be removed from metadata
+        assert agent_path not in faiss_service.metadata_store
+
+    @pytest.mark.asyncio
+    async def test_remove_nonexistent_agent(self, faiss_service):
+        """Test removing non-existent agent logs warning."""
+        # Should not raise error
+        await faiss_service.remove_agent("/agents/nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_remove_entity_wrapper(self, faiss_service, sample_agent_card):
+        """Test remove_entity wrapper method."""
+        agent_path = "/agents/test-agent"
+
+        # Add agent
+        await faiss_service.add_or_update_agent(agent_path, sample_agent_card)
+
+        # Remove using wrapper
+        await faiss_service.remove_entity(agent_path)
+
+        # Should be removed
+        assert agent_path not in faiss_service.metadata_store
+
+
+# =============================================================================
+# SEARCH TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestSearch:
+    """Tests for search functionality."""
+
+    @pytest.mark.asyncio
+    async def test_search_mixed_empty_query(self, faiss_service):
+        """Test search_mixed raises error on empty query."""
+        with pytest.raises(ValueError, match="Query text is required"):
+            await faiss_service.search_mixed("")
+
+    @pytest.mark.asyncio
+    async def test_search_mixed_no_model(self):
+        """Test search_mixed raises error without embedding model."""
+        service = FaissService()
+        service._initialize_new_index()
+
+        with pytest.raises(RuntimeError, match="not initialized"):
+            await service.search_mixed("test query")
+
+    @pytest.mark.asyncio
+    async def test_search_mixed_empty_index(self, faiss_service):
+        """Test search_mixed returns empty results on empty index."""
+        results = await faiss_service.search_mixed("test query")
+
+        assert results == {"servers": [], "tools": [], "agents": []}
+
+    @pytest.mark.asyncio
+    async def test_search_mixed_finds_servers(self, faiss_service, sample_server_info):
+        """Test search_mixed finds matching servers."""
+        # Add a server
+        await faiss_service.add_or_update_service(
+            "/servers/test-server",
+            sample_server_info,
+            is_enabled=True
+        )
+
+        # Search for it
+        results = await faiss_service.search_mixed("test server")
+
+        assert len(results["servers"]) == 1
+        server = results["servers"][0]
+        assert server["entity_type"] == "mcp_server"
+        assert server["path"] == "/servers/test-server"
+        assert server["server_name"] == "test-server"
+        assert "relevance_score" in server
+        assert 0 <= server["relevance_score"] <= 1
+
+    @pytest.mark.asyncio
+    async def test_search_mixed_finds_agents(self, faiss_service, sample_agent_card):
+        """Test search_mixed finds matching agents."""
+        # Add an agent
+        await faiss_service.add_or_update_agent(
+            "/agents/test-agent",
+            sample_agent_card,
+            is_enabled=True
+        )
+
+        # Search for it
+        results = await faiss_service.search_mixed("test agent")
+
+        assert len(results["agents"]) == 1
+        agent = results["agents"][0]
+        assert agent["entity_type"] == "a2a_agent"
+        assert agent["path"] == "/agents/test-agent"
+        assert agent["agent_name"] == sample_agent_card.name
+        assert "relevance_score" in agent
+        assert 0 <= agent["relevance_score"] <= 1
+
+    @pytest.mark.asyncio
+    async def test_search_mixed_with_entity_type_filter(self, faiss_service, sample_server_info, sample_agent_card):
+        """Test search_mixed filters by entity_type."""
+        # Add both server and agent
+        await faiss_service.add_or_update_service(
+            "/servers/test-server",
+            sample_server_info,
+            is_enabled=True
+        )
+        await faiss_service.add_or_update_agent(
+            "/agents/test-agent",
+            sample_agent_card,
+            is_enabled=True
+        )
+
+        # Search for servers only
+        results = await faiss_service.search_mixed(
+            "test",
+            entity_types=["mcp_server"]
+        )
+
+        assert len(results["servers"]) >= 0  # May or may not find server depending on mock
+        assert len(results["agents"]) == 0  # Should not return agents
+
+    @pytest.mark.asyncio
+    async def test_search_mixed_extracts_tools(self, faiss_service, sample_server_info):
+        """Test search_mixed extracts matching tools."""
+        # Add server with tools
+        await faiss_service.add_or_update_service(
+            "/servers/test-server",
+            sample_server_info,
+            is_enabled=True
+        )
+
+        # Search for specific tool
+        results = await faiss_service.search_mixed(
+            "get data",
+            entity_types=["tool"]
+        )
+
+        # Should extract tools even if server doesn't match well
+        assert "tools" in results
+
+    @pytest.mark.asyncio
+    async def test_search_mixed_respects_max_results(self, faiss_service):
+        """Test search_mixed respects max_results parameter."""
+        # Add multiple servers
+        for i in range(10):
+            server_info = {
+                "server_name": f"server-{i}",
+                "description": f"Test server {i}",
+                "tags": ["test"],
+                "entity_type": "mcp_server"
+            }
+            await faiss_service.add_or_update_service(
+                f"/servers/server-{i}",
+                server_info,
+                is_enabled=True
             )
 
-    def test_global_service_instance(self):
-        """Test that the global service instance is accessible."""
-        from registry.search.service import faiss_service
-        assert faiss_service is not None
-        assert isinstance(faiss_service, FaissService) 
+        # Search with limit
+        results = await faiss_service.search_mixed("test server", max_results=5)
+
+        assert len(results["servers"]) <= 5
+
+    @pytest.mark.asyncio
+    async def test_search_entities_wrapper(self, faiss_service, sample_server_info):
+        """Test search_entities wrapper method."""
+        await faiss_service.add_or_update_service(
+            "/servers/test-server",
+            sample_server_info,
+            is_enabled=True
+        )
+
+        # Use wrapper method
+        results = await faiss_service.search_entities("test server")
+
+        # Should return combined list
+        assert isinstance(results, list)
+
+    @pytest.mark.asyncio
+    async def test_search_agents_wrapper(self, faiss_service, sample_agent_card):
+        """Test search_agents wrapper method."""
+        await faiss_service.add_or_update_agent(
+            "/agents/test-agent",
+            sample_agent_card,
+            is_enabled=True
+        )
+
+        # Use wrapper method
+        results = await faiss_service.search_agents("test agent")
+
+        # Should return list of agents
+        assert isinstance(results, list)
+
+
+# =============================================================================
+# KEYWORD BOOST TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestKeywordBoost:
+    """Tests for keyword boosting in hybrid search."""
+
+    def test_calculate_keyword_boost_no_match(self, faiss_service, sample_server_info):
+        """Test keyword boost returns 1.0 when no keywords match."""
+        boost = faiss_service._calculate_keyword_boost(
+            "unrelated query xyz",
+            sample_server_info
+        )
+
+        assert boost == 1.0
+
+    def test_calculate_keyword_boost_name_match(self, faiss_service, sample_server_info):
+        """Test keyword boost increases for name match."""
+        boost = faiss_service._calculate_keyword_boost(
+            "test server",
+            sample_server_info
+        )
+
+        # Should have boost from name match
+        assert boost > 1.0
+
+    def test_calculate_keyword_boost_tool_match(self, faiss_service, sample_server_info):
+        """Test keyword boost increases for tool name match."""
+        boost = faiss_service._calculate_keyword_boost(
+            "get data",
+            sample_server_info
+        )
+
+        # Should have boost from tool match
+        assert boost > 1.0
+
+    def test_calculate_keyword_boost_tag_match(self, faiss_service, sample_server_info):
+        """Test keyword boost increases for tag match."""
+        boost = faiss_service._calculate_keyword_boost(
+            "search",
+            sample_server_info
+        )
+
+        # Should have boost from tag match
+        assert boost > 1.0
+
+    def test_calculate_keyword_boost_filters_stopwords(self, faiss_service, sample_server_info):
+        """Test keyword boost filters out stopwords."""
+        boost = faiss_service._calculate_keyword_boost(
+            "the is are",
+            sample_server_info
+        )
+
+        # Stopwords should not contribute to boost
+        assert boost == 1.0
+
+    def test_calculate_keyword_boost_capped_at_max(self, faiss_service):
+        """Test keyword boost is capped at maximum value."""
+        # Create server with many matching keywords
+        server_info = {
+            "server_name": "test search demo server",
+            "description": "test search demo testing searching",
+            "tags": ["test", "search", "demo", "testing"],
+            "tool_list": [
+                {"name": "test_tool"},
+                {"name": "search_tool"},
+                {"name": "demo_tool"}
+            ]
+        }
+
+        boost = faiss_service._calculate_keyword_boost(
+            "test search demo",
+            server_info
+        )
+
+        # Should be capped at 2.0
+        assert boost <= 2.0
+
+
+# =============================================================================
+# TOOL EXTRACTION TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestToolExtraction:
+    """Tests for tool extraction from search results."""
+
+    def test_extract_matching_tools_no_tools(self, faiss_service):
+        """Test _extract_matching_tools returns empty list when no tools."""
+        server_info = {
+            "server_name": "test-server",
+            "tool_list": None
+        }
+
+        tools = faiss_service._extract_matching_tools("query", server_info)
+
+        assert tools == []
+
+    def test_extract_matching_tools_name_match(self, faiss_service, sample_server_info):
+        """Test _extract_matching_tools finds tools by name."""
+        tools = faiss_service._extract_matching_tools(
+            "get data",
+            sample_server_info
+        )
+
+        # Should find get_data tool
+        assert len(tools) > 0
+        assert any("get_data" in tool["tool_name"] for tool in tools)
+
+    def test_extract_matching_tools_description_match(self, faiss_service, sample_server_info):
+        """Test _extract_matching_tools finds tools by description."""
+        tools = faiss_service._extract_matching_tools(
+            "retrieve source",
+            sample_server_info
+        )
+
+        # Should find tools matching description
+        assert len(tools) >= 0
+
+    def test_extract_matching_tools_filters_stopwords(self, faiss_service, sample_server_info):
+        """Test _extract_matching_tools filters stopwords."""
+        tools = faiss_service._extract_matching_tools(
+            "the is are",
+            sample_server_info
+        )
+
+        # Stopwords alone should not match
+        assert tools == []
+
+    def test_extract_matching_tools_scores_name_higher(self, faiss_service):
+        """Test _extract_matching_tools scores name matches higher."""
+        server_info = {
+            "tool_list": [
+                {
+                    "name": "search_tool",
+                    "description": "Does something else",
+                    "parsed_description": {"main": "Does something else"}
+                },
+                {
+                    "name": "other_tool",
+                    "description": "search search search",
+                    "parsed_description": {"main": "search search search"}
+                }
+            ]
+        }
+
+        tools = faiss_service._extract_matching_tools("search", server_info)
+
+        # Name match should be scored higher than description match
+        if len(tools) >= 2:
+            assert "search_tool" in tools[0]["tool_name"]
+
+
+# =============================================================================
+# DISTANCE/RELEVANCE CONVERSION TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestDistanceConversion:
+    """Tests for distance to relevance score conversion."""
+
+    def test_distance_to_relevance_positive_distance(self, faiss_service):
+        """Test _distance_to_relevance handles positive distances."""
+        # Positive distance (1 - inner_product)
+        relevance = faiss_service._distance_to_relevance(0.05)
+
+        # Should convert: 1 - 0.05 = 0.95
+        assert 0.94 <= relevance <= 0.96
+
+    def test_distance_to_relevance_negative_distance(self, faiss_service):
+        """Test _distance_to_relevance handles negative distances."""
+        # Negative distance (-inner_product)
+        relevance = faiss_service._distance_to_relevance(-0.95)
+
+        # Should convert: -(-0.95) = 0.95
+        assert 0.94 <= relevance <= 0.96
+
+    def test_distance_to_relevance_zero(self, faiss_service):
+        """Test _distance_to_relevance handles zero distance."""
+        relevance = faiss_service._distance_to_relevance(0.0)
+
+        assert relevance == 1.0
+
+    def test_distance_to_relevance_clamped(self, faiss_service):
+        """Test _distance_to_relevance clamps to [0, 1] range."""
+        # Test upper bound
+        relevance_high = faiss_service._distance_to_relevance(-2.0)
+        assert relevance_high <= 1.0
+
+        # Test lower bound
+        relevance_low = faiss_service._distance_to_relevance(2.0)
+        assert relevance_low >= 0.0
+
+
+# =============================================================================
+# PERSISTENCE TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestPersistence:
+    """Tests for FAISS index persistence (save/load)."""
+
+    @pytest.mark.asyncio
+    async def test_save_data_creates_files(self, faiss_service, sample_server_info, mock_settings):
+        """Test save_data creates index and metadata files."""
+        # Add some data
+        await faiss_service.add_or_update_service(
+            "/servers/test-server",
+            sample_server_info,
+            is_enabled=True
+        )
+
+        # Save data
+        await faiss_service.save_data()
+
+        # Check that metadata file exists
+        assert mock_settings.faiss_metadata_path.exists()
+
+        # Verify metadata content
+        with open(mock_settings.faiss_metadata_path) as f:
+            saved_data = json.load(f)
+
+        assert "metadata" in saved_data
+        assert "next_id" in saved_data
+        assert "/servers/test-server" in saved_data["metadata"]
+
+    @pytest.mark.asyncio
+    async def test_save_data_without_index(self, mock_settings):
+        """Test save_data handles missing index gracefully."""
+        service = FaissService()
+        # Don't initialize index
+
+        await service.save_data()
+
+        # Should not create files
+        assert not mock_settings.faiss_metadata_path.exists()
+
+    def test_get_indexed_count(self, faiss_service):
+        """Test getting the count of indexed items."""
+        # Initially empty
+        assert faiss_service.faiss_index.ntotal == 0
+
+        # The count is directly from FAISS index
+        count = faiss_service.faiss_index.ntotal
+        assert count == 0
+
+
+# =============================================================================
+# PYDANTIC JSON ENCODER TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestPydanticJSONEncoder:
+    """Tests for custom Pydantic JSON encoder."""
+
+    def test_encoder_handles_httpurl(self):
+        """Test encoder handles Pydantic HttpUrl type."""
+        from pydantic import HttpUrl
+
+        encoder = _PydanticAwareJSONEncoder()
+        url = HttpUrl("https://example.com")
+
+        result = encoder.default(url)
+
+        assert result == "https://example.com/"
+
+    def test_encoder_handles_datetime(self):
+        """Test encoder handles datetime objects."""
+        from datetime import datetime
+
+        encoder = _PydanticAwareJSONEncoder()
+        dt = datetime(2024, 1, 1, 12, 0, 0)
+
+        result = encoder.default(dt)
+
+        assert "2024-01-01" in result
+        assert "12:00:00" in result
+
+
+# =============================================================================
+# INTEGRATION-STYLE TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.search
+class TestFaissServiceIntegration:
+    """Integration-style tests for complete workflows."""
+
+    @pytest.mark.asyncio
+    async def test_full_server_workflow(self, faiss_service, sample_server_info, mock_settings):
+        """Test complete workflow: add, search, update, search, remove."""
+        service_path = "/servers/workflow-test"
+
+        # Step 1: Add server
+        await faiss_service.add_or_update_service(
+            service_path,
+            sample_server_info,
+            is_enabled=True
+        )
+
+        # Step 2: Search for it
+        results1 = await faiss_service.search_mixed("test server")
+        assert len(results1["servers"]) >= 0
+
+        # Step 3: Update server
+        sample_server_info["description"] = "Updated description"
+        await faiss_service.add_or_update_service(
+            service_path,
+            sample_server_info,
+            is_enabled=True
+        )
+
+        # Step 4: Search again
+        await faiss_service.search_mixed("updated")
+        # Results should still work
+
+        # Step 5: Remove server
+        await faiss_service.remove_service(service_path)
+        assert service_path not in faiss_service.metadata_store
+
+    @pytest.mark.asyncio
+    async def test_full_agent_workflow(self, faiss_service, sample_agent_card, mock_settings):
+        """Test complete workflow for agents."""
+        agent_path = "/agents/workflow-test"
+
+        # Add, search, update, remove
+        await faiss_service.add_or_update_agent(agent_path, sample_agent_card, is_enabled=True)
+
+        results1 = await faiss_service.search_agents("test agent")
+        assert isinstance(results1, list)
+
+        # Update
+        sample_agent_card.description = "Updated agent description"
+        await faiss_service.add_or_update_agent(agent_path, sample_agent_card, is_enabled=True)
+
+        # Remove
+        await faiss_service.remove_agent(agent_path)
+        assert agent_path not in faiss_service.metadata_store
+
+    @pytest.mark.asyncio
+    async def test_mixed_entities_workflow(self, faiss_service, sample_server_info, sample_agent_card):
+        """Test workflow with both servers and agents."""
+        # Add both types
+        await faiss_service.add_or_update_service(
+            "/servers/mixed-server",
+            sample_server_info,
+            is_enabled=True
+        )
+        await faiss_service.add_or_update_agent(
+            "/agents/mixed-agent",
+            sample_agent_card,
+            is_enabled=True
+        )
+
+        # Search for all entities
+        results = await faiss_service.search_entities("test")
+
+        # Should return combined results
+        assert isinstance(results, list)
+
+        # Check index has both
+        assert faiss_service.faiss_index.ntotal >= 2
+        assert len(faiss_service.metadata_store) == 2

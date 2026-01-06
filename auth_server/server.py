@@ -18,6 +18,7 @@ from jwt.api_jwk import PyJWK
 from datetime import datetime
 from typing import Dict, Optional, List, Any
 from functools import lru_cache
+from contextlib import asynccontextmanager
 from botocore.exceptions import ClientError
 from fastapi import FastAPI, Header, HTTPException, Request, Cookie
 from fastapi.responses import JSONResponse, Response, RedirectResponse
@@ -451,11 +452,31 @@ def check_rate_limit(username: str) -> bool:
     user_token_generation_counts[rate_key] = current_count + 1
     return True
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI application."""
+    # Startup: Load scopes configuration
+    global SCOPES_CONFIG
+    try:
+        SCOPES_CONFIG = await reload_scopes_config()
+        logger.info(f"Loaded scopes configuration on startup with {len(SCOPES_CONFIG.get('group_mappings', {}))} group mappings")
+    except Exception as e:
+        logger.error(f"Failed to load scopes configuration on startup: {e}", exc_info=True)
+        # Fall back to empty config
+        SCOPES_CONFIG = {"group_mappings": {}}
+
+    yield
+
+    # Shutdown: Add cleanup code here if needed in the future
+    logger.info("Shutting down auth server")
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Simplified Auth Server",
     description="Authentication server for validating JWT tokens against Amazon Cognito with header-based configuration",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan
 )
 
 

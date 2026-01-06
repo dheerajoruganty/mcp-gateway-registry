@@ -1,0 +1,110 @@
+name: Metrics Service Test Suite
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'metrics-service/**'
+      - '.github/workflows/metrics-service-test.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'metrics-service/**'
+      - '.github/workflows/metrics-service-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: "Metrics Service Tests (Python ${{ matrix.python-version }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-metrics-${{ matrix.python-version }}-${{ hashFiles('metrics-service/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-metrics-${{ matrix.python-version }}-
+            ${{ runner.os }}-uv-metrics-
+
+      - name: Install dependencies
+        working-directory: metrics-service
+        run: uv sync --extra dev
+
+      - name: Run metrics service tests
+        working-directory: metrics-service
+        run: |
+          uv run pytest tests/ -v --cov=. --cov-report=xml --cov-report=html --cov-report=term
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          file: ./metrics-service/coverage.xml
+          flags: metrics-service
+          name: codecov-metrics-service-${{ matrix.python-version }}
+          fail_ci_if_error: false
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metrics-service-coverage-${{ matrix.python-version }}
+          path: metrics-service/htmlcov/
+          retention-days: 14
+
+  lint:
+    name: "Metrics Service Code Quality"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install linting tools
+        run: uv pip install --system ruff
+
+      - name: Run ruff check
+        working-directory: metrics-service
+        run: ruff check .
+
+      - name: Run ruff format check
+        working-directory: metrics-service
+        run: ruff format --check .
+        continue-on-error: true

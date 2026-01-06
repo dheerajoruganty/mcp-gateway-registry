@@ -1,1 +1,1 @@
-"""Unit tests for API endpoints."""
+"""API routes unit tests."""
