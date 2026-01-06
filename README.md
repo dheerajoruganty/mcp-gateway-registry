@@ -545,13 +545,6 @@ uv run pytest -m "not slow"     # Skip slow tests
 - **Unit Tests** (`tests/unit/`) - Fast, isolated component tests
 - **Integration Tests** (`tests/integration/`) - Component interaction tests
 - **E2E Tests** (`tests/integration/test_e2e_workflows.py`) - Complete workflow tests
-- **Coverage Requirement**: 80% minimum code coverage
-
-**Legacy Shell Scripts** (deprecated, use pytest instead):
-- `./tests/mcp_cmds.sh` - Shell-based MCP testing operations
-- `./tests/agent_crud_test.sh` - Agent CRUD operations
-- `./tests/test_rate_agent_curl.sh` - Agent rating tests
-- `./tests/run-lob-bot-tests.sh` - Access control tests
 
 **Python Agent:**
 - `agents/agent.py` - Full-featured Python agent with advanced AI capabilities
