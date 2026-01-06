@@ -27,6 +27,9 @@ build/
 logs/
 *.log
 oauth_cognito.log
+registry.log
+*_tests*.log
+full-test-run.log
 
 # Git
 .git/
@@ -66,4 +69,12 @@ temp/
 
 # Specific large directories
 mcp-atlassian/
+terraform/
+htmlcov/
+site/
+cli/
+security_scans/
+credentials-provider/
+.oauth-tokens/
+.scratchpad/
 # frontend/build/ - KEEP THIS, needed by registry service

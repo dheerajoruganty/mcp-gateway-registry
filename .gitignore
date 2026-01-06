@@ -220,6 +220,7 @@ registry/agents/
 logs/
 token_refresher.pid
 token_refresher.log
+.mcp.json
 
 # Secrets and API keys - never commit these!
 .keys.yml
