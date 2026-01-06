@@ -721,79 +721,68 @@ echo 'ASOR_ACCESS_TOKEN=your_token' >> .env
 
 ### Roadmap
 
-The following GitHub issues represent our current development roadmap and planned features:
+Our development roadmap is organized into weekly milestones with clear deliverables and progress tracking:
 
-**Major Features**
+| Milestone | Due Date | Progress | Status | Key Issues |
+|-----------|----------|----------|--------|------------|
+| **December 2025 Week 4** | 2025-12-27 | 43% (3/7) | 🚧 In Progress | **Open:** [#317 - Optional PyTorch Dependencies](https://github.com/agentic-community/mcp-gateway-registry/issues/317), [#293 - CloudFront HTTPS Support](https://github.com/agentic-community/mcp-gateway-registry/issues/293), [#285 - Server Headers in Nginx](https://github.com/agentic-community/mcp-gateway-registry/issues/285), [#232 - A2A Curated Registry Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/232)<br/>**Closed:** [#287 - Filter Sidebar Buttons](https://github.com/agentic-community/mcp-gateway-registry/issues/287), [#284 - Statistics Count Fix](https://github.com/agentic-community/mcp-gateway-registry/issues/284), [#221 - DocumentDB Implementation](https://github.com/agentic-community/mcp-gateway-registry/issues/221) |
+| **January 2026 Week 1** | 2026-01-09 | 50% (2/4) | 🚧 In Progress | **Open:** [#297 - Unified UI Registration Flow](https://github.com/agentic-community/mcp-gateway-registry/issues/297), [#296 - Custom Metadata for Cards](https://github.com/agentic-community/mcp-gateway-registry/issues/296)<br/>**Closed:** [#329 - Update llms.txt](https://github.com/agentic-community/mcp-gateway-registry/issues/329), [#259 - Simplify JWT Token Generation](https://github.com/agentic-community/mcp-gateway-registry/issues/259) |
+| **January 2026 Week 3** | 2026-01-23 | 0% (0/2) | 📅 Planned | **Open:** [#295 - Multi-Level Rate Limiting](https://github.com/agentic-community/mcp-gateway-registry/issues/295), [#129 - Virtual MCP Server Support](https://github.com/agentic-community/mcp-gateway-registry/issues/129) |
+| **January 2026 Week 4** | 2026-01-30 | 0% (0/2) | 📅 Planned | **Open:** [#269 - AgentCore IAM Authentication](https://github.com/agentic-community/mcp-gateway-registry/issues/269), [#260 - Federation Between Registries](https://github.com/agentic-community/mcp-gateway-registry/issues/260) |
+| **Parking Lot** | — | 50% (1/2) | 🗂️ Backlog | **Open:** [#316 - Entra ID IAM APIs](https://github.com/agentic-community/mcp-gateway-registry/issues/316)<br/>**Closed:** [#315 - Distroless Docker Images](https://github.com/agentic-community/mcp-gateway-registry/issues/315) |
 
-- **[#203 - Deploy MCP Gateway Registry on AWS ECS Fargate](https://github.com/agentic-community/mcp-gateway-registry/issues/203)** ✅ **COMPLETE**
-  Production-ready ECS deployment implemented with multi-AZ architecture, auto-scaling, HTTPS/SSL, CloudWatch monitoring, and NAT Gateway HA. Complete Terraform configuration and comprehensive deployment guide available. [ECS Deployment Guide](terraform/aws-ecs/README.md)
+**Status Legend:** 🚧 In Progress • 📅 Planned • 🗂️ Backlog • ✅ Complete
 
-- **[#195 - Add A2A (Agent-to-Agent) Protocol Support to Registry](https://github.com/agentic-community/mcp-gateway-registry/issues/195)** ✅ **COMPLETE**
-  Agents can now register, discover, and communicate with other agents through the secure registry. Full implementation includes agent lifecycle management, Keycloak-based access control, fine-grained permissions, comprehensive testing, and documentation. [A2A Guide](docs/a2a.md)
+---
 
-- **[#128 - Add Microsoft Entra ID (Azure AD) Authentication Provider](https://github.com/agentic-community/mcp-gateway-registry/issues/128)** ✅ **COMPLETE**
-  Extend authentication support beyond Keycloak to include Microsoft Entra ID integration. Enables enterprise SSO for organizations using Azure Active Directory.
+#### Major Features
 
-- **[#170 - Architectural Proposal: Separate Gateway and Registry Containers](https://github.com/agentic-community/mcp-gateway-registry/issues/170)** 🚧 **IN PROGRESS**
-  Architectural enhancement to separate gateway and registry functionality into independent containers for improved scalability, maintainability, and deployment flexibility.
+The following major features span multiple milestones and represent significant architectural improvements:
 
-- **[#129 - Virtual MCP Server Support - Dynamic Tool Aggregation and Intelligent Routing](https://github.com/agentic-community/mcp-gateway-registry/issues/129)** 🚧 **IN PROGRESS**
-  Enable logical grouping of tools from multiple backend servers with intelligent routing using Lua/JavaScript scripting. Provides purpose-built virtual servers that abstract away backend complexity.
+- **[#129 - Virtual MCP Server Support](https://github.com/agentic-community/mcp-gateway-registry/issues/129)** 🚧 **IN PROGRESS** (Jan 2026 Week 3)
+  Dynamic tool aggregation and intelligent routing using Lua/JavaScript scripting. Enables logical grouping of tools from multiple backend servers.
 
-- **[#118 - Agent-as-Tool Integration: Dynamic MCP Server Generation](https://github.com/agentic-community/mcp-gateway-registry/issues/118)**
-  Convert existing AI agents into MCP servers dynamically, enabling legacy agent ecosystems to participate in the MCP protocol without code rewrites.
+- **[#232 - A2A Curated Registry Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/232)** 🚧 **IN PROGRESS** (Dec 2025 Week 4)
+  Enable agent-to-agent discovery and tool invocation through curated registry patterns.
 
-- **[#98 - Complete GDPR and SOX Compliance Implementation](https://github.com/agentic-community/mcp-gateway-registry/issues/98)**
-  Full compliance implementation for GDPR and SOX requirements, including data retention policies, audit trails, and privacy controls.
+- **[#260 - Federation Between MCP Registry Instances](https://github.com/agentic-community/mcp-gateway-registry/issues/260)** 📅 **PLANNED** (Jan 2026 Week 4)
+  Support for federated registry discovery and access across multiple registry instances.
 
-- **[#39 - Tool Popularity Scoring and Rating System](https://github.com/agentic-community/mcp-gateway-registry/issues/39)**
-  Enhance tool discovery with popularity scores and star ratings based on usage patterns and agent feedback.
+- **[#295 - Multi-Level Tool Usage Rate Limiting](https://github.com/agentic-community/mcp-gateway-registry/issues/295)** 📅 **PLANNED** (Jan 2026 Week 3)
+  Comprehensive rate limiting architecture with detailed implementation guide for tool usage control.
 
-**Completed**
+- **[#297 - Unified UI Registration Flow](https://github.com/agentic-community/mcp-gateway-registry/issues/297)** 🚧 **IN PROGRESS** (Jan 2026 Week 1)
+  Streamlined registration experience for both MCP servers and A2A agents through a unified interface.
+
+---
+
+#### Recently Completed
+
+- **[#329 - Update llms.txt](https://github.com/agentic-community/mcp-gateway-registry/issues/329)** ✅ **COMPLETED** (v1.0.9)
+  Updated AI assistant reference documentation with recent architecture changes.
+
+- **[#221 - DocumentDB Implementation](https://github.com/agentic-community/mcp-gateway-registry/issues/221)** ✅ **COMPLETED** (v1.0.9)
+  Production-grade distributed storage with MongoDB/DocumentDB backend implementation.
 
 - **[#70 - Docker Build & Runtime Performance Optimization](https://github.com/agentic-community/mcp-gateway-registry/issues/70)** ✅ **COMPLETED** (v1.0.9)
-  Multi-stage Docker builds implemented with 66-80% image size reduction. Registry reduced from 4.79GB to 1.64GB, mcpgw server from 7.78GB to ~1.5GB. CPU-only PyTorch eliminates CUDA dependencies.
+  Multi-stage Docker builds with 66-80% image size reduction.
 
-- **[#48 - Update EKS Helm Chart for Multi-Container Architecture](https://github.com/agentic-community/mcp-gateway-registry/issues/48)** ✅ **COMPLETED**
-  Helm charts updated to support multi-container Docker Compose architecture for Kubernetes deployments.
+- **[#287 - Filter Sidebar Buttons](https://github.com/agentic-community/mcp-gateway-registry/issues/287)** ✅ **COMPLETED**
+  Fixed filter buttons to properly filter both MCP servers and A2A agent cards.
 
-- **[#132 - Registry UI: Add MCP Configuration Generator](https://github.com/agentic-community/mcp-gateway-registry/issues/132)** ✅ **COMPLETED**
-  Copy-paste MCP configuration generator added to Registry UI for seamless integration with AI coding assistants (VS Code, Cursor, Claude Code).
+- **[#284 - Statistics Count Fix](https://github.com/agentic-community/mcp-gateway-registry/issues/284)** ✅ **COMPLETED**
+  Sidebar statistics now correctly count both MCP servers and A2A agents.
 
-- **[#171 - Feature: Import Servers from Anthropic MCP Registry](https://github.com/agentic-community/mcp-gateway-registry/issues/171)** ✅ **COMPLETED**
-  Anthropic MCP Registry import functionality implemented. Import curated servers with a single command and access through the gateway with full REST API compatibility. [Import Guide](docs/anthropic-registry-import.md) | [API Documentation](docs/anthropic_registry_api.md)
+- **[#259 - Simplify JWT Token Generation](https://github.com/agentic-community/mcp-gateway-registry/issues/259)** ✅ **COMPLETED**
+  Streamlined JWT token generation process in Registry UI.
 
-- **[#37 - Multi-Level Registry Support](https://github.com/agentic-community/mcp-gateway-registry/issues/37)** ✅ **COMPLETED** (Closed via #179, #181)
-  Registry-to-registry integration now supported through Anthropic MCP Registry import, enabling federated server discovery and access across different registries.
+- **[#315 - Distroless Docker Images](https://github.com/agentic-community/mcp-gateway-registry/issues/315)** ✅ **COMPLETED**
+  Security hardening through migration to distroless/hardened base images.
 
-- **[#159 - Add scope management: create/delete Keycloak groups with scope configuration](https://github.com/agentic-community/mcp-gateway-registry/issues/159)** ✅ **COMPLETED**
-  Dynamic scope management functionality implemented with create-group, delete-group, list-groups, and server-to-group assignment commands through service management CLI. Includes comprehensive user management with group-based access control. [Service Management Guide](docs/service-management.md)
-
-- **[#160 - Documentation: Add Amazon Bedrock AgentCore Gateway integration example](https://github.com/agentic-community/mcp-gateway-registry/issues/160)** ✅ **COMPLETED**
-  Comprehensive documentation and examples for integrating Amazon Bedrock AgentCore Gateway with dual authentication (Keycloak ingress + Cognito egress), passthrough token mode, and complete MCP protocol flow. [Integration Guide](docs/agentcore.md)
-
-- **[#158 - Replace /opt/mcp-gateway with ${HOME}/mcp-gateway to eliminate sudo requirements](https://github.com/agentic-community/mcp-gateway-registry/issues/158)** ✅ **COMPLETED**
-  Installation experience improved by using user home directory instead of /opt, removing the need for sudo privileges during setup.
-
-- **[#111 - Standalone Metrics Collection Service](https://github.com/agentic-community/mcp-gateway-registry/issues/111)** ✅ **COMPLETED**
-  Dedicated metrics collection service implemented for comprehensive monitoring and analytics across all MCP Gateway components. [Documentation](docs/OBSERVABILITY.md)
-
-- **[#38 - Usage Metrics and Analytics System](https://github.com/agentic-community/mcp-gateway-registry/issues/38)** ✅ **COMPLETED**
-  Comprehensive usage tracking implemented across user and agent identities, with metrics emission from auth server, registry, and intelligent tool finder. [Documentation](docs/OBSERVABILITY.md)
-
-- **[#120 - CLI Tool for MCP Server Registration and Health Validation](https://github.com/agentic-community/mcp-gateway-registry/issues/120)** ✅ **COMPLETED**
-  Command-line interface for automated server registration, health checks, and registry management. Streamlines DevOps workflows and CI/CD integration. [Documentation](docs/service-management.md)
-
-- **[#119 - Implement Well-Known URL for MCP Server Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/119)** ✅ **COMPLETED**
-  Standardized discovery mechanism using /.well-known/mcp-servers endpoint for automatic server detection and federation across organizations.
-
-- **[#18 - Add Token Vending Capability to Auth Server](https://github.com/agentic-community/mcp-gateway-registry/issues/18)** ✅ **COMPLETED**
-  Auth server token vending capabilities implemented for enhanced authentication workflows with OAuth token management and service account provisioning.
-
-- **[#5 - Add Support for KeyCloak as IdP Provider](https://github.com/agentic-community/mcp-gateway-registry/issues/5)** ✅ **COMPLETED**
-  KeyCloak integration implemented with individual agent audit trails, group-based authorization, and production-ready service account management. [Documentation](docs/keycloak-integration.md)
-
-For the complete list of open issues, feature requests, and bug reports, visit our [GitHub Issues page](https://github.com/agentic-community/mcp-gateway-registry/issues).
+For the complete list of all issues, feature requests, and detailed release history, visit:
+- [All GitHub Issues](https://github.com/agentic-community/mcp-gateway-registry/issues)
+- [All GitHub Milestones](https://github.com/agentic-community/mcp-gateway-registry/milestones)
+- [Release Notes](release-notes/)
 
 ---
 
