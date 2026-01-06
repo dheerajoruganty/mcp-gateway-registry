@@ -749,15 +749,13 @@ The following GitHub issues represent our current development roadmap and planne
 - **[#39 - Tool Popularity Scoring and Rating System](https://github.com/agentic-community/mcp-gateway-registry/issues/39)**
   Enhance tool discovery with popularity scores and star ratings based on usage patterns and agent feedback.
 
-**DevOps & Operations**
-
-- **[#48 - Update EKS Helm Chart for Multi-Container Architecture](https://github.com/agentic-community/mcp-gateway-registry/issues/48)**
-  Update Helm charts to support the new multi-container Docker Compose architecture for Kubernetes deployments.
-
-- **[#70 - Docker Build & Runtime Performance Optimization](https://github.com/agentic-community/mcp-gateway-registry/issues/70)**
-  Optimize Docker build times and runtime performance for faster development and deployment cycles.
-
 **Completed**
+
+- **[#70 - Docker Build & Runtime Performance Optimization](https://github.com/agentic-community/mcp-gateway-registry/issues/70)** ✅ **COMPLETED** (v1.0.9)
+  Multi-stage Docker builds implemented with 66-80% image size reduction. Registry reduced from 4.79GB to 1.64GB, mcpgw server from 7.78GB to ~1.5GB. CPU-only PyTorch eliminates CUDA dependencies.
+
+- **[#48 - Update EKS Helm Chart for Multi-Container Architecture](https://github.com/agentic-community/mcp-gateway-registry/issues/48)** ✅ **COMPLETED**
+  Helm charts updated to support multi-container Docker Compose architecture for Kubernetes deployments.
 
 - **[#132 - Registry UI: Add MCP Configuration Generator](https://github.com/agentic-community/mcp-gateway-registry/issues/132)** ✅ **COMPLETED**
   Copy-paste MCP configuration generator added to Registry UI for seamless integration with AI coding assistants (VS Code, Cursor, Claude Code).
