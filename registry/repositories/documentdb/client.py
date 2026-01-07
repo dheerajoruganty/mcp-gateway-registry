@@ -41,22 +41,31 @@ async def get_documentdb_client() -> AsyncIOMotorDatabase:
         )
 
         logger.info(
-            f"Using AWS IAM authentication for DocumentDB "
+            f"Using AWS IAM authentication (MONGODB-AWS) for {settings.storage_backend} "
             f"(host: {settings.documentdb_host})"
         )
 
     else:
         # Username/password authentication
         if settings.documentdb_username and settings.documentdb_password:
+            # Choose auth mechanism based on storage backend
+            # - MongoDB CE 8.2+: Use SCRAM-SHA-256 (stronger, modern authentication)
+            # - AWS DocumentDB v5.0: Only supports SCRAM-SHA-1
+            if settings.storage_backend == "mongodb-ce":
+                auth_mechanism = "SCRAM-SHA-256"
+            else:
+                # AWS DocumentDB (storage_backend="documentdb")
+                auth_mechanism = "SCRAM-SHA-1"
+
             connection_string = (
                 f"mongodb://{settings.documentdb_username}:{settings.documentdb_password}@"
                 f"{settings.documentdb_host}:{settings.documentdb_port}/"
-                f"{settings.documentdb_database}"
+                f"{settings.documentdb_database}?authMechanism={auth_mechanism}&authSource=admin"
             )
 
             logger.info(
-                f"Using username/password authentication for DocumentDB "
-                f"(host: {settings.documentdb_host})"
+                f"Using username/password authentication ({auth_mechanism}) for "
+                f"{settings.storage_backend} (host: {settings.documentdb_host})"
             )
         else:
             # No authentication (local development)
@@ -65,7 +74,7 @@ async def get_documentdb_client() -> AsyncIOMotorDatabase:
                 f"{settings.documentdb_database}"
             )
             logger.info(
-                f"Using no authentication for DocumentDB "
+                f"Using no authentication for {settings.storage_backend} "
                 f"(host: {settings.documentdb_host})"
             )
 

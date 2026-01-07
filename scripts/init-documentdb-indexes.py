@@ -64,8 +64,13 @@ async def _get_documentdb_connection_string(
     use_iam: bool,
     use_tls: bool,
     tls_ca_file: Optional[str],
+    storage_backend: str = "documentdb",
 ) -> str:
-    """Build DocumentDB connection string."""
+    """Build DocumentDB connection string with appropriate auth mechanism.
+
+    Args:
+        storage_backend: Either 'documentdb' (uses SCRAM-SHA-1) or 'mongodb-ce' (uses SCRAM-SHA-256)
+    """
     if use_iam:
         import boto3
 
@@ -88,9 +93,19 @@ async def _get_documentdb_connection_string(
 
     else:
         if username and password:
+            # Choose auth mechanism based on storage backend
+            # - MongoDB CE 8.2+: Use SCRAM-SHA-256 (stronger, modern authentication)
+            # - AWS DocumentDB v5.0: Only supports SCRAM-SHA-1
+            if storage_backend == "mongodb-ce":
+                auth_mechanism = "SCRAM-SHA-256"
+            else:
+                # AWS DocumentDB (storage_backend="documentdb")
+                auth_mechanism = "SCRAM-SHA-1"
+
             connection_string = (
                 f"mongodb://{username}:{password}@"
                 f"{host}:{port}/{database}?"
+                f"authMechanism={auth_mechanism}&authSource=admin&"
                 f"tls={str(use_tls).lower()}"
             )
 
@@ -98,7 +113,8 @@ async def _get_documentdb_connection_string(
                 connection_string += f"&tlsCAFile={tls_ca_file}"
 
             logger.info(
-                f"Using username/password authentication for DocumentDB (host: {host})"
+                f"Using username/password authentication ({auth_mechanism}) for "
+                f"{storage_backend} (host: {host})"
             )
         else:
             connection_string = f"mongodb://{host}:{port}/{database}"
@@ -550,6 +566,12 @@ Example usage:
         help="Namespace for collection names (default: from DOCUMENTDB_NAMESPACE env var or 'default')",
     )
     parser.add_argument(
+        "--storage-backend",
+        default=os.getenv("STORAGE_BACKEND", "documentdb"),
+        choices=["documentdb", "mongodb-ce"],
+        help="Storage backend type: 'documentdb' (uses SCRAM-SHA-1) or 'mongodb-ce' (uses SCRAM-SHA-256) (default: from STORAGE_BACKEND env var or 'documentdb')",
+    )
+    parser.add_argument(
         "--recreate",
         action="store_true",
         default=True,
@@ -568,6 +590,7 @@ Example usage:
     logger.info(f"Host: {args.host}:{args.port}")
     logger.info(f"Database: {args.database}")
     logger.info(f"Namespace: {args.namespace}")
+    logger.info(f"Storage backend: {args.storage_backend}")
     logger.info(f"Recreate indexes: {args.recreate}")
     logger.info(f"Use IAM: {args.use_iam}")
     logger.info(f"Use TLS: {args.use_tls}")
@@ -582,6 +605,7 @@ Example usage:
             use_iam=args.use_iam,
             use_tls=args.use_tls,
             tls_ca_file=args.tls_ca_file if args.use_tls else None,
+            storage_backend=args.storage_backend,
         )
 
         # IMPORTANT: DocumentDB does not support retryable writes

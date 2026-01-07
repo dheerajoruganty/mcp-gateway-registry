@@ -99,7 +99,7 @@ module "ecs_service_auth" {
         },
         {
           name  = "AUTH_SERVER_EXTERNAL_URL"
-          value = "https://${var.domain_name}:8888"
+          value = "https://${var.domain_name}"
         },
         {
           name  = "AWS_REGION"
@@ -375,7 +375,7 @@ module "ecs_service_registry" {
         },
         {
           name  = "AUTH_SERVER_EXTERNAL_URL"
-          value = var.domain_name != "" ? "https://${var.domain_name}:8888" : "http://${module.alb.dns_name}:8888"
+          value = var.domain_name != "" ? "https://${var.domain_name}" : "http://${module.alb.dns_name}"
         },
         {
           name  = "KEYCLOAK_URL"

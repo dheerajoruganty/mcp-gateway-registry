@@ -29,9 +29,16 @@ async def debug_scopes():
     print("=" * 80)
     print()
 
-    # Build connection string
+    # Build connection string with appropriate auth mechanism
+    # Choose auth mechanism based on storage backend from environment
+    storage_backend = os.getenv("STORAGE_BACKEND", "documentdb")
+    if storage_backend == "mongodb-ce":
+        auth_mechanism = "SCRAM-SHA-256"
+    else:
+        auth_mechanism = "SCRAM-SHA-1"
+
     if username and password:
-        connection_string = f"mongodb://{username}:{password}@{host}:{port}/{database}"
+        connection_string = f"mongodb://{username}:{password}@{host}:{port}/{database}?authMechanism={auth_mechanism}&authSource=admin"
     else:
         connection_string = f"mongodb://{host}:{port}/{database}"
 

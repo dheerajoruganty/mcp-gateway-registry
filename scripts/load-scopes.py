@@ -36,8 +36,13 @@ async def _get_documentdb_connection_string(
     use_iam: bool,
     use_tls: bool,
     tls_ca_file: Optional[str],
+    storage_backend: str = "documentdb",
 ) -> str:
-    """Build DocumentDB connection string."""
+    """Build DocumentDB connection string with appropriate auth mechanism.
+
+    Args:
+        storage_backend: Either 'documentdb' (uses SCRAM-SHA-1) or 'mongodb-ce' (uses SCRAM-SHA-256)
+    """
     if use_iam:
         import boto3
 
@@ -60,9 +65,19 @@ async def _get_documentdb_connection_string(
 
     else:
         if username and password:
+            # Choose auth mechanism based on storage backend
+            # - MongoDB CE 8.2+: Use SCRAM-SHA-256 (stronger, modern authentication)
+            # - AWS DocumentDB v5.0: Only supports SCRAM-SHA-1
+            if storage_backend == "mongodb-ce":
+                auth_mechanism = "SCRAM-SHA-256"
+            else:
+                # AWS DocumentDB (storage_backend="documentdb")
+                auth_mechanism = "SCRAM-SHA-1"
+
             connection_string = (
                 f"mongodb://{username}:{password}@"
                 f"{host}:{port}/{database}?"
+                f"authMechanism={auth_mechanism}&authSource=admin&"
                 f"tls={str(use_tls).lower()}"
             )
 
@@ -70,7 +85,8 @@ async def _get_documentdb_connection_string(
                 connection_string += f"&tlsCAFile={tls_ca_file}"
 
             logger.info(
-                f"Using username/password authentication for DocumentDB (host: {host})"
+                f"Using username/password authentication ({auth_mechanism}) for "
+                f"{storage_backend} (host: {host})"
             )
         else:
             connection_string = (
@@ -276,10 +292,14 @@ Example usage:
 
     args = parser.parse_args()
 
+    # Get storage backend from environment variable
+    storage_backend = os.getenv("STORAGE_BACKEND", "documentdb")
+
     logger.info("Loading scopes into DocumentDB")
     logger.info(f"Host: {args.host}:{args.port}")
     logger.info(f"Database: {args.database}")
     logger.info(f"Namespace: {args.namespace}")
+    logger.info(f"Storage backend: {storage_backend}")
     logger.info(f"Scopes file: {args.scopes_file}")
     logger.info(f"Clear existing: {args.clear_existing}")
 
@@ -293,6 +313,7 @@ Example usage:
             use_iam=args.use_iam,
             use_tls=args.use_tls,
             tls_ca_file=args.tls_ca_file if args.use_tls else None,
+            storage_backend=storage_backend,
         )
 
         # IMPORTANT: DocumentDB does not support retryable writes

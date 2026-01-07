@@ -350,8 +350,10 @@ resource "aws_ssm_parameter" "documentdb_connection_string" {
   name        = "/${var.name}/documentdb/connection_string"
   description = "DocumentDB Cluster connection string"
   type        = "SecureString"
+  # AWS DocumentDB only supports SCRAM-SHA-1 (not SCRAM-SHA-256 as of v5.0)
+  # TODO: Update to SCRAM-SHA-256 when AWS DocumentDB adds support
   value = format(
-    "mongodb://%s:%s@%s:27017/?tls=true&tlsCAFile=global-bundle.pem&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false",
+    "mongodb://%s:%s@%s:27017/?authMechanism=SCRAM-SHA-1&authSource=admin&tls=true&tlsCAFile=global-bundle.pem&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false",
     var.documentdb_admin_username,
     var.documentdb_admin_password,
     aws_docdb_cluster.registry.endpoint

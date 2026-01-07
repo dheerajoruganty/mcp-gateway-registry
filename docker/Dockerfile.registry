@@ -101,6 +101,7 @@ COPY --from=backend-builder /app/auth_server /app/auth_server
 COPY --from=backend-builder /app/api /app/api
 COPY --from=backend-builder /app/config /app/config
 COPY --from=backend-builder /app/docker /app/docker
+COPY --from=backend-builder /app/scripts /app/scripts
 COPY --from=backend-builder /app/pyproject.toml /app/pyproject.toml
 
 # Copy built frontend from frontend builder

@@ -51,8 +51,13 @@ async def _get_documentdb_connection_string(
     use_iam: bool,
     use_tls: bool,
     tls_ca_file: Optional[str],
+    storage_backend: str = "documentdb",
 ) -> str:
-    """Build DocumentDB connection string."""
+    """Build DocumentDB connection string with appropriate auth mechanism.
+
+    Args:
+        storage_backend: Either 'documentdb' (uses SCRAM-SHA-1) or 'mongodb-ce' (uses SCRAM-SHA-256)
+    """
     if use_iam:
         import boto3
 
@@ -75,9 +80,19 @@ async def _get_documentdb_connection_string(
 
     else:
         if username and password:
+            # Choose auth mechanism based on storage backend
+            # - MongoDB CE 8.2+: Use SCRAM-SHA-256 (stronger, modern authentication)
+            # - AWS DocumentDB v5.0: Only supports SCRAM-SHA-1
+            if storage_backend == "mongodb-ce":
+                auth_mechanism = "SCRAM-SHA-256"
+            else:
+                # AWS DocumentDB (storage_backend="documentdb")
+                auth_mechanism = "SCRAM-SHA-1"
+
             connection_string = (
                 f"mongodb://{username}:{password}@"
                 f"{host}:{port}/{database}?"
+                f"authMechanism={auth_mechanism}&authSource=admin&"
                 f"tls={str(use_tls).lower()}"
             )
 
@@ -85,7 +100,8 @@ async def _get_documentdb_connection_string(
                 connection_string += f"&tlsCAFile={tls_ca_file}"
 
             logger.info(
-                f"Using username/password authentication for DocumentDB (host: {host})"
+                f"Using username/password authentication ({auth_mechanism}) for "
+                f"{storage_backend} (host: {host})"
             )
         else:
             connection_string = (
@@ -114,6 +130,9 @@ async def _get_client(
     tls_ca_file: Optional[str],
 ) -> AsyncIOMotorClient:
     """Create DocumentDB async client."""
+    # Get storage backend from environment variable
+    storage_backend = os.getenv("STORAGE_BACKEND", "documentdb")
+
     connection_string = await _get_documentdb_connection_string(
         host=host,
         port=port,
@@ -123,6 +142,7 @@ async def _get_client(
         use_iam=use_iam,
         use_tls=use_tls,
         tls_ca_file=tls_ca_file,
+        storage_backend=storage_backend,
     )
 
     # DocumentDB does not support retryable writes
