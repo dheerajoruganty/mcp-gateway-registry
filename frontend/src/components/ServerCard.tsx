@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
-import { 
+import {
   EyeIcon,
   WrenchScrewdriverIcon,
   StarIcon,
@@ -10,9 +10,12 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   QuestionMarkCircleIcon,
-  CogIcon
+  CogIcon,
+  ShieldCheckIcon,
+  ShieldExclamationIcon,
 } from '@heroicons/react/24/outline';
 import ServerConfigModal from './ServerConfigModal';
+import SecurityScanModal from './SecurityScanModal';
 import StarRatingWidget from './StarRatingWidget';
 
 export interface Server {
@@ -82,7 +85,7 @@ const formatTimeSince = (timestamp: string | null | undefined): string | null =>
     
     return result;
   } catch (error) {
-    console.error('🕐 formatTimeSince error:', error, 'for timestamp:', timestamp);
+    console.error('formatTimeSince error:', error, 'for timestamp:', timestamp);
     return null;
   }
 };
@@ -93,6 +96,26 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
   const [showTools, setShowTools] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [loadingRefresh, setLoadingRefresh] = useState(false);
+  const [showSecurityScan, setShowSecurityScan] = useState(false);
+  const [securityScanResult, setSecurityScanResult] = useState<any>(null);
+  const [loadingSecurityScan, setLoadingSecurityScan] = useState(false);
+
+  // Fetch security scan status on mount to show correct icon color
+  useEffect(() => {
+    const fetchSecurityScan = async () => {
+      try {
+        const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+        const response = await axios.get(
+          `/api/servers${server.path}/security-scan`,
+          headers ? { headers } : undefined
+        );
+        setSecurityScanResult(response.data);
+      } catch {
+        // Silently ignore - no scan result available
+      }
+    };
+    fetchSecurityScan();
+  }, [server.path, authToken]);
 
   const getStatusIcon = () => {
     switch (server.status) {
@@ -177,13 +200,68 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
     }
   }, [server.path, loadingRefresh, onRefreshSuccess, onShowToast, onServerUpdate]);
 
+  const handleViewSecurityScan = useCallback(async () => {
+    if (loadingSecurityScan) return;
+
+    setShowSecurityScan(true);
+    setLoadingSecurityScan(true);
+    try {
+      const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+      const response = await axios.get(
+        `/api/servers${server.path}/security-scan`,
+        headers ? { headers } : undefined
+      );
+      setSecurityScanResult(response.data);
+    } catch (error: any) {
+      if (error.response?.status !== 404) {
+        console.error('Failed to fetch security scan:', error);
+        if (onShowToast) {
+          onShowToast('Failed to load security scan results', 'error');
+        }
+      }
+      setSecurityScanResult(null);
+    } finally {
+      setLoadingSecurityScan(false);
+    }
+  }, [server.path, authToken, loadingSecurityScan, onShowToast]);
+
+  const handleRescan = useCallback(async () => {
+    const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+    const response = await axios.post(
+      `/api/servers${server.path}/rescan`,
+      undefined,
+      headers ? { headers } : undefined
+    );
+    setSecurityScanResult(response.data);
+  }, [server.path, authToken]);
+
+  const getSecurityIconState = () => {
+    // Gray: no scan result yet
+    if (!securityScanResult) {
+      return { Icon: ShieldCheckIcon, color: 'text-gray-400 dark:text-gray-500', title: 'View security scan results' };
+    }
+    // Red: scan failed or any vulnerabilities found
+    if (securityScanResult.scan_failed) {
+      return { Icon: ShieldExclamationIcon, color: 'text-red-500 dark:text-red-400', title: 'Security scan failed' };
+    }
+    const hasVulnerabilities = securityScanResult.critical_issues > 0 ||
+      securityScanResult.high_severity > 0 ||
+      securityScanResult.medium_severity > 0 ||
+      securityScanResult.low_severity > 0;
+    if (hasVulnerabilities) {
+      return { Icon: ShieldExclamationIcon, color: 'text-red-500 dark:text-red-400', title: 'Security issues found' };
+    }
+    // Green: scan passed with no vulnerabilities
+    return { Icon: ShieldCheckIcon, color: 'text-green-500 dark:text-green-400', title: 'Security scan passed' };
+  };
+
   // Generate MCP configuration for the server
   // Check if this is an Anthropic registry server
   const isAnthropicServer = server.tags?.includes('anthropic-registry');
 
   // Check if this server has security pending
   const isSecurityPending = server.tags?.includes('security-pending');
-  console.log('isSecurityPending', isSecurityPending)
+
   return (
     <>
       <div className={`group rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 h-full flex flex-col ${
@@ -246,6 +324,16 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
               aria-label="Generate MCP configuration"
             >
               <CogIcon className="h-4 w-4" />
+            </button>
+
+            {/* Security Scan Button */}
+            <button
+              onClick={handleViewSecurityScan}
+              className={`p-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-all duration-200 flex-shrink-0 ${getSecurityIconState().color}`}
+              title={getSecurityIconState().title}
+              aria-label="View security scan results"
+            >
+              {React.createElement(getSecurityIconState().Icon, { className: "h-4 w-4" })}
             </button>
           </div>
 
@@ -458,6 +546,18 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
         server={server}
         isOpen={showConfig}
         onClose={() => setShowConfig(false)}
+        onShowToast={onShowToast}
+      />
+
+      <SecurityScanModal
+        resourceName={server.name}
+        resourceType="server"
+        isOpen={showSecurityScan}
+        onClose={() => setShowSecurityScan(false)}
+        loading={loadingSecurityScan}
+        scanResult={securityScanResult}
+        onRescan={canModify ? handleRescan : undefined}
+        canRescan={canModify}
         onShowToast={onShowToast}
       />
 
