@@ -157,7 +157,7 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
           : agent
       )
     );
-  }, []);
+  }, [setAgents]);
 
   const performAgentHealthCheck = useCallback(async (agent: Agent, token?: string | null) => {
     if (!agent?.path) return;
@@ -399,7 +399,7 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
     }
   };
 
-  const handleEditServer = async (server: Server) => {
+  const handleEditServer = useCallback(async (server: Server) => {
     try {
       // Fetch full server details including proxy_pass_url and tags
       const response = await axios.get(`/api/server_details${server.path}`);
@@ -433,9 +433,9 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
         is_python: false
       });
     }
-  };
+  }, []);
 
-  const handleEditAgent = async (agent: Agent) => {
+  const handleEditAgent = useCallback(async (agent: Agent) => {
     // For now, just populate the form with existing data
     // In the future, we might fetch additional details from an API
     setEditingAgent(agent);
@@ -448,20 +448,20 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
       trust_level: agent.trust_level || 'community',
       tags: agent.tags || []
     });
-  };
+  }, []);
 
   const handleCloseEdit = () => {
     setEditingServer(null);
     setEditingAgent(null);
   };
 
-  const showToast = (message: string, type: 'success' | 'error') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error') => {
     setToast({ message, type });
-  };
+  }, []);
 
-  const hideToast = () => {
+  const hideToast = useCallback(() => {
     setToast(null);
-  };
+  }, []);
 
   const handleSaveEdit = async () => {
     if (editLoading || !editingServer) return;
@@ -535,7 +535,7 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
     }
   };
 
-  const handleToggleServer = async (path: string, enabled: boolean) => {
+  const handleToggleServer = useCallback(async (path: string, enabled: boolean) => {
     // Optimistically update the UI first
     setServers(prevServers =>
       prevServers.map(server =>
@@ -571,9 +571,9 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
 
       showToast(error.response?.data?.detail || 'Failed to toggle server', 'error');
     }
-  };
+  }, [setServers, showToast]);
 
-  const handleToggleAgent = async (path: string, enabled: boolean) => {
+  const handleToggleAgent = useCallback(async (path: string, enabled: boolean) => {
     // Optimistically update the UI first
     setAgents(prevAgents =>
       prevAgents.map(agent =>
@@ -601,9 +601,9 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
 
       showToast(error.response?.data?.detail || 'Failed to toggle agent', 'error');
     }
-  };
+  }, [setAgents, showToast]);
 
-  const handleServerUpdate = (path: string, updates: Partial<Server>) => {
+  const handleServerUpdate = useCallback((path: string, updates: Partial<Server>) => {
     setServers(prevServers =>
       prevServers.map(server =>
         server.path === path
@@ -611,7 +611,7 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
           : server
       )
     );
-  };
+  }, [setServers]);
 
   const handleRegisterServer = useCallback(() => {
     setShowRegisterModal(true);
@@ -659,7 +659,7 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
     } finally {
       setRegisterLoading(false);
     }
-  }, [registerForm, registerLoading, refreshData]);
+  }, [registerForm, registerLoading, refreshData, showToast]);
 
   const renderServerGrid = (
     list: Server[],

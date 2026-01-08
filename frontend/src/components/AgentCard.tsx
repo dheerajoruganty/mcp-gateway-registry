@@ -56,7 +56,6 @@ interface AgentCardProps {
  */
 const formatTimeSince = (timestamp: string | null | undefined): string | null => {
   if (!timestamp) {
-    console.log('formatTimeSince: No timestamp provided', timestamp);
     return null;
   }
 
@@ -66,7 +65,6 @@ const formatTimeSince = (timestamp: string | null | undefined): string | null =>
 
     // Check if the date is valid
     if (isNaN(lastChecked.getTime())) {
-      console.log('formatTimeSince: Invalid timestamp', timestamp);
       return null;
     }
 
@@ -88,7 +86,6 @@ const formatTimeSince = (timestamp: string | null | undefined): string | null =>
       result = `${diffSeconds}s ago`;
     }
 
-    console.log(`formatTimeSince: ${timestamp} -> ${result}`);
     return result;
   } catch (error) {
     console.error('formatTimeSince error:', error, 'for timestamp:', timestamp);
@@ -112,7 +109,7 @@ const normalizeHealthStatus = (status?: string | null): Agent['status'] => {
  * Displays agent information with a distinct visual style from MCP servers,
  * using blue/cyan tones and robot-themed icons.
  */
-const AgentCard: React.FC<AgentCardProps> = ({
+const AgentCard: React.FC<AgentCardProps> = React.memo(({
   agent,
   onToggle,
   onEdit,
@@ -408,9 +405,7 @@ const AgentCard: React.FC<AgentCardProps> = ({
             <div className="flex items-center gap-3">
               {/* Last Checked */}
               {(() => {
-                console.log(`AgentCard ${agent.name}: last_checked_time =`, agent.last_checked_time);
                 const timeText = formatTimeSince(agent.last_checked_time);
-                console.log(`AgentCard ${agent.name}: timeText =`, timeText);
                 return agent.last_checked_time && timeText ? (
                   <div className="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5">
                     <ClockIcon className="h-3.5 w-3.5" />
@@ -466,6 +461,8 @@ const AgentCard: React.FC<AgentCardProps> = ({
 
     </>
   );
-};
+});
+
+AgentCard.displayName = 'AgentCard';
 
 export default AgentCard;

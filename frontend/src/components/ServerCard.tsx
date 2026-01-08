@@ -50,7 +50,6 @@ interface Tool {
 // Helper function to format time since last checked
 const formatTimeSince = (timestamp: string | null | undefined): string | null => {
   if (!timestamp) {
-    console.log('🕐 formatTimeSince: No timestamp provided', timestamp);
     return null;
   }
   
@@ -60,7 +59,6 @@ const formatTimeSince = (timestamp: string | null | undefined): string | null =>
     
     // Check if the date is valid
     if (isNaN(lastChecked.getTime())) {
-      console.log('🕐 formatTimeSince: Invalid timestamp', timestamp);
       return null;
     }
     
@@ -82,7 +80,6 @@ const formatTimeSince = (timestamp: string | null | undefined): string | null =>
       result = `${diffSeconds}s ago`;
     }
     
-    console.log(`🕐 formatTimeSince: ${timestamp} -> ${result}`);
     return result;
   } catch (error) {
     console.error('🕐 formatTimeSince error:', error, 'for timestamp:', timestamp);
@@ -90,7 +87,7 @@ const formatTimeSince = (timestamp: string | null | undefined): string | null =>
   }
 };
 
-const ServerCard: React.FC<ServerCardProps> = ({ server, onToggle, onEdit, canModify, onRefreshSuccess, onShowToast, onServerUpdate, authToken }) => {
+const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, onEdit, canModify, onRefreshSuccess, onShowToast, onServerUpdate, authToken }) => {
   const [tools, setTools] = useState<Tool[]>([]);
   const [loadingTools, setLoadingTools] = useState(false);
   const [showTools, setShowTools] = useState(false);
@@ -235,6 +232,7 @@ const ServerCard: React.FC<ServerCardProps> = ({ server, onToggle, onEdit, canMo
                 className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-all duration-200 flex-shrink-0"
                 onClick={() => onEdit?.(server)}
                 title="Edit server"
+                aria-label={`Edit ${server.name}`}
               >
                 <PencilIcon className="h-4 w-4" />
               </button>
@@ -245,6 +243,7 @@ const ServerCard: React.FC<ServerCardProps> = ({ server, onToggle, onEdit, canMo
               onClick={() => setShowConfig(true)}
               className="p-2 text-gray-400 hover:text-green-600 dark:hover:text-green-300 hover:bg-green-50 dark:hover:bg-green-700/50 rounded-lg transition-all duration-200 flex-shrink-0"
               title="Copy mcp.json configuration"
+              aria-label="Generate MCP configuration"
             >
               <CogIcon className="h-4 w-4" />
             </button>
@@ -363,9 +362,7 @@ const ServerCard: React.FC<ServerCardProps> = ({ server, onToggle, onEdit, canMo
             <div className="flex items-center gap-3">
               {/* Last Checked */}
               {(() => {
-                console.log(`🕐 ServerCard ${server.name}: last_checked_time =`, server.last_checked_time);
                 const timeText = formatTimeSince(server.last_checked_time);
-                console.log(`🕐 ServerCard ${server.name}: timeText =`, timeText);
                 return server.last_checked_time && timeText ? (
                   <div className="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5">
                     <ClockIcon className="h-3.5 w-3.5" />
@@ -380,6 +377,7 @@ const ServerCard: React.FC<ServerCardProps> = ({ server, onToggle, onEdit, canMo
                 disabled={loadingRefresh}
                 className="p-2.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all duration-200 disabled:opacity-50"
                 title="Refresh health status"
+                aria-label={`Refresh health status for ${server.name}`}
               >
                 <ArrowPathIcon className={`h-4 w-4 ${loadingRefresh ? 'animate-spin' : ''}`} />
               </button>
@@ -391,6 +389,7 @@ const ServerCard: React.FC<ServerCardProps> = ({ server, onToggle, onEdit, canMo
                   checked={server.enabled}
                   onChange={(e) => onToggle(server.path, e.target.checked)}
                   className="sr-only peer"
+                  aria-label={`Enable ${server.name}`}
                 />
                 <div className={`relative w-12 h-6 rounded-full transition-colors duration-200 ease-in-out ${
                   server.enabled 
@@ -464,6 +463,8 @@ const ServerCard: React.FC<ServerCardProps> = ({ server, onToggle, onEdit, canMo
 
     </>
   );
-};
+});
 
-export default ServerCard; 
+ServerCard.displayName = 'ServerCard';
+
+export default ServerCard;
