@@ -169,8 +169,8 @@ The registry includes two example A2A agents that demonstrate how both human dev
 **View in Registry UI:**
 Open the registry and navigate to the **A2A Agents** tab to browse registered agents with their full metadata, capabilities, and skills.
 
-**Search via Semantic API:**
-Agents and developers can search for agents by natural language description:
+**Search via CLI:**
+Developers can search for agents by natural language description:
 
 ```bash
 # Search for agents that can help book a trip
@@ -187,6 +187,40 @@ Travel Assistant Agent                   | /travel-assistant-agent   |  0.8610
 Flight Booking Agent                     | /flight-booking-agent     |  1.2134
 --------------------------------------------------------------------------------------------------------------
 ```
+
+### Agent-to-Agent Discovery API
+
+The registry provides a **semantic search API** that agents can use as a tool to discover other A2A agents at runtime. This API enables dynamic agent composition where agents find collaborators based on capabilities rather than hardcoded references.
+
+**Discovery API Endpoint:**
+```
+POST /api/agents/discover/semantic?query=<natural-language-query>&max_results=5
+Authorization: Bearer <jwt-token>
+```
+
+**Response includes:**
+- Agent name, description, and endpoint URL
+- Agent card metadata with skills and capabilities
+- Relevance score for ranking matches
+- Trust level and visibility settings
+
+**How agents use it:**
+1. An agent calls the registry's semantic search API with a natural language query (e.g., "agent that can book flights")
+2. The registry returns matching agents with their endpoint URLs and full agent card metadata
+3. The agent uses the agent card to understand capabilities and invokes the discovered agent via A2A protocol
+
+**Example - Travel Assistant discovering and invoking Flight Booking Agent:**
+```
+User: "I need to book a flight from NYC to LA"
+
+Travel Assistant:
+  1. Calls registry API: POST /api/agents/discover/semantic?query="book flights"
+  2. Registry returns Flight Booking Agent with endpoint URL and agent card
+  3. Uses agent card to understand capabilities, then sends A2A message to Flight Booking Agent
+  4. Returns booking confirmation to user
+```
+
+This pattern enables agents to dynamically extend their capabilities by discovering specialized agents for tasks they cannot handle directly.
 
 **Agent Cards:** View the agent card metadata at [agents/a2a/test/](agents/a2a/test/) to see the complete agent definitions including skills, protocols, and capabilities.
 
