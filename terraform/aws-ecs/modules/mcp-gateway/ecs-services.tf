@@ -126,6 +126,10 @@ module "ecs_service_auth" {
           value = "mcp-gateway-web"
         },
         {
+          name  = "KEYCLOAK_M2M_CLIENT_ID"
+          value = "mcp-gateway-m2m"
+        },
+        {
           name  = "SCOPES_CONFIG_PATH"
           value = "/efs/auth_config/auth_config/scopes.yml"
         },
@@ -179,6 +183,10 @@ module "ecs_service_auth" {
         {
           name      = "KEYCLOAK_CLIENT_SECRET"
           valueFrom = "${aws_secretsmanager_secret.keycloak_client_secret.arn}:client_secret::"
+        },
+        {
+          name      = "KEYCLOAK_M2M_CLIENT_SECRET"
+          valueFrom = "${aws_secretsmanager_secret.keycloak_m2m_client_secret.arn}:client_secret::"
         },
         {
           name      = "DOCUMENTDB_USERNAME"
