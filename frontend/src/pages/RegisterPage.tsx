@@ -249,7 +249,7 @@ const RegisterPage: React.FC = () => {
         if (registrationType === 'server') {
           setServerForm(prev => ({
             ...prev,
-            name: parsed.name || prev.name,
+            name: parsed.server_name || parsed.name || prev.name,
             description: parsed.description || prev.description,
             path: parsed.path || prev.path,
             proxy_pass_url: parsed.proxy_pass_url || parsed.proxyPassUrl || prev.proxy_pass_url,
