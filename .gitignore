@@ -341,3 +341,6 @@ image-manifest.json# Admin password files
 terraform/.admin_password
 image-manifest.json
 agent_security_scans/
+
+# Claude
+.claude

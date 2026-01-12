@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MagnifyingGlassIcon, PlusIcon, XMarkIcon, ArrowPathIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import { useServerStats } from '../hooks/useServerStats';
 import { useAuth } from '../contexts/AuthContext';
@@ -100,6 +101,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
+  const navigate = useNavigate();
   const { servers, agents: agentsFromStats, loading, error, refreshData, setServers, setAgents } = useServerStats();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
@@ -614,8 +616,8 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
   }, [setServers]);
 
   const handleRegisterServer = useCallback(() => {
-    setShowRegisterModal(true);
-  }, []);
+    navigate('/servers/register');
+  }, [navigate]);
 
   const handleRegisterSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
