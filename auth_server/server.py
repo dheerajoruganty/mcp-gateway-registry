@@ -1500,7 +1500,15 @@ def substitute_env_vars(config):
                 config = config.replace('${COGNITO_DOMAIN:-auto}', cognito_domain)
             
             template = Template(config)
-            return template.substitute(os.environ)
+            result = template.substitute(os.environ)
+
+            # Convert string booleans to actual booleans
+            if result.lower() == "true":
+                return True
+            elif result.lower() == "false":
+                return False
+
+            return result
         except KeyError as e:
             logger.warning(f"Environment variable not found for template {config}: {e}")
             return config
