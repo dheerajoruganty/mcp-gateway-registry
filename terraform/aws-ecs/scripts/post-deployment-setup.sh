@@ -511,7 +511,7 @@ _initialize_keycloak() {
 
 
 _initialize_scopes() {
-    log_step "6" "Initializing MCP Scopes on EFS"
+    log_step "6" "Initializing MCP Scopes"
     STEPS_TOTAL=$((STEPS_TOTAL + 1))
 
     if [[ "$SKIP_SCOPES" == "true" ]]; then
@@ -520,21 +520,51 @@ _initialize_scopes() {
         return 0
     fi
 
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log_info "[DRY RUN] Would run: $SCRIPT_DIR/run-scopes-init-task.sh --skip-build"
-        STEPS_SKIPPED=$((STEPS_SKIPPED + 1))
-        return 0
-    fi
+    # Detect storage backend from terraform outputs
+    local documentdb_endpoint
+    documentdb_endpoint=$(jq -r '.documentdb_cluster_endpoint.value // empty' "$OUTPUTS_FILE" 2>/dev/null)
 
-    log_info "Running scopes initialization task..."
+    if [[ -n "$documentdb_endpoint" && "$documentdb_endpoint" != "null" ]]; then
+        # DocumentDB mode
+        log_info "Detected DocumentDB storage backend"
+        log_info "DocumentDB endpoint: $documentdb_endpoint"
 
-    if "$SCRIPT_DIR/run-scopes-init-task.sh" --skip-build; then
-        log_success "MCP scopes initialized on EFS!"
-        STEPS_PASSED=$((STEPS_PASSED + 1))
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_info "[DRY RUN] Would run: $SCRIPT_DIR/run-documentdb-init.sh"
+            STEPS_SKIPPED=$((STEPS_SKIPPED + 1))
+            return 0
+        fi
+
+        log_info "Running DocumentDB initialization (indexes + scopes)..."
+
+        if "$SCRIPT_DIR/run-documentdb-init.sh"; then
+            log_success "DocumentDB initialized with indexes and scopes!"
+            STEPS_PASSED=$((STEPS_PASSED + 1))
+        else
+            log_error "DocumentDB initialization failed."
+            STEPS_FAILED=$((STEPS_FAILED + 1))
+            return 1
+        fi
     else
-        log_error "Scopes initialization failed."
-        STEPS_FAILED=$((STEPS_FAILED + 1))
-        return 1
+        # EFS mode (default)
+        log_info "Using EFS storage backend"
+
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_info "[DRY RUN] Would run: $SCRIPT_DIR/run-scopes-init-task.sh --skip-build"
+            STEPS_SKIPPED=$((STEPS_SKIPPED + 1))
+            return 0
+        fi
+
+        log_info "Running scopes initialization task on EFS..."
+
+        if "$SCRIPT_DIR/run-scopes-init-task.sh" --skip-build; then
+            log_success "MCP scopes initialized on EFS!"
+            STEPS_PASSED=$((STEPS_PASSED + 1))
+        else
+            log_error "Scopes initialization failed."
+            STEPS_FAILED=$((STEPS_FAILED + 1))
+            return 1
+        fi
     fi
 }
 

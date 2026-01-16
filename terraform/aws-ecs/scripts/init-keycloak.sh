@@ -3,11 +3,11 @@
 # This script sets up the initial realm, clients, groups, and users
 #
 # Usage:
-#   KEYCLOAK_ADMIN_URL=https://kc.mycorp.click \
+#   KEYCLOAK_ADMIN_URL=https://your-keycloak-url \
 #   KEYCLOAK_ADMIN=admin \
-#   KEYCLOAK_ADMIN_PASSWORD=Keycloak@123456! \
-#   AUTH_SERVER_EXTERNAL_URL=http://mcp-gateway-alb-xxx.us-west-2.elb.amazonaws.com:8888 \
-#   REGISTRY_URL=http://mcp-gateway-alb-xxx.us-west-2.elb.amazonaws.com \
+#   KEYCLOAK_ADMIN_PASSWORD=your-admin-password \
+#   AUTH_SERVER_EXTERNAL_URL=https://your-auth-server-url \
+#   REGISTRY_URL=https://your-registry-url \
 #   ./init-keycloak.sh
 #
 # Or set these in a .env file in the project root
@@ -742,6 +742,11 @@ create_users() {
     local lob1_username="lob1-user"
     local lob2_username="lob2-user"
     
+    # Get registry-admins group ID for admin user
+    local registry_admins_group_id=$(curl -s -H "Authorization: Bearer ${token}" \
+        "${KEYCLOAK_URL}/admin/realms/${REALM}/groups" 2>/dev/null | \
+        jq -r 'if type == "array" then (.[] | select(.name=="registry-admins") | .id) else empty end' 2>/dev/null)
+    
     # Assign admin user to admin group and unrestricted servers group
     if [ ! -z "$admin_user_id" ] && [ ! -z "$admin_group_id" ]; then
         curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/${REALM}/users/$admin_user_id/groups/$admin_group_id" \
@@ -754,6 +759,13 @@ create_users() {
         curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/${REALM}/users/$admin_user_id/groups/$unrestricted_group_id" \
             -H "Authorization: Bearer ${token}" > /dev/null
         echo "  - $admin_username assigned to mcp-servers-unrestricted group"
+    fi
+    
+    # Assign admin to registry-admins group for full UI permissions
+    if [ ! -z "$admin_user_id" ] && [ ! -z "$registry_admins_group_id" ]; then
+        curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/${REALM}/users/$admin_user_id/groups/$registry_admins_group_id" \
+            -H "Authorization: Bearer ${token}" > /dev/null
+        echo "  - $admin_username assigned to registry-admins group"
     fi
     
     # Assign test user to all groups except admin
@@ -1054,7 +1066,13 @@ main() {
     fi
 
     # Override KEYCLOAK_URL with KEYCLOAK_ADMIN_URL for API calls
-    KEYCLOAK_URL="${KEYCLOAK_ADMIN_URL:-https://kc.mycorp.click}"
+    KEYCLOAK_URL="${KEYCLOAK_ADMIN_URL:-}"
+    if [ -z "$KEYCLOAK_URL" ]; then
+        echo -e "${RED}Error: KEYCLOAK_ADMIN_URL is required${NC}"
+        echo "Please set KEYCLOAK_ADMIN_URL in your .env file or environment,"
+        echo "or ensure terraform-outputs.json contains keycloak_url."
+        exit 1
+    fi
     KEYCLOAK_ADMIN="${KEYCLOAK_ADMIN:-admin}"
     echo "Using Keycloak API URL: $KEYCLOAK_URL"
 

@@ -50,24 +50,46 @@ fi
 
 # Get AWS account and region
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-AWS_REGION="${AWS_REGION:-us-east-1}"
+AWS_REGION="${AWS_REGION:-us-west-2}"
 
 # ECS configuration
 CLUSTER_NAME="mcp-gateway-ecs-cluster"
 TASK_FAMILY="mcp-gateway-v2-registry"
 CONTAINER_NAME="registry"
 
-# Get DocumentDB host from SSM Parameter Store
-if [ -z "$DOCUMENTDB_HOST" ]; then
-    echo -e "${YELLOW}Fetching DocumentDB endpoint from SSM Parameter Store...${NC}"
-    DOCUMENTDB_HOST=$(aws ssm get-parameter \
-        --name "/mcp-gateway/documentdb/endpoint" \
-        --query 'Parameter.Value' \
-        --output text \
-        --region "$AWS_REGION" 2>/dev/null || echo "")
+# Terraform outputs file location
+OUTPUTS_FILE="$SCRIPT_DIR/terraform-outputs.json"
 
-    if [ -n "$DOCUMENTDB_HOST" ]; then
-        echo -e "${GREEN}Found DocumentDB endpoint in SSM${NC}"
+# Get DocumentDB host - check sources in order of priority:
+# 1. Environment variable (explicit override)
+# 2. Terraform outputs file
+# 3. SSM Parameter Store
+if [ -z "$DOCUMENTDB_HOST" ]; then
+    # Try terraform outputs first
+    if [ -f "$OUTPUTS_FILE" ]; then
+        echo -e "${YELLOW}Checking terraform outputs for DocumentDB endpoint...${NC}"
+        DOCUMENTDB_HOST=$(jq -r '.documentdb_cluster_endpoint.value // empty' "$OUTPUTS_FILE" 2>/dev/null || echo "")
+        if [ -n "$DOCUMENTDB_HOST" ] && [ "$DOCUMENTDB_HOST" != "null" ]; then
+            echo -e "${GREEN}Found DocumentDB endpoint in terraform outputs${NC}"
+        else
+            DOCUMENTDB_HOST=""
+        fi
+    fi
+
+    # Fall back to SSM Parameter Store
+    if [ -z "$DOCUMENTDB_HOST" ]; then
+        echo -e "${YELLOW}Fetching DocumentDB endpoint from SSM Parameter Store...${NC}"
+        DOCUMENTDB_HOST=$(aws ssm get-parameter \
+            --name "/mcp-gateway/documentdb/endpoint" \
+            --query 'Parameter.Value' \
+            --output text \
+            --region "$AWS_REGION" 2>/dev/null || echo "")
+
+        if [ -n "$DOCUMENTDB_HOST" ] && [ "$DOCUMENTDB_HOST" != "None" ]; then
+            echo -e "${GREEN}Found DocumentDB endpoint in SSM${NC}"
+        else
+            DOCUMENTDB_HOST=""
+        fi
     fi
 fi
 
@@ -75,8 +97,13 @@ fi
 if [ -z "$DOCUMENTDB_HOST" ]; then
     echo -e "${RED}Error: DocumentDB endpoint not found${NC}"
     echo ""
-    echo "Set DOCUMENTDB_HOST environment variable or ensure SSM parameter exists:"
-    echo "  /mcp-gateway/documentdb/endpoint"
+    echo "Checked the following sources:"
+    echo "  1. DOCUMENTDB_HOST environment variable"
+    echo "  2. Terraform outputs file: $OUTPUTS_FILE"
+    echo "  3. SSM Parameter Store: /mcp-gateway/documentdb/endpoint"
+    echo ""
+    echo "Make sure you have run 'terraform apply' and saved outputs,"
+    echo "or set DOCUMENTDB_HOST environment variable."
     exit 1
 fi
 
