@@ -138,6 +138,7 @@ Interactive terminal interface for chatting with AI models and discovering MCP t
 - **⭐ Server & Agent Rating System** - Rate and review agents with an interactive 5-star rating widget. Users can submit ratings via the UI or CLI, view aggregate ratings with individual rating details, and update their existing ratings. Features include a rotating buffer (max 100 ratings per agent), one rating per user, float average calculations, and full OpenAPI documentation. Enables community-driven agent quality assessment and discovery.
 - **🧠 Flexible Embeddings Support** - Choose from three embedding provider options for semantic search: local sentence-transformers, OpenAI, or any LiteLLM-supported provider including Amazon Bedrock Titan, Cohere, and 100+ other models. Switch providers with simple configuration changes. [Embeddings Guide](docs/embeddings.md)
 - **☁️ AWS ECS Production Deployment** - Production-ready deployment on Amazon ECS Fargate with multi-AZ architecture, Application Load Balancer with HTTPS, auto-scaling, CloudWatch monitoring, and NAT Gateway high availability. Complete Terraform configuration for deploying the entire stack. [ECS Deployment Guide](terraform/aws-ecs/README.md)
+- **Flexible Deployment Modes** - Three deployment options to match your requirements: (1) CloudFront Only for quick setup without custom domains, (2) Custom Domain with Route53/ACM for branded URLs, or (3) CloudFront + Custom Domain for production with CDN benefits. [Deployment Modes Guide](docs/deployment-modes.md)
 - **Federated Registry** - MCP Gateway registry now supports federation of servers and agents from other registries. [Federation Guide](docs/federation.md)
 - **🔗 Agent-to-Agent (A2A) Protocol Support** - Agents can now register, discover, and communicate with other agents through a secure, centralized registry. Enable autonomous agent ecosystems with Keycloak-based access control and fine-grained permissions. [A2A Guide](docs/a2a.md)
 - **🏢 Microsoft Entra ID Integration** - Enterprise SSO with Microsoft Entra ID (Azure AD) authentication. Group-based access control, conditional access policies, and seamless integration with existing Microsoft 365 environments. [Entra ID Setup Guide](docs/entra-id-setup.md)
@@ -415,7 +416,7 @@ cp .env.example .env
 ```
 
 **Step 2: Download embeddings model**
-Download the required sentence-transformers model to the shared models directory using the [HuggingFace CLI](https://huggingface.co/docs/huggingface_hub/main/en/guides/cli) (`pip install -U huggingface_hub`):
+Download the required sentence-transformers model to the shared models directory:
 ```bash
 hf download sentence-transformers/all-MiniLM-L6-v2 --local-dir ${HOME}/mcp-gateway/models/all-MiniLM-L6-v2
 ```

@@ -111,7 +111,15 @@ module "mcp_gateway" {
   documentdb_namespace              = var.documentdb_namespace
   documentdb_use_tls                = var.documentdb_use_tls
   documentdb_use_iam                = var.documentdb_use_iam
-  documentdb_credentials_secret_arn = aws_secretsmanager_secret.documentdb_credentials.arn
+  documentdb_credentials_secret_arn = var.storage_backend == "documentdb" ? aws_secretsmanager_secret.documentdb_credentials.arn : ""
+
+  # Security scanning configuration
+  security_scan_enabled         = var.security_scan_enabled
+  security_scan_on_registration = var.security_scan_on_registration
+  security_block_unsafe_servers = var.security_block_unsafe_servers
+  security_analyzers            = var.security_analyzers
+  security_scan_timeout         = var.security_scan_timeout
+  security_add_pending_tag      = var.security_add_pending_tag
 }
 
 # =============================================================================

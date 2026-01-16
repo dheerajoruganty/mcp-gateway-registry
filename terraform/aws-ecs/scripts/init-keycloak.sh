@@ -848,14 +848,14 @@ setup_client_secrets() {
         if aws secretsmanager update-secret \
             --secret-id mcp-gateway-keycloak-client-secret \
             --secret-string "{\"client_id\": \"mcp-gateway-web\", \"client_secret\": \"${web_secret}\"}" \
-            --region "${AWS_REGION:-us-west-2}" &>/dev/null; then
+            --region "${AWS_REGION}" &>/dev/null; then
             echo -e "${GREEN}Web client secret saved to AWS Secrets Manager!${NC}"
         else
             echo -e "${YELLOW}Warning: Could not save web client secret to Secrets Manager${NC}"
             echo "You can manually update it with:"
             echo "  aws secretsmanager update-secret --secret-id mcp-gateway-keycloak-client-secret \\"
             echo "    --secret-string '{\"client_id\": \"mcp-gateway-web\", \"client_secret\": \"${web_secret}\"}' \\"
-            echo "    --region \${AWS_REGION:-us-west-2}"
+            echo "    --region \${AWS_REGION}"
         fi
     fi
 
@@ -865,14 +865,14 @@ setup_client_secrets() {
         if aws secretsmanager update-secret \
             --secret-id mcp-gateway-keycloak-m2m-client-secret \
             --secret-string "{\"client_id\": \"mcp-gateway-m2m\", \"client_secret\": \"${m2m_secret}\"}" \
-            --region "${AWS_REGION:-us-west-2}" &>/dev/null; then
+            --region "${AWS_REGION}" &>/dev/null; then
             echo -e "${GREEN}M2M client secret saved to AWS Secrets Manager!${NC}"
         else
             echo -e "${YELLOW}Warning: Could not save M2M client secret to Secrets Manager${NC}"
             echo "You can manually update it with:"
             echo "  aws secretsmanager update-secret --secret-id mcp-gateway-keycloak-m2m-client-secret \\"
             echo "    --secret-string '{\"client_id\": \"mcp-gateway-m2m\", \"client_secret\": \"${m2m_secret}\"}' \\"
-            echo "    --region \${AWS_REGION:-us-west-2}"
+            echo "    --region \${AWS_REGION}"
         fi
     fi
 
@@ -1048,6 +1048,17 @@ main() {
     PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
     ENV_FILE="$PROJECT_ROOT/.env"
 
+    # Check for AWS_REGION - required for SSM and Secrets Manager operations
+    if [ -z "$AWS_REGION" ]; then
+        echo -e "${RED}Error: AWS_REGION environment variable is required${NC}"
+        echo "Please set AWS_REGION before running this script:"
+        echo "  export AWS_REGION=us-east-1"
+        echo "  # or"
+        echo "  AWS_REGION=us-east-1 $0"
+        exit 1
+    fi
+    echo "Using AWS Region: $AWS_REGION"
+
     # Load environment variables from .env file if it exists
     if [ -f "$ENV_FILE" ]; then
         echo "Loading environment variables from $ENV_FILE..."
@@ -1088,7 +1099,7 @@ main() {
     if [ -z "$KEYCLOAK_ADMIN_PASSWORD" ]; then
         echo "Attempting to load KEYCLOAK_ADMIN_PASSWORD from SSM Parameter Store..."
         if command -v aws &> /dev/null; then
-            SSM_PASSWORD=$(aws ssm get-parameter --name "/keycloak/admin_password" --with-decryption --query 'Parameter.Value' --output text --region "${AWS_REGION:-us-west-2}" 2>/dev/null)
+            SSM_PASSWORD=$(aws ssm get-parameter --name "/keycloak/admin_password" --with-decryption --query 'Parameter.Value' --output text --region "${AWS_REGION}" 2>/dev/null)
             if [ -n "$SSM_PASSWORD" ] && [ "$SSM_PASSWORD" != "null" ]; then
                 KEYCLOAK_ADMIN_PASSWORD="$SSM_PASSWORD"
                 echo -e "${GREEN}Loaded KEYCLOAK_ADMIN_PASSWORD from SSM Parameter Store${NC}"

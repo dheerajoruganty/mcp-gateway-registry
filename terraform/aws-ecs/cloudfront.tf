@@ -12,12 +12,15 @@
 #
 
 # Data sources for managed CloudFront policies
+# Only fetched when CloudFront is enabled
 data "aws_cloudfront_cache_policy" "caching_disabled" {
-  name = "Managed-CachingDisabled"
+  count = var.enable_cloudfront ? 1 : 0
+  name  = "Managed-CachingDisabled"
 }
 
 data "aws_cloudfront_origin_request_policy" "all_viewer" {
-  name = "Managed-AllViewer"
+  count = var.enable_cloudfront ? 1 : 0
+  name  = "Managed-AllViewer"
 }
 
 # CloudFront distribution for MCP Gateway ALB
@@ -64,9 +67,9 @@ resource "aws_cloudfront_distribution" "mcp_gateway" {
     target_origin_id = "mcp-gateway-alb"
 
     # Disable caching for dynamic content
-    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
+    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled[0].id
     # Forward all headers to origin
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer[0].id
 
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
@@ -136,8 +139,8 @@ resource "aws_cloudfront_distribution" "keycloak" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "keycloak-alb"
 
-    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
+    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled[0].id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer[0].id
 
     viewer_protocol_policy = "redirect-to-https"
     compress               = true

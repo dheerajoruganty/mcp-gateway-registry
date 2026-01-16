@@ -365,3 +365,43 @@ variable "enable_route53_dns" {
   type        = bool
   default     = true
 }
+
+# =============================================================================
+# SECURITY SCANNING CONFIGURATION
+# =============================================================================
+
+variable "security_scan_enabled" {
+  description = "Enable security scanning for MCP servers"
+  type        = bool
+  default     = false
+}
+
+variable "security_scan_on_registration" {
+  description = "Automatically scan servers when they are registered"
+  type        = bool
+  default     = false
+}
+
+variable "security_block_unsafe_servers" {
+  description = "Block (disable) servers that fail security scans"
+  type        = bool
+  default     = false
+}
+
+variable "security_analyzers" {
+  description = "Analyzers to use for security scanning (comma-separated: yara, llm, api)"
+  type        = string
+  default     = "yara"
+}
+
+variable "security_scan_timeout" {
+  description = "Security scan timeout in seconds"
+  type        = number
+  default     = 60
+}
+
+variable "security_add_pending_tag" {
+  description = "Add 'security-pending' tag to servers that fail security scan"
+  type        = bool
+  default     = false
+}
