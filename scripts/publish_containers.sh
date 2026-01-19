@@ -39,9 +39,9 @@ PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 declare -a COMPONENTS=(
     "registry:.:./docker/Dockerfile.registry"
     "auth-server:.:./docker/Dockerfile.auth"
-    "currenttime-server:servers/currenttime:./docker/Dockerfile.mcp-server"
-    "realserverfaketools-server:servers/realserverfaketools:./docker/Dockerfile.mcp-server"
-    "fininfo-server:servers/fininfo:./docker/Dockerfile.mcp-server"
+    "currenttime-server:.:./docker/Dockerfile.mcp-server-light"
+    "realserverfaketools-server:.:./docker/Dockerfile.mcp-server-light"
+    "fininfo-server:.:./docker/Dockerfile.mcp-server-light"
     "mcpgw-server:.:./docker/Dockerfile.mcp-server"
     "metrics-service:metrics-service:./metrics-service/Dockerfile"
 )
