@@ -191,7 +191,7 @@ EXAMPLES:
 <tool name="read_docs">
 Search and read project documentation:
 - Search by keywords: Use search_query parameter
-- Read specific file: Use file_path parameter (e.g., 'auth.md', 'quick-start.md')
+- Read specific file: Use file_path parameter (e.g., 'auth.md', 'complete-setup-guide.md')
 - List all docs: Call with no parameters
 
 When to use: When users ask about features, setup, configuration, authentication, troubleshooting, or any project-related questions. Use this tool to find relevant documentation and provide accurate answers based on the docs content.

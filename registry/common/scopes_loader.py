@@ -2,7 +2,7 @@
 Shared scopes loader module for loading authorization scopes from repository.
 
 This module is used by both the auth server and registry to load scopes
-from either OpenSearch or YAML file backends.
+from either DocumentDB or YAML file backends.
 """
 
 import asyncio
@@ -21,7 +21,7 @@ async def load_scopes_from_repository(
     initial_delay: float = 2.0
 ) -> Dict[str, Any]:
     """
-    Load scopes configuration from OpenSearch repository with retry logic.
+    Load scopes configuration from repository with retry logic.
 
     Args:
         max_retries: Maximum number of retry attempts
@@ -30,8 +30,6 @@ async def load_scopes_from_repository(
     Returns:
         Dict with "group_mappings", scope definitions, and "UI-Scopes"
     """
-    from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
-
     last_exception = None
 
     for attempt in range(max_retries):
@@ -42,8 +40,7 @@ async def load_scopes_from_repository(
 
             if attempt == 0:
                 logger.info(
-                    f"Repository settings - backend: {settings.storage_backend}, "
-                    f"opensearch_host: {settings.opensearch_host}"
+                    f"Repository settings - backend: {settings.storage_backend}"
                 )
 
             scope_repo = get_scope_repository()
@@ -84,7 +81,7 @@ async def load_scopes_from_repository(
                     ui_scopes[group_name] = ui_permissions
 
             logger.info(
-                f"Loaded from OpenSearch: {len(group_mappings)} group mappings, "
+                f"Loaded from repository: {len(group_mappings)} group mappings, "
                 f"{len(scopes_config)} scope definitions, {len(ui_scopes)} UI scopes"
             )
 
@@ -94,22 +91,22 @@ async def load_scopes_from_repository(
 
             return config
 
-        except (OpenSearchConnectionError, ConnectionRefusedError, OSError) as e:
+        except (ConnectionRefusedError, OSError) as e:
             last_exception = e
             if attempt < max_retries - 1:
                 delay = initial_delay * (2 ** attempt)
                 logger.warning(
-                    f"OpenSearch not ready (attempt {attempt + 1}/{max_retries}), "
+                    f"Repository not ready (attempt {attempt + 1}/{max_retries}), "
                     f"retrying in {delay}s: {e}"
                 )
                 await asyncio.sleep(delay)
             else:
                 logger.error(
-                    f"Failed to connect to OpenSearch after {max_retries} attempts: {e}",
+                    f"Failed to connect to repository after {max_retries} attempts: {e}",
                     exc_info=True
                 )
         except Exception as e:
-            # Other exceptions should also be retried (might be transient OpenSearch errors)
+            # Other exceptions should also be retried (might be transient repository errors)
             last_exception = e
             if attempt < max_retries - 1:
                 delay = initial_delay * (2 ** attempt)
@@ -185,7 +182,12 @@ async def reload_scopes_config(storage_backend: Optional[str] = None) -> Dict[st
 
     logger.info(f"Reloading scopes with storage backend: {storage_backend}")
 
-    if storage_backend == "opensearch":
+    if storage_backend in ("documentdb", "mongodb-ce"):
         return await load_scopes_from_repository()
     else:
+        # For file backend, also load into the repository so get_ui_scopes works
+        from ..repositories.factory import get_scope_repository
+        scope_repo = get_scope_repository()
+        await scope_repo.load_all()
+
         return load_scopes_from_yaml(os.getenv("SCOPES_CONFIG_PATH"))

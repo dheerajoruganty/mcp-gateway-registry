@@ -158,27 +158,29 @@ async def reload_scopes_from_repository():
         logger.error(f"Failed to reload scopes from repository: {e}", exc_info=True)
 
 
-def map_cognito_groups_to_scopes(groups: List[str]) -> List[str]:
+async def map_cognito_groups_to_scopes(groups: List[str]) -> List[str]:
     """
-    Map Cognito groups to MCP scopes using the scopes.yml configuration.
-    
+    Map Cognito groups to MCP scopes - queries repository directly.
+
     Args:
         groups: List of Cognito group names
-        
+
     Returns:
         List of MCP scopes
     """
+    from ..repositories.factory import get_scope_repository
+
     scopes = []
-    group_mappings = SCOPES_CONFIG.get('group_mappings', {})
-    
+    scope_repo = get_scope_repository()
+
     for group in groups:
-        if group in group_mappings:
-            group_scopes = group_mappings[group]
+        group_scopes = await scope_repo.get_group_mappings(group)
+        if group_scopes:
             scopes.extend(group_scopes)
             logger.debug(f"Mapped group '{group}' to scopes: {group_scopes}")
         else:
             logger.debug(f"No scope mapping found for group: {group}")
-    
+
     # Remove duplicates while preserving order
     seen = set()
     unique_scopes = []
@@ -186,14 +188,14 @@ def map_cognito_groups_to_scopes(groups: List[str]) -> List[str]:
         if scope not in seen:
             seen.add(scope)
             unique_scopes.append(scope)
-    
+
     logger.info(f"Final mapped scopes: {unique_scopes}")
     return unique_scopes
 
 
-def get_ui_permissions_for_user(user_scopes: List[str]) -> Dict[str, List[str]]:
+async def get_ui_permissions_for_user(user_scopes: List[str]) -> Dict[str, List[str]]:
     """
-    Get UI permissions for a user based on their scopes.
+    Get UI permissions for a user based on their scopes - queries repository directly.
 
     Args:
         user_scopes: List of user's scopes (includes UI scope names like 'mcp-registry-admin')
@@ -202,12 +204,14 @@ def get_ui_permissions_for_user(user_scopes: List[str]) -> Dict[str, List[str]]:
         Dict mapping UI actions to lists of services they can perform the action on
         Example: {'list_service': ['mcpgw', 'auth_server'], 'toggle_service': ['mcpgw']}
     """
+    from ..repositories.factory import get_scope_repository
+
     ui_permissions = {}
-    ui_scopes = SCOPES_CONFIG.get('UI-Scopes', {})
+    scope_repo = get_scope_repository()
 
     for scope in user_scopes:
-        if scope in ui_scopes:
-            scope_config = ui_scopes[scope]
+        scope_config = await scope_repo.get_ui_scopes(scope)
+        if scope_config:
             logger.debug(f"Processing UI scope '{scope}' with config: {scope_config}")
 
             # Process each permission in the scope
@@ -291,9 +295,9 @@ def get_accessible_agents_for_user(user_ui_permissions: Dict[str, List[str]]) ->
     return list_permissions
 
 
-def get_servers_for_scope(scope: str) -> List[str]:
+async def get_servers_for_scope(scope: str) -> List[str]:
     """
-    Get list of server names that a scope provides access to.
+    Get list of server names that a scope provides access to - queries repository directly.
 
     Args:
         scope: The scope to check (e.g., 'mcp-servers-restricted/read')
@@ -301,7 +305,10 @@ def get_servers_for_scope(scope: str) -> List[str]:
     Returns:
         List of server names the scope grants access to
     """
-    scope_config = SCOPES_CONFIG.get(scope, [])
+    from ..repositories.factory import get_scope_repository
+
+    scope_repo = get_scope_repository()
+    scope_config = await scope_repo.get_server_scopes(scope)
     server_names = []
 
     for server_config in scope_config:
@@ -311,9 +318,9 @@ def get_servers_for_scope(scope: str) -> List[str]:
     return list(set(server_names))  # Remove duplicates
 
 
-def user_has_wildcard_access(user_scopes: List[str]) -> bool:
+async def user_has_wildcard_access(user_scopes: List[str]) -> bool:
     """
-    Check if user has wildcard access to all servers via their scopes.
+    Check if user has wildcard access to all servers via their scopes - queries repository directly.
 
     A user has wildcard access if any of their scopes includes server: '*'.
     This is determined dynamically from the scopes configuration, not hardcoded group names.
@@ -325,7 +332,7 @@ def user_has_wildcard_access(user_scopes: List[str]) -> bool:
         True if user has wildcard access to all servers, False otherwise
     """
     for scope in user_scopes:
-        servers = get_servers_for_scope(scope)
+        servers = await get_servers_for_scope(scope)
         if '*' in servers:
             logger.debug(f"User scope '{scope}' grants wildcard access to all servers")
             return True
@@ -333,27 +340,26 @@ def user_has_wildcard_access(user_scopes: List[str]) -> bool:
     return False
 
 
-def get_user_accessible_servers(user_scopes: List[str]) -> List[str]:
+async def get_user_accessible_servers(user_scopes: List[str]) -> List[str]:
     """
-    Get list of all servers the user has access to based on their scopes.
-    
+    Get list of all servers the user has access to based on their scopes - queries repository directly.
+
     Args:
         user_scopes: List of user's scopes
-        
+
     Returns:
         List of server names the user can access
     """
     accessible_servers = set()
-    
+
     logger.info(f"DEBUG: get_user_accessible_servers called with scopes: {user_scopes}")
-    logger.info(f"DEBUG: Available scope configs: {list(SCOPES_CONFIG.keys())}")
-    
+
     for scope in user_scopes:
         logger.info(f"DEBUG: Processing scope: {scope}")
-        server_names = get_servers_for_scope(scope)
+        server_names = await get_servers_for_scope(scope)
         logger.info(f"DEBUG: Scope {scope} maps to servers: {server_names}")
         accessible_servers.update(server_names)
-    
+
     logger.info(f"DEBUG: Final accessible servers: {list(accessible_servers)}")
     logger.debug(f"User with scopes {user_scopes} has access to servers: {list(accessible_servers)}")
     return list(accessible_servers)
@@ -387,18 +393,18 @@ def user_can_modify_servers(user_groups: List[str], user_scopes: List[str]) -> b
     return len(execute_scopes) > 0
 
 
-def user_can_access_server(server_name: str, user_scopes: List[str]) -> bool:
+async def user_can_access_server(server_name: str, user_scopes: List[str]) -> bool:
     """
-    Check if user can access a specific server.
-    
+    Check if user can access a specific server - queries repository directly.
+
     Args:
         server_name: Name of the server to check
         user_scopes: List of user's scopes
-        
+
     Returns:
         True if user can access the server, False otherwise
     """
-    accessible_servers = get_user_accessible_servers(user_scopes)
+    accessible_servers = await get_user_accessible_servers(user_scopes)
     return server_name in accessible_servers
 
 
@@ -422,7 +428,7 @@ def web_auth(
     return get_current_user(session)
 
 
-def enhanced_auth(
+async def enhanced_auth(
     session: Annotated[str | None, Cookie(alias=settings.session_cookie_name)] = None,
 ) -> Dict[str, Any]:
     """
@@ -430,16 +436,16 @@ def enhanced_auth(
     Returns username, groups, scopes, and permission flags.
     """
     session_data = get_user_session_data(session)
-    
+
     username = session_data['username']
     groups = session_data.get('groups', [])
     auth_method = session_data.get('auth_method', 'traditional')
-    
+
     logger.info(f"Enhanced auth debug for {username}: groups={groups}, auth_method={auth_method}")
-    
+
     # Map groups to scopes for OAuth2 users
     if auth_method == 'oauth2':
-        scopes = map_cognito_groups_to_scopes(groups)
+        scopes = await map_cognito_groups_to_scopes(groups)
         logger.info(f"OAuth2 user {username} with groups {groups} mapped to scopes: {scopes}")
         # If OAuth2 user has no groups, they should get minimal permissions, not admin
         if not groups:
@@ -449,17 +455,17 @@ def enhanced_auth(
         if not groups:
             groups = ['registry-admins']
         # Map traditional admin groups to scopes dynamically
-        scopes = map_cognito_groups_to_scopes(groups)
+        scopes = await map_cognito_groups_to_scopes(groups)
         if not scopes:
             # Fallback for traditional users if no mapping exists
             scopes = ['registry-admins']
         logger.info(f"Traditional user {username} with groups {groups} mapped to scopes: {scopes}")
-    
+
     # Get UI permissions
-    ui_permissions = get_ui_permissions_for_user(scopes)
+    ui_permissions = await get_ui_permissions_for_user(scopes)
 
     # Get accessible servers (from server scopes)
-    accessible_servers = get_user_accessible_servers(scopes)
+    accessible_servers = await get_user_accessible_servers(scopes)
 
     # Get accessible services (from UI permissions)
     accessible_services = get_accessible_services_for_user(ui_permissions)
@@ -481,14 +487,14 @@ def enhanced_auth(
         'accessible_agents': accessible_agents,
         'ui_permissions': ui_permissions,
         'can_modify_servers': can_modify,
-        'is_admin': user_has_wildcard_access(scopes)
+        'is_admin': await user_has_wildcard_access(scopes)
     }
 
     logger.debug(f"Enhanced auth context for {username}: {user_context}")
     return user_context
 
 
-def nginx_proxied_auth(
+async def nginx_proxied_auth(
     request: Request,
     session: Annotated[str | None, Cookie(alias=settings.session_cookie_name, include_in_schema=False)] = None,
     x_user: Annotated[str | None, Header(alias="X-User", include_in_schema=False)] = None,
@@ -543,10 +549,10 @@ def nginx_proxied_auth(
         logger.info(f"nginx-proxied auth for user: {username}, method: {x_auth_method}, scopes: {scopes}")
 
         # Get accessible servers based on scopes
-        accessible_servers = get_user_accessible_servers(scopes)
+        accessible_servers = await get_user_accessible_servers(scopes)
 
         # Get UI permissions
-        ui_permissions = get_ui_permissions_for_user(scopes)
+        ui_permissions = await get_ui_permissions_for_user(scopes)
 
         # Get accessible services
         accessible_services = get_accessible_services_for_user(ui_permissions)
@@ -568,15 +574,24 @@ def nginx_proxied_auth(
             'accessible_agents': accessible_agents,
             'ui_permissions': ui_permissions,
             'can_modify_servers': can_modify,
-            'is_admin': user_has_wildcard_access(scopes)
+            'is_admin': await user_has_wildcard_access(scopes)
         }
 
         logger.debug(f"nginx-proxied auth context for {username}: {user_context}")
         return user_context
 
     # Fallback to session cookie authentication
-    logger.debug("No nginx auth headers found, falling back to session cookie auth")
-    return enhanced_auth(session)
+    logger.info(f"[NGINX_AUTH_FALLBACK] No nginx auth headers found, falling back to session cookie auth")
+    logger.info(f"[NGINX_AUTH_FALLBACK] Session cookie value: {session[:20] if session else 'None'}...")
+    logger.info(f"[NGINX_AUTH_FALLBACK] Request path: {request.url.path}")
+    try:
+        return await enhanced_auth(session)
+    except HTTPException as e:
+        logger.error(f"[NGINX_AUTH_FALLBACK] enhanced_auth raised HTTPException: status={e.status_code}, detail={e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"[NGINX_AUTH_FALLBACK] enhanced_auth raised unexpected exception: {type(e).__name__}: {str(e)}")
+        raise
 
 
 def create_session_cookie(username: str, auth_method: str = "traditional", provider: str = "local") -> str:

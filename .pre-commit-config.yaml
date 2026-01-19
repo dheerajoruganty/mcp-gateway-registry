@@ -1,0 +1,140 @@
+# Pre-commit hooks for MCP Gateway Registry
+# Install with: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Ruff - Fast Python linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.2
+    hooks:
+      # Run the linter with auto-fixes
+      - id: ruff
+        args: [--fix]
+        name: Ruff linter
+        description: Run ruff linter with auto-fixes
+
+      # Run the formatter
+      - id: ruff-format
+        name: Ruff formatter
+        description: Run ruff formatter
+
+  # Pre-commit hooks for file quality
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Remove trailing whitespace
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+        description: Remove trailing whitespace
+
+      # Ensure files end with newline
+      - id: end-of-file-fixer
+        name: Fix end of files
+        description: Ensure files end with a newline
+
+      # Check YAML syntax
+      - id: check-yaml
+        name: Check YAML
+        description: Validate YAML file syntax
+        exclude: ^(docker/|\.github/)
+
+      # Check JSON syntax
+      - id: check-json
+        name: Check JSON
+        description: Validate JSON file syntax
+
+      # Prevent large files from being committed
+      - id: check-added-large-files
+        name: Check for large files
+        description: Prevent files larger than 500KB
+        args: ['--maxkb=500']
+
+      # Check for merge conflict markers
+      - id: check-merge-conflict
+        name: Check for merge conflicts
+        description: Check for merge conflict markers
+
+      # Detect private keys
+      - id: detect-private-key
+        name: Detect private keys
+        description: Check for private SSH keys
+
+      # Check for case conflicts in filenames
+      - id: check-case-conflict
+        name: Check filename case conflicts
+        description: Check for case conflicts in filenames
+
+      # Check Python docstrings
+      - id: check-docstring-first
+        name: Check docstring is first
+        description: Ensure docstring comes first in Python files
+
+      # Check for debugger imports
+      - id: debug-statements
+        name: Check for debugger statements
+        description: Check for pdb and ipdb debugger statements
+
+  # Bandit - Security vulnerability scanner
+  - repo: https://github.com/PyCQA/bandit
+    rev: '1.8.3'
+    hooks:
+      - id: bandit
+        name: Bandit security scan
+        description: Scan for security vulnerabilities
+        args: ['-c', 'pyproject.toml']
+        additional_dependencies: ['bandit[toml]']
+        exclude: ^tests/
+
+  # MyPy - Static type checker
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        name: MyPy type checking
+        description: Static type checking
+        additional_dependencies:
+          - types-requests
+          - types-PyYAML
+          - pydantic
+        args: [--ignore-missing-imports, --no-strict-optional]
+        exclude: ^(tests/|scripts/)
+
+  # Local hooks for project-specific checks
+  - repo: local
+    hooks:
+      # Run fast unit tests
+      - id: pytest-fast
+        name: Run fast tests
+        entry: uv run pytest -m "not slow" --tb=short
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+
+      # Python syntax check
+      - id: python-syntax
+        name: Check Python syntax
+        entry: python -m py_compile
+        language: system
+        types: [python]
+
+      # Shell script syntax check
+      - id: shell-syntax
+        name: Check shell script syntax
+        entry: bash -n
+        language: system
+        types: [shell]
+        exclude: ^(docker/|scripts/setup/)
+
+# Default stages
+default_stages: [commit]
+
+# Default language version
+default_language_version:
+  python: python3.11
+
+# Fail fast - stop on first error
+fail_fast: false
+
+# Minimum pre-commit version
+minimum_pre_commit_version: '2.20.0'

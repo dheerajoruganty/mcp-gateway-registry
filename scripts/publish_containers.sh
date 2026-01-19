@@ -54,6 +54,7 @@ declare -a EXTERNAL_IMAGES=(
     "grafana:grafana/grafana:latest"
     "keycloak:quay.io/keycloak/keycloak:25.0"
     "alpine:alpine:latest"
+    "mongo:mongo:8.2"
 )
 
 # Map component names to actual server directory paths

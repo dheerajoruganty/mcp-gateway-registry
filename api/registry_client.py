@@ -175,6 +175,7 @@ class GroupListResponse(BaseModel):
     """Group list response model."""
 
     groups: List[Dict[str, Any]] = Field(..., description="List of groups")
+    total: int = Field(..., description="Total number of groups")
 
 
 # Agent Management Models
@@ -721,8 +722,8 @@ class KeycloakGroupSummary(BaseModel):
     attributes: Optional[Dict[str, Any]] = Field(None, description="Group attributes")
 
 
-class GroupListResponse(BaseModel):
-    """Response model for list groups endpoint."""
+class GroupSyncStatusResponse(BaseModel):
+    """Response model for list groups endpoint with sync status."""
 
     keycloak_groups: List[Dict[str, Any]] = Field(default_factory=list, description="Groups from Keycloak")
     scopes_groups: Dict[str, Any] = Field(default_factory=dict, description="Groups from scopes storage")
@@ -822,7 +823,7 @@ class RegistryClient:
                 headers=headers,
                 json=data,
                 params=params,
-                timeout=30
+                timeout=120
             )
         else:
             # Send as form-encoded for server registration
@@ -832,7 +833,7 @@ class RegistryClient:
                 headers=headers,
                 data=data,
                 params=params,
-                timeout=30
+                timeout=120
             )
 
         try:
@@ -1163,7 +1164,7 @@ class RegistryClient:
         self,
         include_keycloak: bool = True,
         include_scopes: bool = True
-    ) -> GroupListResponse:
+    ) -> GroupSyncStatusResponse:
         """
         List all user groups.
 
@@ -1172,7 +1173,7 @@ class RegistryClient:
             include_scopes: Include scope information
 
         Returns:
-            Group list response
+            Group list response with sync status
 
         Raises:
             requests.HTTPError: If list operation fails
@@ -1190,7 +1191,7 @@ class RegistryClient:
             params=params
         )
 
-        result = GroupListResponse(**response.json())
+        result = GroupSyncStatusResponse(**response.json())
         total_groups = len(result.scopes_groups) + len(result.keycloak_groups)
         logger.info(f"Retrieved {total_groups} groups ({len(result.keycloak_groups)} from Keycloak, {len(result.scopes_groups)} from scopes)")
         return result

@@ -191,3 +191,30 @@ session_cookie_domain = ""
 # embeddings_model_dimensions = 1536
 # embeddings_aws_region       = "us-east-1"
 # embeddings_api_key          = ""  # Empty for Bedrock (uses IAM)
+
+# ============================================================================
+# DOCUMENTDB ELASTIC CLUSTER CONFIGURATION
+# ============================================================================
+
+# DocumentDB Elastic Cluster credentials (REQUIRED)
+# RECOMMENDED: Set via environment variables instead of tfvars for security:
+#   export TF_VAR_documentdb_admin_username="docdbadmin"
+#   export TF_VAR_documentdb_admin_password="YourSecurePassword123!"
+#
+# Alternatively, uncomment below (less secure - credentials in file):
+# documentdb_admin_username = "docdbadmin"
+# documentdb_admin_password = "CHANGE-ME-DocumentDB-Password123!"
+
+# DocumentDB Elastic Cluster capacity configuration (OPTIONAL)
+# Uncomment to override defaults
+
+# vCPU capacity per shard
+# Options: 2, 4, 8, 16, 32, 64
+# Default: 2 (recommended for small-medium workloads)
+# For production with high load, use 4 or 8
+# documentdb_shard_capacity = 2
+
+# Number of shards (1-32)
+# Default: 1 (recommended for most deployments)
+# Increase only when scaling beyond single shard capacity
+# documentdb_shard_count = 1

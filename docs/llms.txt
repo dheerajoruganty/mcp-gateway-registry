@@ -5,9 +5,9 @@ This project provides an enterprise-ready gateway and registry for Model Context
 The repository provides:
 
 1. **Centralized Gateway & Registry**: A unified platform for managing and accessing MCP servers across an organization
-2. **Enterprise Authentication**: Multi-provider OAuth 2.0 support with Keycloak, Amazon Cognito, and custom identity providers
+2. **Enterprise Authentication**: Multi-provider OAuth 2.0 support with Keycloak, Amazon Cognito, Microsoft Entra ID, and custom identity providers
 3. **Fine-Grained Access Control**: Scope-based authorization at server, method, and individual tool levels
-4. **Dynamic Tool Discovery**: AI-powered semantic search using FAISS and sentence transformers for autonomous tool discovery
+4. **Dynamic Tool Discovery**: AI-powered hybrid search (BM25 + vector k-NN) with flexible embedding providers (local, OpenAI, LiteLLM, Bedrock) for autonomous tool discovery
 5. **Comprehensive Observability**: Dual-path metrics collection with SQLite and OpenTelemetry for detailed analytics
 6. **Production-Ready Deployment**: Docker-based deployment with support for EC2, EKS, and container orchestration
 
@@ -24,6 +24,103 @@ Key features include: centralized server management, OAuth 2.0/3.0 authenticatio
 - **Core Goal:** Transform scattered MCP server connections into a centralized, governed platform with unified authentication and intelligent tool discovery
 - **Communication:** Uses MCP protocol over SSE (Server-Sent Events) and Streamable HTTP
 - **Key Components:** Gateway (Nginx reverse proxy), Registry (Web UI & API), Auth Server (OAuth/JWT), MCP Servers, Metrics Service, Token Refresh Service
+
+### 1.5. Repository Structure
+
+**Top-Level Directories:**
+
+| Directory | Purpose | Key Files |
+|-----------|---------|-----------|
+| `registry/` | **Core Registry Application** - FastAPI backend, repositories, services | `main.py` (FastAPI app), `core/config.py` (settings) |
+| `auth_server/` | **OAuth Authentication Server** - Keycloak/Cognito/Entra ID integration | `app.py` (Flask auth server), `scopes.yml` (group mappings) |
+| `frontend/` | **Web UI** - React/TypeScript admin dashboard | `src/App.tsx` (main app), `src/pages/` (UI pages) |
+| `servers/` | **Example MCP Servers** - Reference implementations | `currenttime/`, `mcpgw/` (MCP Gateway server) |
+| `terraform/` | **Infrastructure as Code** - AWS deployment automation | `aws-ecs/` (ECS Fargate), `modules/` (reusable modules) |
+| `tests/` | **Test Suite** - pytest unit, integration, E2E tests | `conftest.py`, `unit/`, `integration/` |
+| `docs/` | **Documentation** - Architecture, guides, design docs | `llms.txt` (this file), `design/` (architecture) |
+| `cli/` | **Command-Line Tools** - MCP client, service management | `mcp_client.py`, `service_mgmt.sh` |
+| `keycloak/` | **Keycloak Setup** - Docker configs, initialization scripts | `docker-compose.yml`, `setup/` (init scripts) |
+| `docker/` | **Docker Configurations** - Dockerfiles for all services | `Dockerfile.registry`, `Dockerfile.auth` |
+| `scripts/` | **Automation Scripts** - Deployment, testing, utilities | `test.py` (test runner), `publish-containers.sh` |
+| `config/` | **Configuration Templates** - Nginx, environment examples | `nginx.conf.template`, `.env.example` |
+| `metrics-service/` | **Metrics Collection** - OpenTelemetry metrics service | `app.py` (FastAPI metrics API) |
+| `charts/` | **Helm Charts** - Kubernetes deployment manifests | `mcp-gateway/` (Helm chart) |
+| `credentials-provider/` | **Credential Management** - OAuth token handling | `app.py` (credentials service) |
+| `agents/` | **A2A Agent Cards** - Agent-to-Agent protocol agent cards | JSON files for registered agents |
+| `api/` | **Legacy API** - Deprecated standalone API (use `registry/api/`) | - |
+| `release-notes/` | **Release History** - Version release notes | Markdown files per version |
+
+**Registry Application Structure (`registry/`):**
+
+| Subdirectory | Purpose | Key Files |
+|--------------|---------|-----------|
+| `api/` | **API Routes** - FastAPI endpoint definitions | `server_routes.py`, `agent_routes.py`, `search_routes.py`, `auth_routes.py` |
+| `services/` | **Business Logic** - Service layer between routes and repositories | `server_service.py`, `agent_service.py`, `search_service.py`, `rating_service.py` |
+| `repositories/` | **Data Access Layer** - Abstract repositories with multiple backends | `interfaces.py` (abstract base classes), `factory.py`, `documentdb/`, `file/` |
+| `repositories/documentdb/` | **DocumentDB Implementation** - Production storage backend | `server_repository.py`, `agent_repository.py`, `scope_repository.py`, `search_repository.py`, `client.py` |
+| `repositories/file/` | **File Implementation** - Legacy storage backend (DEPRECATED) | `server_repository.py`, `agent_repository.py` |
+| `schemas/` | **Pydantic Models** - Request/response validation | `server.py`, `agent.py`, `auth.py`, `search.py`, `security.py`, `rating.py` |
+| `auth/` | **Authentication Logic** - JWT validation, session management | `dependencies.py` (FastAPI auth dependencies), `session.py` |
+| `core/` | **Core Infrastructure** - Configuration, startup logic | `config.py` (Settings class), `logging.py` |
+| `embeddings/` | **Embedding Providers** - Multiple embedding model support | `factory.py`, `sentence_transformers.py`, `litellm_embeddings.py` |
+| `search/` | **Search Implementation** - Hybrid search (BM25 + vector) | `faiss_service.py` (legacy), `hybrid_search.py` |
+| `health/` | **Health Monitoring** - Server health checks, status tracking | `health_service.py`, `health_routes.py` |
+| `utils/` | **Utilities** - Helper functions, logging, validation | `scopes_manager.py` (scope CRUD), `nginx_service.py` |
+| `services/federation/` | **Federation** - External registry synchronization | `anthropic.py`, `asor.py` (Workday ASOR) |
+| `static/` | **Static Assets** - CSS, JavaScript, images for web UI | - |
+| `templates/` | **Jinja2 Templates** - HTML templates for web UI | `pages/`, `components/` |
+| `scripts/` | **Python Scripts** - Data migration, initialization | `migrate_to_documentdb.py`, `init_opensearch.py` |
+
+**Important Root Files:**
+
+| File | Purpose |
+|------|---------|
+| `pyproject.toml` | Python package configuration, dependencies, pytest settings |
+| `docker-compose.yml` | Local development Docker Compose configuration |
+| `docker-compose.prod.yml` | Production Docker Compose configuration |
+| `.env.example` | Environment variable template with all settings |
+| `README.md` | Project overview, quick start guide |
+| `CLAUDE.md` | Coding standards and best practices |
+| `TEAM.md` | Team roles and personas for development |
+| `MAINTENANCE.md` | Maintenance procedures and troubleshooting |
+| `WRITING_TESTS.md` | Test writing guidelines and patterns |
+
+**Test Structure (`tests/`):**
+
+| Subdirectory | Purpose | Key Files |
+|--------------|---------|-----------|
+| `unit/` | **Unit Tests** - Fast, isolated component tests | `api/`, `services/`, `repositories/`, `auth/` |
+| `integration/` | **Integration Tests** - Multi-component workflow tests | `test_server_lifecycle.py`, `test_search_integration.py`, `conftest.py` |
+| `fixtures/` | **Test Fixtures** - Mock data, factories | `factories.py` (Factory Boy), `mocks/` |
+| `reporting/` | **Test Reports** - HTML coverage reports, test results | - |
+
+**Terraform Structure (`terraform/`):**
+
+| Subdirectory | Purpose | Key Files |
+|--------------|---------|-----------|
+| `aws-ecs/` | **AWS ECS Fargate Deployment** - Production-ready IaC | `main.tf`, `variables.tf`, `outputs.tf`, `ecs.tf` |
+| `modules/` | **Reusable Terraform Modules** - Shared infrastructure components | `ecs-service/`, `alb/`, `networking/` |
+
+**Important Configuration Files:**
+
+| File/Directory | Purpose | Location |
+|----------------|---------|----------|
+| `oauth2_providers.yml` | OAuth provider configurations (Keycloak, Cognito, Entra ID) | `auth_server/` |
+| `scopes.yml` | Group-to-scope mappings, UI permissions | `auth_server/` |
+| `nginx.conf.template` | Nginx reverse proxy configuration | `config/` |
+| `global-bundle.pem` | AWS DocumentDB TLS certificate | Root directory |
+| `.env.example` | Environment variables for all services | Root directory |
+
+**Key Entry Points:**
+
+| Component | Entry Point | Purpose |
+|-----------|-------------|---------|
+| Registry API | `registry/main.py` | FastAPI application for registry and MCP gateway |
+| Auth Server | `auth_server/app.py` | Flask OAuth server for authentication |
+| Frontend | `frontend/src/App.tsx` | React web UI for administration |
+| MCP Client | `cli/mcp_client.py` | CLI tool for calling MCP servers |
+| Test Runner | `scripts/test.py` | Unified test execution script |
+| Metrics Service | `metrics-service/app.py` | OpenTelemetry metrics collection |
 
 ## 2. Core Problem Solved
 
@@ -90,7 +187,7 @@ AI Agent/Coding Assistant
                ↓
 ┌──────────────────────────────────────┐
 │   Identity Provider (Keycloak/      │
-│   Cognito) - OAuth 2.0/OIDC          │
+│   Cognito/Entra ID) - OAuth 2.0      │
 └──────────────┬───────────────────────┘
                │
                ↓
@@ -129,10 +226,11 @@ AI Agent/Coding Assistant
 - **Registry MCP Server**: Dynamic tool discovery, intelligent tool finder
 
 **Identity & Access:**
-- **Keycloak/Cognito**: Primary identity provider
+- **Keycloak/Cognito/Entra ID**: Primary identity provider (choose one or multi-provider)
 - **OAuth 2.0/3.0**: User authentication and authorization
 - **JWT Tokens**: Secure, stateless authentication
 - **Fine-Grained Access Control**: Scope-based permissions at server, method, and tool levels
+- **Enterprise SSO**: SAML/OIDC integration with Microsoft Entra ID for Microsoft 365 environments
 
 **MCP Server Layer:**
 - **Local MCP Servers**: Co-located with gateway (SSE transport)
@@ -145,15 +243,112 @@ AI Agent/Coding Assistant
 - **Grafana**: Real-time dashboards and alerting
 - **CloudWatch/Datadog**: Cloud-native monitoring integration
 
+### 3.4. Storage Backend Architecture
+
+**IMPORTANT:** The MCP Gateway & Registry uses a **repository pattern** with multiple storage backends. File-based storage is **LEGACY and DEPRECATED** - use DocumentDB or MongoDB for production deployments.
+
+**Repository Pattern:**
+```
+Routes → Services → Repositories → Storage Backends
+```
+
+**Three Storage Backends:**
+
+1. **File-Based Storage (LEGACY - DEPRECATED)**
+   - Status: Maintained for backward compatibility only, will be removed
+   - Use Case: Local development and testing ONLY
+   - Vector Search: FAISS with in-memory indexing
+   - Limitations: Not suitable for production, no high availability, file corruption risks
+   - Location: `registry/repositories/file/`
+
+2. **MongoDB Community Edition (Development)**
+   - Status: Recommended for local development and testing
+   - Use Case: Local Docker development, CI/CD testing
+   - Vector Search: Application-level k-NN with BM25 hybrid search
+   - Configuration: `STORAGE_BACKEND=mongodb-ce`
+   - Connection: `DOCUMENTDB_HOST=localhost:27017`
+   - Location: `registry/repositories/mongodb/`
+
+3. **Amazon DocumentDB (Production - RECOMMENDED)**
+   - Status: Production-ready, enterprise-grade
+   - Use Case: AWS production deployments with HA requirements
+   - Vector Search: Native HNSW vector search with BM25 hybrid search
+   - Configuration: `STORAGE_BACKEND=documentdb`
+   - Features: Multi-AZ replication, automatic failover, point-in-time recovery
+   - Namespace Support: Multi-tenancy via `DOCUMENTDB_NAMESPACE`
+   - Location: `registry/repositories/documentdb/`
+
+**Repository Interfaces (Abstract Base Classes):**
+- `ServerRepository`: Server registration, listing, metadata management
+- `AgentRepository`: A2A agent card management
+- `ScopeRepository`: Group and scope CRUD operations
+- `SearchRepository`: Hybrid search (BM25 + vector k-NN)
+
+**Factory Pattern:**
+```python
+from registry.repositories.factory import (
+    get_server_repository,
+    get_agent_repository,
+    get_scope_repository,
+    get_search_repository
+)
+
+# Automatically selects backend based on STORAGE_BACKEND env var
+server_repo = await get_server_repository()
+```
+
+**Key Architectural Principles:**
+1. **Never access repositories directly from API routes** - Always use service layer
+2. **All backends provide identical behavior** - Polymorphism via abstract base classes
+3. **Backend switching is transparent** - Factory pattern handles instantiation
+4. **Use DocumentDB for production** - File-based storage is deprecated
+
+**Configuration:**
+```bash
+# Production (DocumentDB)
+STORAGE_BACKEND=documentdb
+DOCUMENTDB_HOST=docdb-cluster.cluster-xxx.us-east-1.docdb.amazonaws.com
+DOCUMENTDB_PORT=27017
+DOCUMENTDB_DATABASE=mcp_registry
+DOCUMENTDB_NAMESPACE=prod  # For multi-tenancy
+DOCUMENTDB_USE_TLS=true
+DOCUMENTDB_USE_IAM=true
+
+# Development (MongoDB CE)
+STORAGE_BACKEND=mongodb-ce
+DOCUMENTDB_HOST=localhost
+DOCUMENTDB_PORT=27017
+
+# Legacy (File - DEPRECATED)
+STORAGE_BACKEND=file  # NOT RECOMMENDED
+```
+
+**Vector Search Comparison:**
+- **File Backend (Legacy)**: FAISS IndexFlatIP (cosine similarity)
+- **MongoDB CE**: Application-level k-NN with score normalization
+- **DocumentDB**: Native HNSW with optimized indexing
+
+**Hybrid Search Strategy:**
+All backends support hybrid search combining:
+1. **BM25 Text Search**: Keyword matching on server/tool names and descriptions
+2. **Vector k-NN Search**: Semantic similarity using embeddings (384-1536 dimensions)
+3. **Score Fusion**: Weighted combination (configurable weights)
+
+**References:**
+- Design Document: `docs/design/database-abstraction-layer.md`
+- Storage Architecture: `docs/design/storage-architecture-mongodb-documentdb.md`
+- Repository Interfaces: `registry/repositories/interfaces.py`
+- Factory Implementation: `registry/repositories/factory.py`
+
 ## 4. Authentication & Authorization
 
 ### 4.1. Three-Layer Authentication System
 
 **Layer 1: Ingress Authentication (2LO/M2M)**
 - Purpose: Controls who can access the MCP Gateway
-- Providers: Keycloak (M2M service accounts), Cognito (M2M/2LO)
-- Headers: `X-Authorization`, `X-Client-Id`, `X-Keycloak-Realm`, `X-User-Pool-Id`
-- Methods: Machine-to-Machine (JWT tokens), User sessions (OAuth PKCE)
+- Providers: Keycloak (M2M service accounts), Amazon Cognito (M2M/2LO), Microsoft Entra ID (Azure AD)
+- Headers: `X-Authorization`, `X-Client-Id`, `X-Keycloak-Realm`, `X-User-Pool-Id`, `X-Tenant-Id` (Entra ID)
+- Methods: Machine-to-Machine (JWT tokens), User sessions (OAuth PKCE), Enterprise SSO (SAML/OIDC)
 
 **Layer 2: Fine-Grained Access Control (FGAC)**
 - Purpose: Controls which tools/methods within MCP servers can be accessed
@@ -523,17 +718,44 @@ Traditional AI agents are limited to pre-configured tools. Dynamic Tool Discover
 
 ### 5.3. Architecture Components
 
-**Discovery Layer:**
-- **Sentence Transformer**: Neural network for semantic text understanding (all-MiniLM-L6-v2, 384 dimensions)
-- **FAISS Index**: High-performance vector similarity search
-- **Cosine Similarity**: Mathematical measure of semantic similarity
-- **Tool Metadata**: Server information, tool schemas, descriptions
+**IMPORTANT:** Vector search architecture depends on storage backend:
+- **File Backend (LEGACY - DEPRECATED)**: Uses FAISS IndexFlatIP
+- **MongoDB CE/DocumentDB (PRODUCTION)**: Uses hybrid search (BM25 + native vector k-NN)
+
+**Discovery Layer (Modern - DocumentDB/MongoDB):**
+- **Embedding Providers**: Flexible provider selection (sentence-transformers, OpenAI, LiteLLM with 100+ models)
+- **BM25 Text Search**: Keyword matching on server/tool names and descriptions
+- **Vector k-NN Search**: Semantic similarity using embeddings (384-1536 dimensions)
+- **Hybrid Search**: Weighted combination of BM25 and vector search results
+- **Native Vector Indexing**: DocumentDB HNSW or MongoDB application-level k-NN
+- **Tool Metadata**: Server information, tool schemas, descriptions, embeddings
+
+**Discovery Layer (Legacy - File Backend):**
+- **FAISS Index**: In-memory vector similarity search (DEPRECATED)
+- **Sentence Transformer**: all-MiniLM-L6-v2 model (384 dimensions) only
+- **Cosine Similarity**: IndexFlatIP for vector search
+- **Limitations**: File-based, no hybrid search, single embedding provider
+
+**Embedding Provider Options:**
+1. **Sentence Transformers (Local)**: Default all-MiniLM-L6-v2 (384 dimensions), runs locally
+2. **OpenAI Embeddings**: text-embedding-ada-002 (1536 dimensions), requires API key
+3. **LiteLLM**: 100+ embedding models via unified interface (OpenAI, Cohere, Bedrock, etc.)
+4. **Amazon Bedrock Titan**: titan-embed-text-v2:0 (1024 dimensions), native AWS integration
+
+**Hybrid Search Strategy (DocumentDB/MongoDB):**
+```
+Final Score = (BM25_Weight × BM25_Score) + (Vector_Weight × Vector_Score)
+
+Default weights: BM25_Weight=0.3, Vector_Weight=0.7
+```
 
 **Key Technologies:**
-- FAISS (Facebook AI Similarity Search)
-- Sentence Transformers
-- Cosine similarity scoring
+- DocumentDB/MongoDB (native vector search with HNSW indexing)
+- BM25 algorithm for text matching
+- Multiple embedding providers (sentence-transformers, OpenAI, LiteLLM, Bedrock)
+- Hybrid scoring with configurable weights
 - MCP Protocol
+- FAISS (legacy file backend only - DEPRECATED)
 
 ### 5.4. Usage Patterns
 
@@ -719,6 +941,91 @@ uv run python cli/mcp_services.py create-user \
 uv run python cli/mcp_services.py list-groups
 ```
 
+### 6.4. Rating System
+
+**Community-driven quality assessment** for both MCP servers and AI agents using a 5-star rating system.
+
+**Key Features:**
+- **5-Star Rating Scale**: Users rate servers/agents from 1 to 5 stars
+- **Interactive UI Widget**: Visual star rating interface in the web dashboard
+- **CLI Support**: Submit ratings via command-line tools
+- **Aggregate Ratings**: Weighted average with individual rating details
+- **One Rating Per User**: Users can update their rating, but only one rating per entity
+- **Rotating Buffer**: Maximum 100 ratings per entity (FIFO replacement)
+- **Anonymous Tracking**: Ratings linked to username but not publicly displayed
+- **Real-time Updates**: Aggregate rating updates immediately after submission
+
+**Rating API Endpoints:**
+
+```bash
+# Submit a rating for a server
+POST /api/v2/servers/{server_path}/rating
+{
+  "rating": 5,  # 1-5 stars
+  "username": "john.doe"
+}
+
+# Submit a rating for an agent
+POST /api/v2/agents/{agent_path}/rating
+{
+  "rating": 4,
+  "username": "jane.smith"
+}
+
+# Get server with rating details
+GET /api/v2/servers/{server_path}
+# Returns:
+{
+  "server_path": "/example-server",
+  "name": "Example Server",
+  "aggregate_rating": 4.5,  # Weighted average
+  "rating_count": 42,
+  "rating_details": [
+    {"user": "john.doe", "rating": 5},
+    {"user": "jane.smith", "rating": 4}
+    # ... up to 100 ratings
+  ]
+}
+
+# Get agent with rating details
+GET /api/v2/agents/{agent_path}
+# Similar structure with aggregate_rating, rating_count, rating_details
+```
+
+**CLI Rating Submission:**
+```bash
+# Rate a server
+uv run python cli/mcp_services.py rate-server \
+  --server-path /example-server \
+  --rating 5 \
+  --username john.doe
+
+# Rate an agent
+uv run python cli/mcp_services.py rate-agent \
+  --agent-path /code-reviewer \
+  --rating 4 \
+  --username jane.smith
+```
+
+**Rating Logic:**
+- **Validation**: Ratings must be integers between 1 and 5 (inclusive)
+- **Update Behavior**: Submitting a new rating for the same user updates their existing rating
+- **Rotating Buffer**: Once 100 ratings are reached, oldest ratings are removed (FIFO)
+- **Aggregate Calculation**: Simple arithmetic mean of all ratings
+- **Service Location**: `registry/services/rating_service.py`
+
+**Web UI Integration:**
+- Interactive 5-star widget on server/agent detail pages
+- Visual feedback showing aggregate rating and count
+- Click to submit rating (requires authentication)
+- Real-time update on submission
+
+**Use Cases:**
+- **Quality Discovery**: Find highly-rated servers/agents for specific tasks
+- **Community Feedback**: Share experiences with tools and agents
+- **Filtering**: Sort search results by rating
+- **Reputation**: Build trust in community-contributed servers/agents
+
 ## 7. Configuration & Setup
 
 ### 7.1. Main Environment Configuration
@@ -801,6 +1108,46 @@ keycloak:
   groups_claim: "groups"
   enabled: true
 ```
+
+**Amazon Cognito Provider:**
+```yaml
+cognito:
+  display_name: "Amazon Cognito"
+  client_id: "${COGNITO_CLIENT_ID}"
+  client_secret: "${COGNITO_CLIENT_SECRET}"
+  auth_url: "https://${COGNITO_DOMAIN}.auth.${AWS_REGION}.amazoncognito.com/oauth2/authorize"
+  token_url: "https://${COGNITO_DOMAIN}.auth.${AWS_REGION}.amazoncognito.com/oauth2/token"
+  user_info_url: "https://${COGNITO_DOMAIN}.auth.${AWS_REGION}.amazoncognito.com/oauth2/userInfo"
+  logout_url: "https://${COGNITO_DOMAIN}.auth.${AWS_REGION}.amazoncognito.com/logout"
+  scopes: ["openid", "email", "profile"]
+  groups_claim: "cognito:groups"
+  enabled: true
+```
+
+**Microsoft Entra ID (Azure AD) Provider:**
+```yaml
+entra_id:
+  display_name: "Microsoft Entra ID"
+  client_id: "${ENTRA_CLIENT_ID}"
+  client_secret: "${ENTRA_CLIENT_SECRET}"
+  tenant_id: "${ENTRA_TENANT_ID}"
+  auth_url: "https://login.microsoftonline.com/${ENTRA_TENANT_ID}/oauth2/v2.0/authorize"
+  token_url: "https://login.microsoftonline.com/${ENTRA_TENANT_ID}/oauth2/v2.0/token"
+  user_info_url: "https://graph.microsoft.com/v1.0/me"
+  logout_url: "https://login.microsoftonline.com/${ENTRA_TENANT_ID}/oauth2/v2.0/logout"
+  scopes: ["openid", "email", "profile", "User.Read"]
+  groups_claim: "groups"
+  enabled: true
+  # Enterprise features
+  conditional_access: true  # Support for conditional access policies
+  mfa_enabled: true  # Multi-factor authentication
+  microsoft_365_integration: true  # Integration with M365 environments
+```
+
+**References:**
+- Entra ID Setup Guide: `docs/entra-id-setup.md`
+- Keycloak Setup Guide: `docs/keycloak-setup.md`
+- Cognito Setup Guide: `docs/cognito-setup.md`
 
 ### 7.4. Scopes Configuration
 
@@ -1232,7 +1579,101 @@ For production Kubernetes deployments, see [EKS deployment guide](https://github
 - Observability: Native CloudWatch and Prometheus integration
 - Security: Pod security policies and network policies
 
-### 9.6. Post-Installation Verification
+### 9.6. AWS ECS Deployment (RECOMMENDED FOR PRODUCTION)
+
+**Production-grade infrastructure** using AWS ECS Fargate with complete Terraform automation. This is the **most mature deployment option** for AWS production environments.
+
+**Key Benefits:**
+- **Fully Managed Compute**: ECS Fargate eliminates server management
+- **Multi-AZ High Availability**: Services deployed across multiple availability zones
+- **Auto-Scaling**: Task-level autoscaling based on CPU/memory metrics
+- **Native AWS Integration**: CloudWatch, Secrets Manager, DocumentDB, Aurora
+- **Infrastructure as Code**: Complete Terraform configuration in `terraform/aws-ecs/`
+- **SSL/TLS**: Automatic certificate provisioning via AWS Certificate Manager
+- **Cost Optimized**: Aurora Serverless v2 auto-scales from 0.5 to 2 ACUs
+
+**Architecture Components:**
+- **Compute**: ECS Fargate tasks (serverless containers)
+- **Load Balancers**:
+  - Main ALB (internet-facing) for Registry and Auth Server
+  - Keycloak ALB for identity management
+- **Data Layer**:
+  - **Amazon DocumentDB**: Primary storage with native HNSW vector search
+  - **Amazon Aurora PostgreSQL Serverless v2**: User data and sessions
+- **Networking**: VPC with public/private subnets across 2 AZs
+- **Security**: AWS Secrets Manager, SSL/TLS, security groups
+- **Observability**: CloudWatch Logs, CloudWatch Alarms, SNS notifications
+
+**Quick Start:**
+```bash
+# Prerequisites: Domain with Route53 hosted zone, AWS credentials
+
+cd terraform/aws-ecs
+
+# Step 1: Configure variables
+cp terraform.tfvars.example terraform.tfvars
+nano terraform.tfvars  # Set domain_name, aws_region, etc.
+
+# Step 2: Initialize Terraform
+terraform init
+
+# Step 3: Review deployment plan
+terraform plan
+
+# Step 4: Deploy infrastructure (~60-90 minutes)
+terraform apply
+
+# Step 5: Get outputs
+terraform output -json > terraform-outputs.json
+```
+
+**Post-Deployment:**
+```bash
+# View service URLs
+terraform output registry_url
+terraform output keycloak_url
+
+# Monitor logs
+./scripts/view-cloudwatch-logs.sh registry
+./scripts/view-cloudwatch-logs.sh auth-server
+
+# Check service health
+aws ecs describe-services --cluster mcp-gateway-ecs-cluster \
+  --services mcp-gateway-v2-registry
+
+# Scale services
+aws ecs update-service --cluster mcp-gateway-ecs-cluster \
+  --service mcp-gateway-v2-registry --desired-count 3
+```
+
+**Configuration:**
+- **Deployment Time**: 60-90 minutes for initial deployment
+- **Prerequisites**:
+  - Domain with Route53 hosted zone (any registrar supported)
+  - AWS account with AdministratorAccess or specific IAM permissions
+  - Terraform >= 1.5.0, AWS CLI >= 2.0, Docker >= 20.10
+- **Region Support**: All commercial AWS regions
+- **Regional Domains**: Automatic subdomain creation (e.g., `registry.us-east-1.your.domain`)
+
+**Documentation:**
+- Complete guide: `terraform/aws-ecs/README.md`
+- Architecture diagrams: `terraform/aws-ecs/img/`
+- Troubleshooting: `terraform/aws-ecs/README.md#troubleshooting`
+- Cost optimization: `terraform/aws-ecs/README.md#cost-optimization`
+
+**Comparison: ECS vs EKS vs EC2**
+
+| Feature | ECS Fargate | EKS | EC2 |
+|---------|-------------|-----|-----|
+| **Maturity** | ✅ Production-ready | ⚠️  Preview/Experimental | ✅ Stable |
+| **Management** | Fully managed | Managed control plane | Self-managed |
+| **IaC** | Complete Terraform | Partial | Docker Compose |
+| **Scaling** | Auto-scaling tasks | Horizontal pod autoscaling | Manual/script-based |
+| **Cost** | Pay-per-task | Higher (node costs) | Fixed instance costs |
+| **Setup Time** | 60-90 min | 2-4 hours | 30-60 min |
+| **Best For** | Production deployments | K8s-native workloads | Development/testing |
+
+### 9.7. Post-Installation Verification
 
 ```bash
 # Check service status
@@ -1325,16 +1766,198 @@ cd credentials-provider
 ./generate_creds.sh --agentcore-only --verbose  # AgentCore auth
 ```
 
+### 10.4. Testing Architecture
+
+**IMPORTANT:** The project uses **pytest as the primary testing framework**. Shell script tests in `tests/mcp_cmds.sh` are **DEPRECATED** and maintained only for backward compatibility.
+
+**Test Categories:**
+- **Unit Tests** (`tests/unit/`): Test individual functions and classes in isolation
+- **Integration Tests** (`tests/integration/`): Test multiple components working together
+- **E2E Tests** (`tests/e2e/`): End-to-end workflow tests
+
+**Running Tests:**
+```bash
+# Run all tests with parallel execution (8 workers)
+uv run pytest tests/ -n 8
+
+# Expected results (as of 2026-01-06):
+# - 701 passed
+# - 57 skipped
+# - Coverage: ~39.50%
+# - Execution time: ~30 seconds
+
+# Run tests serially (slower, less memory)
+uv run pytest tests/
+
+# Run specific test categories
+uv run pytest tests/unit/          # Unit tests only
+uv run pytest tests/integration/   # Integration tests only
+uv run pytest tests/e2e/           # E2E tests only
+
+# Run with coverage report
+uv run pytest tests/ -n 8 --cov=registry --cov-report=term-missing
+
+# Run specific test file
+uv run pytest tests/unit/test_server_service.py -v
+
+# Stop at first failure
+uv run pytest tests/ -n 8 -x
+```
+
+**Test Configuration:**
+- **Location**: `pyproject.toml` lines 78-114
+- **Minimum Coverage**: 35% (configured in pyproject.toml)
+- **Test Markers**: unit, integration, e2e, auth, servers, search, health, core, repositories, slow, requires_models
+- **Async Mode**: Auto-detected for async tests
+- **Reports**: HTML report at `tests/reports/report.html`, JSON at `tests/reports/report.json`
+
+**Test Prerequisites:**
+```bash
+# MongoDB must be running for integration tests
+docker ps | grep mongo
+# Should show: mcp-mongodb running on 0.0.0.0:27017
+
+# Environment is auto-configured:
+# - DOCUMENTDB_HOST=localhost
+# - STORAGE_BACKEND=mongodb-ce
+# - directConnection=true (single-node MongoDB)
+```
+
+**Test Best Practices:**
+
+1. **Repository Reset Pattern** (for test isolation):
+```python
+@pytest.fixture(autouse=True)
+async def reset_repository():
+    """Reset repository state before each test."""
+    repo = await get_server_repository()
+    await repo.reset()  # Clear all data
+    yield
+    # Cleanup handled by TestClient teardown
+```
+
+2. **Memory Management** (avoid OOM on EC2):
+```python
+# Use -n 8 for parallel tests only if you have enough memory
+# Otherwise run serially: uv run pytest tests/
+
+# For CI/CD pipelines, use moderate parallelism:
+pytest tests/ -n 2
+```
+
+3. **Fixture Cleanup**:
+```python
+# Always cleanup resources in fixtures
+@pytest.fixture
+async def test_client():
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
+    # Automatic cleanup via async context manager
+```
+
+4. **Mock External Dependencies**:
+```python
+# Mock security scanner, embeddings, external APIs
+@pytest.fixture(autouse=True)
+def mock_security_scanner():
+    mock_service = MagicMock()
+    mock_service.get_scan_config.return_value = SecurityScanConfig(enabled=False)
+    with patch("registry.api.server_routes.security_scanner_service", mock_service):
+        yield mock_service
+```
+
+**Shell Script Tests (DEPRECATED):**
+```bash
+# tests/mcp_cmds.sh - Use pytest instead
+# These are maintained for backward compatibility only
+./tests/mcp_cmds.sh basic
+./tests/mcp_cmds.sh ping
+./tests/mcp_cmds.sh list
+```
+
+**Continuous Integration:**
+- Tests run automatically via GitHub Actions
+- Triggered on PR creation and pushes to main/develop
+- Configuration: `.github/workflows/registry-test.yml`
+- All unit tests must pass (no failures allowed)
+
+**Test Documentation:**
+- Comprehensive guide: `docs/testing/README.md`
+- Writing tests: `docs/testing/WRITING_TESTS.md`
+- Test maintenance: `docs/testing/MAINTENANCE.md`
+- Memory management: `docs/testing/memory-management.md`
+
+**Coverage Requirements:**
+- Minimum: 35% overall coverage (enforced)
+- Target: 80% coverage for new features
+- Coverage report: `htmlcov/index.html` (generated after test run)
+
 ## 11. Security Features
 
 ### 11.1. Security Scanning
 
+**IMPORTANT:** The MCP Gateway & Registry provides **TWO SEPARATE security scanning systems** - one for MCP servers and one for A2A agents.
+
+#### MCP Server Security Scanning
+
 **Integrated Vulnerability Detection** with [Cisco AI Defence MCP Scanner](https://github.com/cisco-ai-defense/mcp-scanner):
 - Automated security scanning during server registration
 - Periodic registry-wide scans
+- YARA pattern matching for malicious code detection
 - Detailed security reports with vulnerability details, severity assessments, and remediation recommendations
 - Automatic protection: Servers with security issues automatically disabled
 - Compliance ready: Security audit trails and vulnerability tracking
+
+**Configuration:**
+```bash
+# Enable MCP server scanning
+SECURITY_SCAN_ENABLED=true
+SECURITY_SCAN_ON_REGISTRATION=true
+BLOCK_UNSAFE_SERVERS=true
+```
+
+**Service Location:** `registry/services/security_scanner.py`
+**Scanner Integration:** `registry/api/server_routes.py` (automatic during registration)
+
+#### A2A Agent Security Scanning
+
+**Integrated Agent Vulnerability Detection** with [Cisco AI Defense A2A Scanner](https://github.com/cisco-ai-defense/a2a-scanner):
+- Automated security scanning during agent registration
+- Multi-analyzer support: YARA pattern matching, LLM-based analysis, static analysis
+- Agent card validation and security assessment
+- Configurable blocking policies for unsafe agents
+- Detailed scan reports with security findings and recommendations
+- Optional "security-pending" tagging for agents awaiting scan results
+
+**Configuration:**
+```bash
+# Enable A2A agent scanning
+AGENT_SECURITY_SCAN_ENABLED=true
+AGENT_SECURITY_SCAN_ON_REGISTRATION=true
+AGENT_SECURITY_BLOCK_UNSAFE_AGENTS=true
+AGENT_SECURITY_ANALYZERS=yara,llm  # Comma-separated list
+AGENT_SECURITY_SCAN_TIMEOUT=300
+A2A_SCANNER_LLM_API_KEY=your-api-key  # For LLM-based analysis
+AGENT_SECURITY_ADD_PENDING_TAG=true  # Add security-pending tag during scan
+```
+
+**Service Location:** `registry/services/agent_scanner.py`
+**Scanner Integration:** `registry/api/agent_routes.py` (automatic during registration)
+**Scan Storage:** Results stored in security scan repository for audit trails
+
+**Analyzers:**
+- **YARA**: Pattern-based malicious code detection
+- **LLM**: AI-powered security analysis using Azure OpenAI
+- **Static**: Code structure and configuration analysis
+
+**Security Scan Results API:**
+```bash
+# Get agent scan results
+GET /api/v2/agents/{agent_path}/security-scan
+
+# Get server scan results
+GET /api/v2/servers/{server_path}/security-scan
+```
 
 ### 11.2. Security Best Practices
 
@@ -1404,17 +2027,137 @@ cp .oauth-tokens/vscode-mcp.json ~/.vscode/settings.json
 cp .oauth-tokens/mcp.json ~/.vscode/mcp-settings.json
 ```
 
-### 12.2. Anthropic MCP Registry Integration
+### 12.2. Federation with External Registries
+
+**Federation Architecture** allows you to import and manage servers/agents from multiple external registries through a unified interface with centralized authentication and access control.
+
+**Supported Federation Sources:**
+
+| Source | Type | Description | Visual Tag | Auth Required |
+|--------|------|-------------|------------|---------------|
+| **Anthropic MCP Registry** | MCP Servers | Official Anthropic curated servers | `ANTHROPIC` (purple) | No |
+| **Workday ASOR** | AI Agents | Agent System of Record | `ASOR` (orange) | Yes (OAuth) |
+
+**Key Benefits:**
+- **Centralized Management**: Single interface for all servers/agents regardless of source
+- **Unified Authentication**: Consistent auth/authz across all federated entities
+- **Visual Tagging**: Color-coded tags show federation source (purple for Anthropic, orange for ASOR)
+- **Automatic Synchronization**: Scheduled sync to keep federation up-to-date
+- **Selective Import**: Import all or specific entities from each source
+- **Audit Trail**: Complete tracking of federated entity provenance
+
+#### Anthropic MCP Registry Integration
 
 **Features:**
-- Import servers from Anthropic's official MCP Registry
+- Import servers from [Anthropic's official MCP Registry](https://registry.modelcontextprotocol.io)
 - Full REST API compatibility
+- No authentication required
+- Purple `ANTHROPIC` visual tag on federated servers
 - Unified access through your gateway with centralized auth
 
-**Import servers:**
+**Configuration:**
 ```bash
-./cli/import_anthropic_servers.py --select
+# Enable Anthropic federation in .env
+ANTHROPIC_REGISTRY_ENABLED=true
+
+# Federation config file: ~/mcp-gateway/federation.json
+{
+  "anthropic": {
+    "enabled": true,
+    "endpoint": "https://registry.modelcontextprotocol.io",
+    "servers": []  # Empty = import all, or specify: [{"name": "server-name"}]
+  }
+}
 ```
+
+**Import Servers:**
+```bash
+# Interactive selection
+./cli/import_anthropic_servers.py --select
+
+# Import all available servers
+./cli/import_anthropic_servers.py --all
+
+# Import specific servers (via federation.json)
+{
+  "anthropic": {
+    "servers": [
+      {"name": "io.github.jgador/websharp"},
+      {"name": "modelcontextprotocol/filesystem"},
+      {"name": "modelcontextprotocol/brave-search"}
+    ]
+  }
+}
+```
+
+**Service Location:** `registry/services/federation/anthropic.py`
+
+#### Workday ASOR Integration
+
+**Features:**
+- Import AI agents from Workday Agent System of Record
+- OAuth 2.0 authentication with token refresh
+- Orange `ASOR` visual tag on federated agents
+- Enterprise agent lifecycle management
+- Scheduled synchronization with ASOR backend
+
+**Prerequisites:**
+1. Valid Workday tenant with ASOR enabled
+2. OAuth credentials (Client ID and Secret)
+3. Access token with "Agent System of Record" scope
+
+**Configuration:**
+```bash
+# Add to .env
+ASOR_CLIENT_ID=your_client_id
+ASOR_CLIENT_SECRET=your_client_secret
+ASOR_TENANT_NAME=your_tenant_name
+ASOR_HOSTNAME=your_host_name
+ASOR_ACCESS_TOKEN=your_oauth_token  # Generated via get_asor_token.py
+
+# Federation config: ~/mcp-gateway/federation.json
+{
+  "asor": {
+    "enabled": true,
+    "endpoint": "https://wcpdev-services1.wd103.myworkday.com/ccx/api/asor/v1/awsasor_wcpdev1",
+    "auth_env_var": "ASOR_ACCESS_TOKEN",
+    "agents": []  # Empty = import all
+  }
+}
+```
+
+**Get OAuth Token:**
+```bash
+# Run token generator (interactive OAuth flow)
+python3 get_asor_token.py
+
+# Follow prompts to:
+# 1. Authorize via browser
+# 2. Complete OAuth flow
+# 3. Receive access token for .env
+```
+
+**Service Location:** `registry/services/federation/asor.py`
+
+#### Federation Synchronization
+
+**Automatic Sync:**
+- Periodic synchronization keeps federated entities up-to-date
+- Configurable sync schedule
+- Handles entity updates, additions, and removals
+- Maintains federation metadata (source, sync timestamp)
+
+**Manual Sync:**
+```bash
+# Trigger manual federation sync
+uv run python -m registry.services.federation.sync
+
+# Sync specific source
+uv run python -m registry.services.federation.sync --source anthropic
+uv run python -m registry.services.federation.sync --source asor
+```
+
+**Documentation:** Complete federation guide at `docs/federation.md`
 
 ### 12.3. Token Vending Service
 
@@ -1509,13 +2252,207 @@ def log_auth_event(event_type: str, username: str = None, details: dict = None):
 curl http://localhost:7860/health
 ```
 
-## 14. Additional Resources
+## 14. Code Organization & Patterns
 
-### 14.1. Documentation Links
+**CRITICAL:** The MCP Gateway & Registry follows strict architectural patterns to ensure maintainability and consistency. Follow these patterns religiously - violations will break the application architecture.
+
+### 14.1. Layered Architecture (MANDATORY)
+
+**The application MUST follow this layered architecture:**
+
+```
+API Routes → Services → Repositories → Storage Backends
+```
+
+**Each layer has specific responsibilities:**
+
+1. **API Routes** (`registry/api/`):
+   - Handle HTTP requests and responses
+   - Validate request parameters
+   - Call service layer methods
+   - Return HTTP status codes and responses
+   - **NEVER access repositories directly**
+
+2. **Service Layer** (`registry/services/`):
+   - Implement business logic
+   - Coordinate between multiple repositories
+   - Handle complex operations and workflows
+   - Validate business rules
+   - **ALWAYS use factory pattern to get repositories**
+
+3. **Repository Layer** (`registry/repositories/`):
+   - Abstract data access via interfaces (`interfaces.py`)
+   - Provide consistent API across all storage backends
+   - Handle data persistence and retrieval
+   - Implement search and querying logic
+
+4. **Storage Backends** (`registry/repositories/{backend}/`):
+   - Implement repository interfaces for specific storage
+   - File backend: `registry/repositories/file/` (DEPRECATED)
+   - MongoDB CE: `registry/repositories/mongodb/`
+   - DocumentDB: `registry/repositories/documentdb/`
+
+### 14.2. Factory Pattern (REQUIRED)
+
+**ALWAYS use the factory pattern** to obtain repository instances. NEVER instantiate repositories directly.
+
+**Correct Usage:**
+```python
+from registry.repositories.factory import (
+    get_server_repository,
+    get_agent_repository,
+    get_scope_repository,
+    get_search_repository,
+    get_security_scan_repository
+)
+
+# In service layer
+async def some_service_method():
+    server_repo = await get_server_repository()
+    servers = await server_repo.get_all_servers()
+    return servers
+```
+
+**Wrong Usage (ANTIPATTERN):**
+```python
+# ❌ NEVER DO THIS - Direct instantiation
+from registry.repositories.documentdb.server_repository import DocumentDBServerRepository
+server_repo = DocumentDBServerRepository()  # WRONG!
+
+# ❌ NEVER DO THIS - Direct repository access from routes
+from registry.api.server_routes import router
+
+@router.get("/servers")
+async def list_servers():
+    server_repo = await get_server_repository()  # WRONG! Use service layer
+    return await server_repo.get_all_servers()
+```
+
+### 14.3. Repository Abstraction
+
+**All storage backends MUST provide identical behavior** through polymorphism. Code using repositories should work with ANY backend without modification.
+
+**Abstract Base Classes:**
+- `BaseServerRepository` (registry/repositories/interfaces.py)
+- `BaseAgentRepository`
+- `BaseScopeRepository`
+- `BaseSearchRepository`
+- `BaseSecurityScanRepository`
+
+**Implementation Contract:**
+```python
+# All implementations must provide the same methods with the same signatures
+class DocumentDBServerRepository(BaseServerRepository):
+    async def get_all_servers(self, namespace: Optional[str] = None) -> List[dict]:
+        # DocumentDB-specific implementation
+        pass
+
+class FileServerRepository(BaseServerRepository):
+    async def get_all_servers(self, namespace: Optional[str] = None) -> List[dict]:
+        # File-specific implementation (DEPRECATED)
+        pass
+```
+
+### 14.4. Critical Antipatterns (DO NOT DO THIS)
+
+**❌ 1. Direct Repository Access from Routes**
+```python
+# WRONG - Route directly accessing repository
+@router.get("/servers/{server_path}")
+async def get_server(server_path: str):
+    repo = await get_server_repository()  # ANTIPATTERN!
+    return await repo.get_server(server_path)
+
+# CORRECT - Route calls service layer
+@router.get("/servers/{server_path}")
+async def get_server(server_path: str):
+    return await server_service.get_server(server_path)
+```
+
+**❌ 2. Direct Repository Instantiation**
+```python
+# WRONG - Bypasses factory pattern
+from registry.repositories.documentdb.server_repository import DocumentDBServerRepository
+repo = DocumentDBServerRepository()  # ANTIPATTERN!
+
+# CORRECT - Use factory
+from registry.repositories.factory import get_server_repository
+repo = await get_server_repository()
+```
+
+**❌ 3. Hardcoding Storage Backend**
+```python
+# WRONG - Hardcoded backend selection
+if storage_type == "documentdb":
+    repo = DocumentDBServerRepository()
+elif storage_type == "file":
+    repo = FileServerRepository()
+
+# CORRECT - Factory handles backend selection
+repo = await get_server_repository()  # Uses STORAGE_BACKEND env var
+```
+
+**❌ 4. Skipping Service Layer**
+```python
+# WRONG - Route contains business logic
+@router.post("/servers")
+async def create_server(server: ServerRegistration):
+    repo = await get_server_repository()
+    # Business logic here - ANTIPATTERN!
+    if server.status == "active":
+        await repo.create_server(server)
+    return {"status": "created"}
+
+# CORRECT - Business logic in service layer
+@router.post("/servers")
+async def create_server(server: ServerRegistration):
+    return await server_service.create_server(server)
+```
+
+**❌ 5. Implementing Custom Vector Search**
+```python
+# WRONG - Custom vector search implementation
+def custom_vector_search(query: str):
+    # Don't implement your own vector search!
+    pass
+
+# CORRECT - Use repository abstraction
+search_repo = await get_search_repository()
+results = await search_repo.hybrid_search(query)
+```
+
+### 14.5. Code Organization Checklist
+
+Before submitting code, verify:
+
+- [ ] **No direct repository access from routes** - All routes call service layer
+- [ ] **Factory pattern used** - No direct repository instantiation
+- [ ] **Service layer exists** - Business logic in `registry/services/`
+- [ ] **Repository interfaces** - New repositories extend abstract base classes
+- [ ] **Backend agnostic** - Code works with any storage backend
+- [ ] **No hardcoded backends** - Use `STORAGE_BACKEND` environment variable
+- [ ] **Separation of concerns** - Each layer handles only its responsibility
+- [ ] **Polymorphism** - All repository implementations provide identical APIs
+
+### 14.6. Design Documentation
+
+**Architecture References:**
+- Database Abstraction Layer: `docs/design/database-abstraction-layer.md`
+- Storage Architecture: `docs/design/storage-architecture-mongodb-documentdb.md`
+- Repository Pattern: `registry/repositories/interfaces.py` (docstrings)
+
+**When to Read Design Docs:**
+- Before implementing new repository backend
+- Before adding new data access patterns
+- When confused about layering
+- When reviewing code for architecture compliance
+
+## 15. Additional Resources
+
+### 15.1. Documentation Links
 
 - [Complete Setup Guide](docs/complete-setup-guide.md) - Step-by-step from scratch on AWS EC2
 - [Installation Guide](docs/installation.md) - Complete setup instructions for EC2 and EKS
-- [Quick Start Tutorial](docs/quick-start.md) - Get running in 5 minutes
 - [Configuration Reference](docs/configuration.md) - Environment variables and settings
 - [Authentication Guide](docs/auth.md) - OAuth and identity provider integration
 - [Keycloak Integration](docs/keycloak-integration.md) - Enterprise identity with agent audit trails

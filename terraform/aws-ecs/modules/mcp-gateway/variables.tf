@@ -246,9 +246,6 @@ variable "alarm_email" {
 }
 
 # EFS Configuration
-# Note: 'bursting' mode is recommended for most workloads and is FREE.
-# It provides up to 100 MiB/s burst throughput, which is sufficient for registry operations.
-# 'provisioned' mode costs $6/MiB/s-month and should only be used for proven high-throughput needs.
 variable "efs_throughput_mode" {
   description = "Throughput mode for EFS (bursting or provisioned)"
   type        = string
@@ -391,4 +388,84 @@ variable "security_add_pending_tag" {
   description = "Add 'security-pending' tag to servers that fail security scan"
   type        = bool
   default     = true
+}
+
+# =============================================================================
+# DOCUMENTDB CONFIGURATION (from upstream v1.0.9)
+# =============================================================================
+
+variable "storage_backend" {
+  description = "Storage backend to use: 'file' or 'documentdb'"
+  type        = string
+  default     = "file"
+  validation {
+    condition     = contains(["file", "documentdb"], var.storage_backend)
+    error_message = "Storage backend must be either 'file' or 'documentdb'."
+  }
+}
+
+variable "documentdb_endpoint" {
+  description = "DocumentDB cluster endpoint (required when storage_backend is 'documentdb')"
+  type        = string
+  default     = ""
+}
+
+variable "documentdb_database" {
+  description = "DocumentDB database name"
+  type        = string
+  default     = "mcp_registry"
+}
+
+variable "documentdb_namespace" {
+  description = "DocumentDB namespace for collections"
+  type        = string
+  default     = "default"
+}
+
+variable "documentdb_use_tls" {
+  description = "Use TLS for DocumentDB connections"
+  type        = bool
+  default     = true
+}
+
+variable "documentdb_use_iam" {
+  description = "Use IAM authentication for DocumentDB"
+  type        = bool
+  default     = false
+}
+
+variable "documentdb_credentials_secret_arn" {
+  description = "ARN of the Secrets Manager secret containing DocumentDB credentials"
+  type        = string
+  default     = ""
+}
+
+# =============================================================================
+# CLOUDFRONT CONFIGURATION (CloudFront HTTPS Support feature)
+# =============================================================================
+
+variable "enable_cloudfront" {
+  description = "Whether CloudFront is enabled (adds CloudFront prefix list to ALB security group)"
+  type        = bool
+  default     = false
+}
+
+variable "cloudfront_prefix_list_name" {
+  description = "Name of the managed prefix list for CloudFront origin-facing IPs"
+  type        = string
+  default     = "com.amazonaws.global.cloudfront.origin-facing"
+}
+
+variable "additional_server_names" {
+  description = "Additional server names for nginx (space-separated). Used in dual-mode to accept both CloudFront and custom domain requests."
+  type        = string
+  default     = ""
+}
+
+
+# HTTPS Configuration
+variable "enable_https" {
+  description = "Whether to enable HTTPS listener on ALB. Set to true when certificate_arn is provided."
+  type        = bool
+  default     = false
 }

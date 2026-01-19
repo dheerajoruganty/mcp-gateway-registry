@@ -100,10 +100,15 @@ async def _perform_security_scan_on_registration(
                 await search_repo.index_server(path, server_entry, is_enabled=False)
 
                 # Regenerate Nginx config to remove disabled server
-                enabled_servers = {
-                    server_path: server_service.get_server_info(server_path)
-                    for server_path in server_service.get_enabled_services()
-                }
+                enabled_servers = {}
+
+                for server_path in await server_service.get_enabled_services():
+
+                    server_info = await server_service.get_server_info(server_path)
+
+                    if server_info:
+
+                        enabled_servers[server_path] = server_info
                 await nginx_service.generate_config_async(enabled_servers)
         else:
             logger.info(f"Server {path} passed security scan")
@@ -196,7 +201,25 @@ async def read_root(
             # Get real health status from health service
             from ..health.service import health_service
 
-            health_data = health_service._get_service_health_data(path)
+            health_data = health_service._get_service_health_data(path, server_info)
+
+            # Normalize health status to enum values only (strip error messages)
+            raw_status = health_data["status"]
+            if isinstance(raw_status, str):
+                if "unhealthy" in raw_status.lower():
+                    normalized_status = "unhealthy"
+                elif "healthy" in raw_status.lower():
+                    normalized_status = "healthy"
+                elif "disabled" in raw_status.lower():
+                    normalized_status = "disabled"
+                elif "checking" in raw_status.lower():
+                    normalized_status = "unknown"
+                elif "error" in raw_status.lower():
+                    normalized_status = "unhealthy"
+                else:
+                    normalized_status = raw_status
+            else:
+                normalized_status = raw_status
 
             # Normalize health status to enum values only (strip error messages)
             raw_status = health_data["status"]
@@ -302,7 +325,25 @@ async def get_servers_json(
             # Get real health status from health service
             from ..health.service import health_service
 
-            health_data = health_service._get_service_health_data(path)
+            health_data = health_service._get_service_health_data(path, server_info)
+
+            # Normalize health status to enum values only (strip error messages)
+            raw_status = health_data["status"]
+            if isinstance(raw_status, str):
+                if "unhealthy" in raw_status.lower():
+                    normalized_status = "unhealthy"
+                elif "healthy" in raw_status.lower():
+                    normalized_status = "healthy"
+                elif "disabled" in raw_status.lower():
+                    normalized_status = "disabled"
+                elif "checking" in raw_status.lower():
+                    normalized_status = "unknown"
+                elif "error" in raw_status.lower():
+                    normalized_status = "unhealthy"
+                else:
+                    normalized_status = raw_status
+            else:
+                normalized_status = raw_status
 
             # Normalize health status to enum values only (strip error messages)
             raw_status = health_data["status"]
@@ -358,7 +399,7 @@ async def toggle_service_route(
     if not service_path.startswith("/"):
         service_path = "/" + service_path
 
-    server_info = server_service.get_server_info(service_path)
+    server_info = await server_service.get_server_info(service_path)
     if not server_info:
         raise HTTPException(status_code=404, detail="Service path not registered")
 
@@ -378,7 +419,7 @@ async def toggle_service_route(
 
     # For non-admin users, check if they have access to this specific server
     if not user_context["is_admin"]:
-        if not server_service.user_can_access_server_path(
+        if not await server_service.user_can_access_server_path(
             service_path, user_context["accessible_servers"]
         ):
             logger.warning(
@@ -428,10 +469,15 @@ async def toggle_service_route(
     await faiss_service.add_or_update_service(service_path, server_info, new_state)
 
     # Regenerate Nginx configuration
-    enabled_servers = {
-        path: server_service.get_server_info(path)
-        for path in server_service.get_enabled_services()
-    }
+    enabled_servers = {}
+
+    for path in await server_service.get_enabled_services():
+
+        server_info = await server_service.get_server_info(path)
+
+        if server_info:
+
+            enabled_servers[path] = server_info
     await nginx_service.generate_config_async(enabled_servers)
 
     # Broadcast health status update to WebSocket clients
@@ -521,10 +567,15 @@ async def register_service(
     await faiss_service.add_or_update_service(path, server_entry, is_enabled)
 
     # Regenerate Nginx configuration
-    enabled_servers = {
-        server_path: server_service.get_server_info(server_path)
-        for server_path in server_service.get_enabled_services()
-    }
+    enabled_servers = {}
+
+    for server_path in await server_service.get_enabled_services():
+
+        server_info = await server_service.get_server_info(server_path)
+
+        if server_info:
+
+            enabled_servers[server_path] = server_info
     await nginx_service.generate_config_async(enabled_servers)
 
     # Broadcast health status update to WebSocket clients
@@ -731,7 +782,7 @@ async def internal_register_service(
     )  # TODO: replace with debug
 
     # Check if server exists and handle overwrite logic
-    existing_server = server_service.get_server_info(path)
+    existing_server = await server_service.get_server_info(path)
     if existing_server and not overwrite:
         logger.warning(
             f"INTERNAL REGISTER: Server exists and overwrite=False for path {path}"
@@ -798,10 +849,15 @@ async def internal_register_service(
     )  # TODO: replace with debug
 
     # Regenerate Nginx configuration
-    enabled_servers = {
-        server_path: server_service.get_server_info(server_path)
-        for server_path in server_service.get_enabled_services()
-    }
+    enabled_servers = {}
+
+    for server_path in await server_service.get_enabled_services():
+
+        server_info = await server_service.get_server_info(server_path)
+
+        if server_info:
+
+            enabled_servers[server_path] = server_info
     await nginx_service.generate_config_async(enabled_servers)
 
     logger.warning(
@@ -947,7 +1003,7 @@ async def internal_remove_service(
     )  # TODO: replace with debug
 
     # Check if server exists
-    server_info = server_service.get_server_info(service_path)
+    server_info = await server_service.get_server_info(service_path)
     if not server_info:
         logger.warning(
             f"INTERNAL REMOVE: Service not found at path '{service_path}'"
@@ -993,10 +1049,15 @@ async def internal_remove_service(
     )  # TODO: replace with debug
 
     # Regenerate Nginx configuration
-    enabled_servers = {
-        server_path: server_service.get_server_info(server_path)
-        for server_path in server_service.get_enabled_services()
-    }
+    enabled_servers = {}
+
+    for server_path in await server_service.get_enabled_services():
+
+        server_info = await server_service.get_server_info(server_path)
+
+        if server_info:
+
+            enabled_servers[server_path] = server_info
     await nginx_service.generate_config_async(enabled_servers)
 
     logger.warning(
@@ -1120,7 +1181,7 @@ async def internal_toggle_service(
         service_path = "/" + service_path
 
     # Check if server exists
-    server_info = server_service.get_server_info(service_path)
+    server_info = await server_service.get_server_info(service_path)
     if not server_info:
         logger.warning(
             f"INTERNAL TOGGLE: Service not found at path '{service_path}'"
@@ -1189,10 +1250,15 @@ async def internal_toggle_service(
     await faiss_service.add_or_update_service(service_path, server_info, new_state)
 
     # Regenerate Nginx configuration
-    enabled_servers = {
-        path: server_service.get_server_info(path)
-        for path in server_service.get_enabled_services()
-    }
+    enabled_servers = {}
+
+    for path in await server_service.get_enabled_services():
+
+        server_info = await server_service.get_server_info(path)
+
+        if server_info:
+
+            enabled_servers[path] = server_info
     await nginx_service.generate_config_async(enabled_servers)
 
     # Broadcast health status update to WebSocket clients
@@ -1310,7 +1376,7 @@ async def edit_server_form(
     if not service_path.startswith("/"):
         service_path = "/" + service_path
 
-    server_info = server_service.get_server_info(service_path)
+    server_info = await server_service.get_server_info(service_path)
     if not server_info:
         raise HTTPException(status_code=404, detail="Service path not found")
 
@@ -1330,7 +1396,7 @@ async def edit_server_form(
 
     # For non-admin users, check if they have access to this specific server
     if not user_context["is_admin"]:
-        if not server_service.user_can_access_server_path(
+        if not await server_service.user_can_access_server_path(
             service_path, user_context["accessible_servers"]
         ):
             logger.warning(
@@ -1374,7 +1440,7 @@ async def edit_server_submit(
         service_path = "/" + service_path
 
     # Check if the server exists and get service name
-    server_info = server_service.get_server_info(service_path)
+    server_info = await server_service.get_server_info(service_path)
     if not server_info:
         raise HTTPException(status_code=404, detail="Service path not found")
 
@@ -1394,7 +1460,7 @@ async def edit_server_submit(
 
     # For non-admin users, check if they have access to this specific server
     if not user_context["is_admin"]:
-        if not server_service.user_can_access_server_path(
+        if not await server_service.user_can_access_server_path(
             service_path, user_context["accessible_servers"]
         ):
             logger.warning(
@@ -1437,10 +1503,15 @@ async def edit_server_submit(
     )
 
     # Regenerate Nginx configuration
-    enabled_servers = {
-        path: server_service.get_server_info(path)
-        for path in server_service.get_enabled_services()
-    }
+    enabled_servers = {}
+
+    for path in await server_service.get_enabled_services():
+
+        server_info = await server_service.get_server_info(path)
+
+        if server_info:
+
+            enabled_servers[path] = server_info
     await nginx_service.generate_config_async(enabled_servers)
 
     logger.info(
@@ -1489,13 +1560,13 @@ async def get_server_details(
             )
 
     # Regular case: return details for a specific server
-    server_info = server_service.get_server_info(service_path)
+    server_info = await server_service.get_server_info(service_path)
     if not server_info:
         raise HTTPException(status_code=404, detail="Service path not registered")
 
     # For non-admin users, check if they have access to this specific server
     if not user_context["is_admin"]:
-        if not server_service.user_can_access_server_path(
+        if not await server_service.user_can_access_server_path(
             service_path, user_context["accessible_servers"]
         ):
             logger.warning(
@@ -1555,13 +1626,13 @@ async def get_service_tools(
         return {"service_path": "all", "tools": all_tools, "servers": all_servers_tools}
 
     # Handle specific server case - fetch live tools from MCP server
-    server_info = server_service.get_server_info(service_path)
+    server_info = await server_service.get_server_info(service_path)
     if not server_info:
         raise HTTPException(status_code=404, detail="Service path not registered")
 
     # For non-admin users, check if they have access to this specific server
     if not user_context["is_admin"]:
-        if not server_service.user_can_access_server_path(
+        if not await server_service.user_can_access_server_path(
             service_path, user_context["accessible_servers"]
         ):
             logger.warning(
@@ -1670,7 +1741,7 @@ async def refresh_service(
     if not service_path.startswith("/"):
         service_path = "/" + service_path
 
-    server_info = server_service.get_server_info(service_path)
+    server_info = await server_service.get_server_info(service_path)
     if not server_info:
         raise HTTPException(status_code=404, detail="Service path not registered")
 
@@ -1690,7 +1761,7 @@ async def refresh_service(
 
     # For non-admin users, check if they have access to this specific server
     if not user_context["is_admin"]:
-        if not server_service.user_can_access_server_path(
+        if not await server_service.user_can_access_server_path(
             service_path, user_context["accessible_servers"]
         ):
             logger.warning(
@@ -1730,10 +1801,15 @@ async def refresh_service(
         logger.info(
             f"Regenerating Nginx config after manual refresh for {service_path}..."
         )
-        enabled_servers = {
-            path: server_service.get_server_info(path)
-            for path in server_service.get_enabled_services()
-        }
+        enabled_servers = {}
+
+        for path in await server_service.get_enabled_services():
+
+            path_server_info = await server_service.get_server_info(path)
+
+            if path_server_info:
+
+                enabled_servers[path] = path_server_info
         await nginx_service.generate_config_async(enabled_servers)
 
     except Exception as e:
@@ -2722,7 +2798,7 @@ async def register_service_api(
         server_entry["headers"] = headers_list
 
     # Check if server exists and handle overwrite logic
-    existing_server = server_service.get_server_info(path)
+    existing_server = await server_service.get_server_info(path)
     if existing_server and not overwrite:
         logger.warning(
             f"SERVERS REGISTER: Server exists and overwrite=False for path {path}"
@@ -2829,7 +2905,7 @@ async def toggle_service_api(
         path = "/" + path
 
     # Check if server exists
-    server_info = server_service.get_server_info(path)
+    server_info = await server_service.get_server_info(path)
     if not server_info:
         raise HTTPException(status_code=404, detail="Service path not registered")
 
@@ -2869,10 +2945,15 @@ async def toggle_service_api(
     await faiss_service.add_or_update_service(path, server_info, new_state)
 
     # Regenerate Nginx configuration
-    enabled_servers = {
-        server_path: server_service.get_server_info(server_path)
-        for server_path in server_service.get_enabled_services()
-    }
+    enabled_servers = {}
+
+    for server_path in await server_service.get_enabled_services():
+
+        server_info = await server_service.get_server_info(server_path)
+
+        if server_info:
+
+            enabled_servers[server_path] = server_info
     await nginx_service.generate_config_async(enabled_servers)
 
     # Broadcast health status update to WebSocket clients
@@ -2932,7 +3013,7 @@ async def remove_service_api(
         path = "/" + path
 
     # Check if server exists
-    server_info = server_service.get_server_info(path)
+    server_info = await server_service.get_server_info(path)
     if not server_info:
         logger.warning(f"Service not found at path '{path}'")
         return JSONResponse(
@@ -2966,10 +3047,15 @@ async def remove_service_api(
     await faiss_service.remove_service(path)
 
     # Regenerate Nginx configuration
-    enabled_servers = {
-        server_path: server_service.get_server_info(server_path)
-        for server_path in server_service.get_enabled_services()
-    }
+    enabled_servers = {}
+
+    for server_path in await server_service.get_enabled_services():
+
+        server_info = await server_service.get_server_info(server_path)
+
+        if server_info:
+
+            enabled_servers[server_path] = server_info
     await nginx_service.generate_config_async(enabled_servers)
 
     # Broadcast health status update to WebSocket clients
@@ -3598,18 +3684,21 @@ async def rate_server(
     if not path.startswith("/"):
         path = "/" + path
 
-    server_info = server_service.get_server_info(path)
+    server_info = await server_service.get_server_info(path)
     if not server_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Server not found at path '{path}'",
         )
 
+    # Use the actual path from the server (handles trailing slash normalization)
+    actual_path = server_info.get("path", path)
+
     # For non-admin users, check if they have access to this specific server
     if not user_context['is_admin']:
-        if not server_service.user_can_access_server_path(path, user_context['accessible_servers']):
+        if not await server_service.user_can_access_server_path(actual_path, user_context['accessible_servers']):
             logger.warning(
-                f"User {user_context['username']} attempted to rate server {path} without permission"
+                f"User {user_context['username']} attempted to rate server {actual_path} without permission"
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -3617,7 +3706,7 @@ async def rate_server(
             )
 
     try:
-        avg_rating = server_service.update_rating(path, user_context["username"], request.rating)
+        avg_rating = await server_service.update_rating(actual_path, user_context["username"], request.rating)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -3645,7 +3734,7 @@ async def get_server_rating(
     if not path.startswith("/"):
         path = "/" + path
 
-    server_info = server_service.get_server_info(path)
+    server_info = await server_service.get_server_info(path)
     if not server_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -3654,7 +3743,7 @@ async def get_server_rating(
 
     # For non-admin users, check if they have access to this specific server
     if not user_context['is_admin']:
-        if not server_service.user_can_access_server_path(path, user_context['accessible_servers']):
+        if not await server_service.user_can_access_server_path(path, user_context['accessible_servers']):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have access to this server",
@@ -3696,7 +3785,7 @@ async def get_server_security_scan(
         path = "/" + path
 
     # Check if server exists
-    server_info = server_service.get_server_info(path)
+    server_info = await server_service.get_server_info(path)
     if not server_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -3705,7 +3794,7 @@ async def get_server_security_scan(
 
     # Check user permissions
     if not user_context["is_admin"]:
-        if not server_service.user_can_access_server_path(
+        if not await server_service.user_can_access_server_path(
             path, user_context["accessible_servers"]
         ):
             raise HTTPException(
@@ -3763,7 +3852,7 @@ async def rescan_server(
         path = "/" + path
 
     # Check if server exists
-    server_info = server_service.get_server_info(path)
+    server_info = await server_service.get_server_info(path)
     if not server_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -3856,17 +3945,23 @@ async def get_service_tools_api(
 
 @router.get("/servers")
 async def get_servers_json(
+    request: Request,
     query: str | None = None,
     user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
 ):
     """Get servers data as JSON for React frontend and external API (supports both session cookies and Bearer tokens)."""
+    # CRITICAL DIAGNOSTIC: Log that we reached this endpoint
+    logger.info(f"[GET_SERVERS_ENTRY] GET /api/servers called from {request.client.host if request.client else 'unknown'}")
+    logger.info(f"[GET_SERVERS_ENTRY] Request headers: {dict(request.headers)}")
+
     # CRITICAL DIAGNOSTIC: Log user_context received by endpoint
-    logger.debug(f"[GET_SERVERS_DEBUG] Received user_context: {user_context}")
-    logger.debug(f"[GET_SERVERS_DEBUG] user_context type: {type(user_context)}")
+    logger.info(f"[GET_SERVERS_DEBUG] Received user_context: {user_context}")
+    logger.info(f"[GET_SERVERS_DEBUG] user_context type: {type(user_context)}")
     if user_context:
-        logger.debug(f"[GET_SERVERS_DEBUG] Username: {user_context.get('username', 'NOT PRESENT')}")
-        logger.debug(f"[GET_SERVERS_DEBUG] Scopes: {user_context.get('scopes', 'NOT PRESENT')}")
-        logger.debug(f"[GET_SERVERS_DEBUG] Auth method: {user_context.get('auth_method', 'NOT PRESENT')}")
+        logger.info(f"[GET_SERVERS_DEBUG] Username: {user_context.get('username', 'NOT PRESENT')}")
+        logger.info(f"[GET_SERVERS_DEBUG] Scopes: {user_context.get('scopes', 'NOT PRESENT')}")
+        logger.info(f"[GET_SERVERS_DEBUG] Auth method: {user_context.get('auth_method', 'NOT PRESENT')}")
+        logger.info(f"[GET_SERVERS_DEBUG] Accessible services: {user_context.get('accessible_services', 'NOT PRESENT')}")
 
     service_data = []
     search_query = query.lower() if query else ""
@@ -3900,7 +3995,7 @@ async def get_servers_json(
         if not search_query or search_query in searchable_text:
             # Get real health status from health service
             from ..health.service import health_service
-            health_data = health_service._get_service_health_data(path)
+            health_data = health_service._get_service_health_data(path, server_info)
             
             service_data.append(
                 {
@@ -3908,7 +4003,7 @@ async def get_servers_json(
                     "path": path,
                     "description": server_info.get("description", ""),
                     "proxy_pass_url": server_info.get("proxy_pass_url", ""),
-                    "is_enabled": server_service.is_service_enabled(path),
+                    "is_enabled": await server_service.is_service_enabled(path),
                     "tags": server_info.get("tags", []),
                     "num_tools": server_info.get("num_tools", 0),
                     "num_stars": server_info.get("num_stars", 0),

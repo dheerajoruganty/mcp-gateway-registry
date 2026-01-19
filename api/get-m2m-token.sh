@@ -172,8 +172,13 @@ if [ -n "$SSM_PARAM_VALUE" ] && [ "$SSM_PARAM_VALUE" != "null" ]; then
             echo "" >&2
             echo -e "${GREEN}Successfully retrieved cached token!${NC}" >&2
 
-            # Output token to stdout and exit
-            echo "$CACHED_ACCESS_TOKEN"
+            # Output token to file or stdout
+            if [ -n "$OUTPUT_FILE" ]; then
+                echo "$CACHED_ACCESS_TOKEN" > "$OUTPUT_FILE"
+                echo "  Token saved to: $OUTPUT_FILE" >&2
+            else
+                echo "$CACHED_ACCESS_TOKEN"
+            fi
             exit 0
         else
             echo -e "${YELLOW}Cached token is expired or will expire soon${NC}" >&2

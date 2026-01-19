@@ -129,12 +129,16 @@ Interactive terminal interface for chatting with AI models and discovering MCP t
 
 ## What's New
 
-- **🔍 OpenSearch Backend with Hybrid Search** - Production-ready distributed storage backend with hybrid BM25 + k-NN semantic search, multi-tenancy support via namespaces, and scalable architecture for millions of entities. Repository abstraction layer enables seamless switching between file-based (development) and OpenSearch (production) backends. Features include automatic index management, 6 specialized indexes for different data types, and hybrid search pipeline combining keyword matching (40%) with vector similarity (60%). [Database Design](docs/database-design.md) | [Abstraction Layer Design](docs/design/database-abstraction-layer.md)
+- **🔎 Enhanced Hybrid Search** - Improved semantic search combining vector similarity with tokenized keyword matching for servers, tools, and agents. Explicit name references now boost relevance scores, ensuring exact matches appear first. [Hybrid Search Architecture](docs/design/hybrid-search-architecture.md)
+- **🛡️ Security Scan Results in UI** - Security scan results are now displayed directly on Server and Agent cards with color-coded shield icons (gray/green/red). Click the shield icon to view detailed scan results and trigger rescans from the UI. [Security Scanner Documentation](docs/security-scanner.md)
+- **🧪 Comprehensive Test Suite & Updated LLM Documentation** - Full pytest test suite with 701+ passing tests (unit, integration, E2E) running automatically on all PRs via GitHub Actions. 35% minimum coverage (targeting 80%), ~30 second execution with 8 parallel workers. Updated llms.txt provides comprehensive documentation for LLM coding assistants covering storage backend migration (file → DocumentDB/MongoDB), repository patterns, AWS ECS deployment, Microsoft Entra ID integration, dual security scanning, federation architecture, rating system, testing standards, and critical code organization antipatterns. [Testing Guide](docs/testing/README.md) | [docs/llms.txt](docs/llms.txt)
+- **📊 DocumentDB & MongoDB CE Storage Backend** - Production-grade distributed storage with MongoDB-compatible backends. DocumentDB provides native HNSW vector search for sub-100ms semantic queries in production deployments, while MongoDB Community Edition 8.2 enables full-featured local development with replica sets. Both backends use the same repository abstraction layer with automatic collection management, optimized indexes, and application-level vector search for MongoDB CE. Switch between MongoDB CE (local testing) and DocumentDB (production) with a single environment variable. Note: File-based storage is deprecated and will be removed in a future release. MongoDB CE is recommended for local development. [Configuration Guide](docs/configuration.md#storage-backend-configuration) | [Storage Architecture](docs/design/storage-architecture-mongodb-documentdb.md)
 - **🔒 A2A Agent Security Scanning** - Integrated security scanning for A2A agents using [Cisco AI Defense A2A Scanner](https://github.com/cisco-ai-defense/a2a-scanner). Automatic security scans during agent registration with YARA pattern matching, A2A specification validation, and heuristic threat detection. Features include automatic tagging of unsafe agents, configurable blocking policies, and detailed scan reports with API endpoints for viewing results and triggering rescans.
 - **🔧 Registry Management API** - New programmatic API for managing servers, groups, and users. Python client (`api/registry_client.py`) with type-safe interfaces, RESTful HTTP endpoints (`/api/management/*`), and comprehensive error handling. Replaces shell scripts with modern API approach while maintaining backward compatibility. [API Documentation](api/README.md) | [Service Management Guide](docs/service-management.md)
 - **⭐ Server & Agent Rating System** - Rate and review agents with an interactive 5-star rating widget. Users can submit ratings via the UI or CLI, view aggregate ratings with individual rating details, and update their existing ratings. Features include a rotating buffer (max 100 ratings per agent), one rating per user, float average calculations, and full OpenAPI documentation. Enables community-driven agent quality assessment and discovery.
 - **🧠 Flexible Embeddings Support** - Choose from three embedding provider options for semantic search: local sentence-transformers, OpenAI, or any LiteLLM-supported provider including Amazon Bedrock Titan, Cohere, and 100+ other models. Switch providers with simple configuration changes. [Embeddings Guide](docs/embeddings.md)
 - **☁️ AWS ECS Production Deployment** - Production-ready deployment on Amazon ECS Fargate with multi-AZ architecture, Application Load Balancer with HTTPS, auto-scaling, CloudWatch monitoring, and NAT Gateway high availability. Complete Terraform configuration for deploying the entire stack. [ECS Deployment Guide](terraform/aws-ecs/README.md)
+- **Flexible Deployment Modes** - Three deployment options to match your requirements: (1) CloudFront Only for quick setup without custom domains, (2) Custom Domain with Route53/ACM for branded URLs, or (3) CloudFront + Custom Domain for production with CDN benefits. [Deployment Modes Guide](docs/deployment-modes.md)
 - **Federated Registry** - MCP Gateway registry now supports federation of servers and agents from other registries. [Federation Guide](docs/federation.md)
 - **🔗 Agent-to-Agent (A2A) Protocol Support** - Agents can now register, discover, and communicate with other agents through a secure, centralized registry. Enable autonomous agent ecosystems with Keycloak-based access control and fine-grained permissions. [A2A Guide](docs/a2a.md)
 - **🏢 Microsoft Entra ID Integration** - Enterprise SSO with Microsoft Entra ID (Azure AD) authentication. Group-based access control, conditional access policies, and seamless integration with existing Microsoft 365 environments. [Entra ID Setup Guide](docs/entra-id-setup.md)
@@ -167,8 +171,8 @@ The registry includes two example A2A agents that demonstrate how both human dev
 **View in Registry UI:**
 Open the registry and navigate to the **A2A Agents** tab to browse registered agents with their full metadata, capabilities, and skills.
 
-**Search via Semantic API:**
-Agents and developers can search for agents by natural language description:
+**Search via CLI:**
+Developers can search for agents by natural language description:
 
 ```bash
 # Search for agents that can help book a trip
@@ -185,6 +189,40 @@ Travel Assistant Agent                   | /travel-assistant-agent   |  0.8610
 Flight Booking Agent                     | /flight-booking-agent     |  1.2134
 --------------------------------------------------------------------------------------------------------------
 ```
+
+### Agent-to-Agent Discovery API
+
+The registry provides a **semantic search API** that agents can use as a tool to discover other A2A agents at runtime. This API enables dynamic agent composition where agents find collaborators based on capabilities rather than hardcoded references.
+
+**Discovery API Endpoint:**
+```
+POST /api/agents/discover/semantic?query=<natural-language-query>&max_results=5
+Authorization: Bearer <jwt-token>
+```
+
+**Response includes:**
+- Agent name, description, and endpoint URL
+- Agent card metadata with skills and capabilities
+- Relevance score for ranking matches
+- Trust level and visibility settings
+
+**How agents use it:**
+1. An agent calls the registry's semantic search API with a natural language query (e.g., "agent that can book flights")
+2. The registry returns matching agents with their endpoint URLs and full agent card metadata
+3. The agent uses the agent card to understand capabilities and invokes the discovered agent via A2A protocol
+
+**Example - Travel Assistant discovering and invoking Flight Booking Agent:**
+```
+User: "I need to book a flight from NYC to LA"
+
+Travel Assistant:
+  1. Calls registry API: POST /api/agents/discover/semantic?query="book flights"
+  2. Registry returns Flight Booking Agent with endpoint URL and agent card
+  3. Uses agent card to understand capabilities, then sends A2A message to Flight Booking Agent
+  4. Returns booking confirmation to user
+```
+
+This pattern enables agents to dynamically extend their capabilities by discovering specialized agents for tasks they cannot handle directly.
 
 **Agent Cards:** View the agent card metadata at [agents/a2a/test/](agents/a2a/test/) to see the complete agent definitions including skills, protocols, and capabilities.
 
@@ -358,10 +396,13 @@ flowchart TB
 - Dual authentication supporting both human and machine authentication
 
 ---
-
 ## Quick Start
 
-> **📱 Running on macOS?** See our [macOS Setup Guide](docs/macos-setup-guide.md) for platform-specific instructions and optimizations.
+There are 3 options for setting up the MCP Gateway & Registry:
+
+- **Option A: Pre-built Images** — Fastest setup using pre-built Docker or Podman containers. Recommended for most users.
+- **Option B: Podman (Rootless)** — Detailed Podman-specific instructions for macOS and rootless Linux environments.
+- **Option C: Build from Source** — Full source build for customization or development.
 
 ### Option A: Pre-built Images (Instant Setup)
 
@@ -375,7 +416,7 @@ cp .env.example .env
 ```
 
 **Step 2: Download embeddings model**
-Download the required sentence-transformers model to the shared models directory:
+Download the required sentence-transformers model to the shared models directory using the [HuggingFace CLI](https://huggingface.co/docs/huggingface_hub/main/en/guides/cli) (`pip install -U huggingface_hub`):
 ```bash
 hf download sentence-transformers/all-MiniLM-L6-v2 --local-dir ${HOME}/mcp-gateway/models/all-MiniLM-L6-v2
 ```
@@ -387,9 +428,25 @@ export DOCKERHUB_ORG=mcpgateway
 ```
 
 **Step 4: Deploy with pre-built images**
+Our service can be deployed with two platforms for pre-built images: Docker and Podman. 
+
+**With Docker (default):**
 ```bash
 ./build_and_run.sh --prebuilt
 ```
+
+**With Podman (rootless, macOS (but NOT Apple Silicon) friendly):**
+```bash
+./build_and_run.sh --prebuilt --podman
+
+# If running on macOS Apple Silicon, remove the --prebuilt flag (more details in Podman option below) 
+./build_and_run.sh --podman # For Apple Silicon 
+```
+
+> **Port Differences:**
+> - **Docker**: Services run on privileged ports (`http://localhost`, `https://localhost`)
+> - **Podman**: Services run on non-privileged ports (`http://localhost:8080`, `https://localhost:8443`)
+> - All internal service ports remain the same (Registry: 7860, Auth: 8888, etc.)
 
 For detailed information about all Docker images used with `--prebuilt`, see [Pre-built Images Documentation](docs/prebuilt-images.md).
 
@@ -430,22 +487,124 @@ Complete: **[Testing with mcp_client.py and agent.py](docs/complete-setup-guide.
 
 **Benefits:** No build time • No Node.js required • No frontend compilation • Consistent tested images
 
-### Option B: Build from Source
+### Option B: Podman (Rootless Container Deployment)
+
+**Perfect for macOS and rootless Linux environments**
+
+Podman provides rootless container execution without requiring privileged ports, making it ideal for:
+- **macOS** users with Podman Desktop
+- **Linux** users preferring rootless containers
+- **Development** environments where Docker daemon isn't available
+
+**Quick Podman Setup (macOS non-Apple Silicon):**
+
+```bash
+# Install Podman Desktop
+brew install podman-desktop
+# OR download from: https://podman-desktop.io/
+```
+
+Inside Podman Desktop, go to Preferences > Podman Machine and create a new machine with at least 4 CPUs and 8GB RAM. Alternatively, see more detailed [Podman installation guide] (docs/installation.md#podman-installation) for instructions on setting this up on CLI. 
+
+```bash
+# Initialize Podman machine
+podman machine init
+podman machine start
+
+# Verify installation
+podman --version
+podman compose version
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+**Deploy with Podman** see full Podman setup instructions (downloading, installing, and initializing a first Podman container, as well as troubleshooting) in our [Installation Guide](docs/installation.md#podman-installation).
+
+**Build with Podman:**
+
+```bash
+# Auto-detect (will use Podman if Docker not available)
+./build_and_run.sh --prebuilt
+
+# Explicit Podman mode (only non-Apple Silicon)
+./build_and_run.sh --prebuilt --podman
+
+# Access registry at non-privileged ports
+open http://localhost:8080
+```
+
+> Note: **Apple Silicon (M1/M2/M3)?** Don't use `--prebuilt` with Podman on ARM64. This will cause a "proxy already running" error. See [Podman on Apple Silicon Guide](docs/podman-apple-silicon.md). 
+
+```bash
+# To run on Apple Silicon Macs:
+./build_and_run.sh --podman
+```
+
+**Key Differences vs. Docker:**
+- No root/sudo required
+- Works on macOS without privileged port access
+- HTTP port: `8080` (instead of `80`)
+- HTTPS port: `8443` (instead of `443`)
+- All other service ports unchanged
+
+For detailed Podman setup instructions, see [Installation Guide](docs/installation.md#podman-installation) and [macOS Setup Guide](docs/macos-setup-guide.md#podman-deployment).
+
+### Option C: Build from Source
 
 **New to MCP Gateway?** Start with our [Complete Setup Guide](docs/complete-setup-guide.md) for detailed step-by-step instructions from scratch on AWS EC2.
 
+**Running on macOS?** See our [macOS Setup Guide](docs/macos-setup-guide.md) for platform-specific instructions and optimizations.
+
 ### Testing & Integration Options
 
-**Python Scripts:**
-- `./cli/mcp_client.py` - Core MCP operations (ping, list tools, call tools)
-- `./tests/mcp_cmds.sh` - Shell-based MCP testing operations
+**Test Suite:**
+The project includes comprehensive automated testing with pytest:
+
+```bash
+# Run all tests
+make test
+
+# Run only unit tests (fast)
+make test-unit
+
+# Run with coverage report
+make test-coverage
+
+# Run specific test categories
+uv run pytest -m unit           # Unit tests only
+uv run pytest -m integration    # Integration tests
+uv run pytest -m "not slow"     # Skip slow tests
+```
+
+**Test Structure:**
+- **Unit Tests** (`tests/unit/`) - Fast, isolated component tests
+- **Integration Tests** (`tests/integration/`) - Component interaction tests
+- **E2E Tests** (`tests/integration/test_e2e_workflows.py`) - Complete workflow tests
 
 **Python Agent:**
 - `agents/agent.py` - Full-featured Python agent with advanced AI capabilities
 
-**Next Steps:** [Testing Guide](docs/testing.md) | [Complete Installation Guide](docs/installation.md) | [Authentication Setup](docs/auth.md) | [AI Assistant Integration](docs/ai-coding-assistants-setup.md)
+**Testing Documentation:**
+- [Testing Guide](docs/testing/README.md) - Comprehensive testing documentation
+- [Writing Tests](docs/testing/WRITING_TESTS.md) - How to write effective tests
+- [Test Maintenance](docs/testing/MAINTENANCE.md) - Maintaining test suite health
+
+**Pre-commit Hooks:**
+```bash
+# Install pre-commit hooks
+pip install pre-commit
+pre-commit install
+
+# Run hooks manually
+pre-commit run --all-files
+```
+
+**Next Steps:** [Complete Installation Guide](docs/installation.md) | [Authentication Setup](docs/auth.md) | [AI Assistant Integration](docs/ai-coding-assistants-setup.md)
 
 ---
+
 
 ## Enterprise Features
 
@@ -569,7 +728,7 @@ echo 'ASOR_ACCESS_TOKEN=your_token' >> .env
 |------------------|-------------------|------------------------|
 | [Complete Setup Guide](docs/complete-setup-guide.md)<br/>**NEW!** Step-by-step from scratch on AWS EC2 | [Authentication Guide](docs/auth.md)<br/>OAuth and identity provider integration | [AI Coding Assistants Setup](docs/ai-coding-assistants-setup.md)<br/>VS Code, Cursor, Claude Code integration |
 | [Installation Guide](docs/installation.md)<br/>Complete setup instructions for EC2 and EKS | [AWS ECS Deployment](terraform/aws-ecs/README.md)<br/>Production-ready deployment on AWS ECS Fargate | [API Reference](docs/registry_api.md)<br/>Programmatic registry management |
-| [Quick Start Tutorial](docs/quick-start.md)<br/>Get running in 5 minutes | [Keycloak Integration](docs/keycloak-integration.md)<br/>Enterprise identity with agent audit trails | [Token Refresh Service](docs/token-refresh-service.md)<br/>Automated token refresh and lifecycle management |
+| [Keycloak Integration](docs/keycloak-integration.md)<br/>Enterprise identity with agent audit trails | [Token Refresh Service](docs/token-refresh-service.md)<br/>Automated token refresh and lifecycle management | [MCP Registry CLI](docs/mcp-registry-cli.md)<br/>Command-line client for registry management |
 | [Configuration Reference](docs/configuration.md)<br/>Environment variables and settings | [Amazon Cognito Setup](docs/cognito.md)<br/>Step-by-step IdP configuration | [Observability Guide](docs/OBSERVABILITY.md)<br/>**NEW!** Metrics, monitoring, and OpenTelemetry setup |
 | | [Anthropic Registry Import](docs/anthropic-registry-import.md)<br/>**NEW!** Import servers from Anthropic MCP Registry | [Federation Guide](docs/federation.md)<br/>**NEW!** External registry integration (Anthropic, ASOR) |
 | | [OpenSearch Integration](OPENSEARCH_INTEGRATION.md)<br/>**NEW!** Scalable storage with hybrid search | |
@@ -600,84 +759,68 @@ echo 'ASOR_ACCESS_TOKEN=your_token' >> .env
 
 ### Roadmap
 
-The following GitHub issues represent our current development roadmap and planned features:
+Our development roadmap is organized into weekly milestones with clear deliverables and progress tracking:
 
-**Major Features**
+| Milestone | Due Date | Progress | Status | Key Issues |
+|-----------|----------|----------|--------|------------|
+| **December 2025 Week 4** | 2025-12-27 | 43% (3/7) | 🚧 In Progress | **Open:** [#317 - Optional PyTorch Dependencies](https://github.com/agentic-community/mcp-gateway-registry/issues/317), [#293 - CloudFront HTTPS Support](https://github.com/agentic-community/mcp-gateway-registry/issues/293), [#285 - Server Headers in Nginx](https://github.com/agentic-community/mcp-gateway-registry/issues/285), [#232 - A2A Curated Registry Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/232)<br/>**Closed:** [#287 - Filter Sidebar Buttons](https://github.com/agentic-community/mcp-gateway-registry/issues/287), [#284 - Statistics Count Fix](https://github.com/agentic-community/mcp-gateway-registry/issues/284), [#221 - DocumentDB Implementation](https://github.com/agentic-community/mcp-gateway-registry/issues/221) |
+| **January 2026 Week 1** | 2026-01-09 | 50% (2/4) | 🚧 In Progress | **Open:** [#297 - Unified UI Registration Flow](https://github.com/agentic-community/mcp-gateway-registry/issues/297), [#296 - Custom Metadata for Cards](https://github.com/agentic-community/mcp-gateway-registry/issues/296)<br/>**Closed:** [#329 - Update llms.txt](https://github.com/agentic-community/mcp-gateway-registry/issues/329), [#259 - Simplify JWT Token Generation](https://github.com/agentic-community/mcp-gateway-registry/issues/259) |
+| **January 2026 Week 3** | 2026-01-23 | 0% (0/2) | 📅 Planned | **Open:** [#295 - Multi-Level Rate Limiting](https://github.com/agentic-community/mcp-gateway-registry/issues/295), [#129 - Virtual MCP Server Support](https://github.com/agentic-community/mcp-gateway-registry/issues/129) |
+| **January 2026 Week 4** | 2026-01-30 | 0% (0/2) | 📅 Planned | **Open:** [#269 - AgentCore IAM Authentication](https://github.com/agentic-community/mcp-gateway-registry/issues/269), [#260 - Federation Between Registries](https://github.com/agentic-community/mcp-gateway-registry/issues/260) |
+| **Parking Lot** | — | 50% (1/2) | 🗂️ Backlog | **Open:** [#316 - Entra ID IAM APIs](https://github.com/agentic-community/mcp-gateway-registry/issues/316)<br/>**Closed:** [#315 - Distroless Docker Images](https://github.com/agentic-community/mcp-gateway-registry/issues/315) |
 
-- **[#203 - Deploy MCP Gateway Registry on AWS ECS Fargate](https://github.com/agentic-community/mcp-gateway-registry/issues/203)** ✅ **COMPLETE**
-  Production-ready ECS deployment implemented with multi-AZ architecture, auto-scaling, HTTPS/SSL, CloudWatch monitoring, and NAT Gateway HA. Complete Terraform configuration and comprehensive deployment guide available. [ECS Deployment Guide](terraform/aws-ecs/README.md)
+**Status Legend:** 🚧 In Progress • 📅 Planned • 🗂️ Backlog • ✅ Complete
 
-- **[#195 - Add A2A (Agent-to-Agent) Protocol Support to Registry](https://github.com/agentic-community/mcp-gateway-registry/issues/195)** ✅ **COMPLETE**
-  Agents can now register, discover, and communicate with other agents through the secure registry. Full implementation includes agent lifecycle management, Keycloak-based access control, fine-grained permissions, comprehensive testing, and documentation. [A2A Guide](docs/a2a.md)
+---
 
-- **[#128 - Add Microsoft Entra ID (Azure AD) Authentication Provider](https://github.com/agentic-community/mcp-gateway-registry/issues/128)** ✅ **COMPLETE**
-  Extend authentication support beyond Keycloak to include Microsoft Entra ID integration. Enables enterprise SSO for organizations using Azure Active Directory.
+#### Major Features
 
-- **[#170 - Architectural Proposal: Separate Gateway and Registry Containers](https://github.com/agentic-community/mcp-gateway-registry/issues/170)** 🚧 **IN PROGRESS**
-  Architectural enhancement to separate gateway and registry functionality into independent containers for improved scalability, maintainability, and deployment flexibility.
+The following major features span multiple milestones and represent significant architectural improvements:
 
-- **[#129 - Virtual MCP Server Support - Dynamic Tool Aggregation and Intelligent Routing](https://github.com/agentic-community/mcp-gateway-registry/issues/129)** 🚧 **IN PROGRESS**
-  Enable logical grouping of tools from multiple backend servers with intelligent routing using Lua/JavaScript scripting. Provides purpose-built virtual servers that abstract away backend complexity.
+- **[#129 - Virtual MCP Server Support](https://github.com/agentic-community/mcp-gateway-registry/issues/129)** 🚧 **IN PROGRESS** (Jan 2026 Week 3)
+  Dynamic tool aggregation and intelligent routing using Lua/JavaScript scripting. Enables logical grouping of tools from multiple backend servers.
 
-- **[#118 - Agent-as-Tool Integration: Dynamic MCP Server Generation](https://github.com/agentic-community/mcp-gateway-registry/issues/118)**
-  Convert existing AI agents into MCP servers dynamically, enabling legacy agent ecosystems to participate in the MCP protocol without code rewrites.
+- **[#232 - A2A Curated Registry Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/232)** 🚧 **IN PROGRESS** (Dec 2025 Week 4)
+  Enable agent-to-agent discovery and tool invocation through curated registry patterns.
 
-- **[#121 - Migrate to OpenSearch for Server Storage and Vector Search](https://github.com/agentic-community/mcp-gateway-registry/issues/121)**
-  Replace current storage with OpenSearch to provide advanced vector search capabilities and improved scalability for large server registries.
+- **[#260 - Federation Between MCP Registry Instances](https://github.com/agentic-community/mcp-gateway-registry/issues/260)** 📅 **PLANNED** (Jan 2026 Week 4)
+  Support for federated registry discovery and access across multiple registry instances.
 
-- **[#98 - Complete GDPR and SOX Compliance Implementation](https://github.com/agentic-community/mcp-gateway-registry/issues/98)**
-  Full compliance implementation for GDPR and SOX requirements, including data retention policies, audit trails, and privacy controls.
+- **[#295 - Multi-Level Tool Usage Rate Limiting](https://github.com/agentic-community/mcp-gateway-registry/issues/295)** 📅 **PLANNED** (Jan 2026 Week 3)
+  Comprehensive rate limiting architecture with detailed implementation guide for tool usage control.
 
-- **[#39 - Tool Popularity Scoring and Rating System](https://github.com/agentic-community/mcp-gateway-registry/issues/39)**
-  Enhance tool discovery with popularity scores and star ratings based on usage patterns and agent feedback.
+- **[#297 - Unified UI Registration Flow](https://github.com/agentic-community/mcp-gateway-registry/issues/297)** 🚧 **IN PROGRESS** (Jan 2026 Week 1)
+  Streamlined registration experience for both MCP servers and A2A agents through a unified interface.
 
-**DevOps & Operations**
+---
 
-- **[#48 - Update EKS Helm Chart for Multi-Container Architecture](https://github.com/agentic-community/mcp-gateway-registry/issues/48)**
-  Update Helm charts to support the new multi-container Docker Compose architecture for Kubernetes deployments.
+#### Recently Completed
 
-- **[#70 - Docker Build & Runtime Performance Optimization](https://github.com/agentic-community/mcp-gateway-registry/issues/70)**
-  Optimize Docker build times and runtime performance for faster development and deployment cycles.
+- **[#329 - Update llms.txt](https://github.com/agentic-community/mcp-gateway-registry/issues/329)** ✅ **COMPLETED** (v1.0.9)
+  Updated AI assistant reference documentation with recent architecture changes.
 
-**Completed**
+- **[#221 - DocumentDB Implementation](https://github.com/agentic-community/mcp-gateway-registry/issues/221)** ✅ **COMPLETED** (v1.0.9)
+  Production-grade distributed storage with MongoDB/DocumentDB backend implementation.
 
-- **[#132 - Registry UI: Add MCP Configuration Generator](https://github.com/agentic-community/mcp-gateway-registry/issues/132)** ✅ **COMPLETED**
-  Copy-paste MCP configuration generator added to Registry UI for seamless integration with AI coding assistants (VS Code, Cursor, Claude Code).
+- **[#70 - Docker Build & Runtime Performance Optimization](https://github.com/agentic-community/mcp-gateway-registry/issues/70)** ✅ **COMPLETED** (v1.0.9)
+  Multi-stage Docker builds with 66-80% image size reduction.
 
-- **[#171 - Feature: Import Servers from Anthropic MCP Registry](https://github.com/agentic-community/mcp-gateway-registry/issues/171)** ✅ **COMPLETED**
-  Anthropic MCP Registry import functionality implemented. Import curated servers with a single command and access through the gateway with full REST API compatibility. [Import Guide](docs/anthropic-registry-import.md) | [API Documentation](docs/anthropic_registry_api.md)
+- **[#287 - Filter Sidebar Buttons](https://github.com/agentic-community/mcp-gateway-registry/issues/287)** ✅ **COMPLETED**
+  Fixed filter buttons to properly filter both MCP servers and A2A agent cards.
 
-- **[#37 - Multi-Level Registry Support](https://github.com/agentic-community/mcp-gateway-registry/issues/37)** ✅ **COMPLETED** (Closed via #179, #181)
-  Registry-to-registry integration now supported through Anthropic MCP Registry import, enabling federated server discovery and access across different registries.
+- **[#284 - Statistics Count Fix](https://github.com/agentic-community/mcp-gateway-registry/issues/284)** ✅ **COMPLETED**
+  Sidebar statistics now correctly count both MCP servers and A2A agents.
 
-- **[#159 - Add scope management: create/delete Keycloak groups with scope configuration](https://github.com/agentic-community/mcp-gateway-registry/issues/159)** ✅ **COMPLETED**
-  Dynamic scope management functionality implemented with create-group, delete-group, list-groups, and server-to-group assignment commands through service management CLI. Includes comprehensive user management with group-based access control. [Service Management Guide](docs/service-management.md)
+- **[#259 - Simplify JWT Token Generation](https://github.com/agentic-community/mcp-gateway-registry/issues/259)** ✅ **COMPLETED**
+  Streamlined JWT token generation process in Registry UI.
 
-- **[#160 - Documentation: Add Amazon Bedrock AgentCore Gateway integration example](https://github.com/agentic-community/mcp-gateway-registry/issues/160)** ✅ **COMPLETED**
-  Comprehensive documentation and examples for integrating Amazon Bedrock AgentCore Gateway with dual authentication (Keycloak ingress + Cognito egress), passthrough token mode, and complete MCP protocol flow. [Integration Guide](docs/agentcore.md)
+- **[#315 - Distroless Docker Images](https://github.com/agentic-community/mcp-gateway-registry/issues/315)** ✅ **COMPLETED**
+  Security hardening through migration to distroless/hardened base images.
 
-- **[#158 - Replace /opt/mcp-gateway with ${HOME}/mcp-gateway to eliminate sudo requirements](https://github.com/agentic-community/mcp-gateway-registry/issues/158)** ✅ **COMPLETED**
-  Installation experience improved by using user home directory instead of /opt, removing the need for sudo privileges during setup.
-
-- **[#111 - Standalone Metrics Collection Service](https://github.com/agentic-community/mcp-gateway-registry/issues/111)** ✅ **COMPLETED**
-  Dedicated metrics collection service implemented for comprehensive monitoring and analytics across all MCP Gateway components. [Documentation](docs/OBSERVABILITY.md)
-
-- **[#38 - Usage Metrics and Analytics System](https://github.com/agentic-community/mcp-gateway-registry/issues/38)** ✅ **COMPLETED**
-  Comprehensive usage tracking implemented across user and agent identities, with metrics emission from auth server, registry, and intelligent tool finder. [Documentation](docs/OBSERVABILITY.md)
-
-- **[#120 - CLI Tool for MCP Server Registration and Health Validation](https://github.com/agentic-community/mcp-gateway-registry/issues/120)** ✅ **COMPLETED**
-  Command-line interface for automated server registration, health checks, and registry management. Streamlines DevOps workflows and CI/CD integration. [Documentation](docs/service-management.md)
-
-- **[#119 - Implement Well-Known URL for MCP Server Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/119)** ✅ **COMPLETED**
-  Standardized discovery mechanism using /.well-known/mcp-servers endpoint for automatic server detection and federation across organizations.
-
-- **[#18 - Add Token Vending Capability to Auth Server](https://github.com/agentic-community/mcp-gateway-registry/issues/18)** ✅ **COMPLETED**
-  Auth server token vending capabilities implemented for enhanced authentication workflows with OAuth token management and service account provisioning.
-
-- **[#5 - Add Support for KeyCloak as IdP Provider](https://github.com/agentic-community/mcp-gateway-registry/issues/5)** ✅ **COMPLETED**
-  KeyCloak integration implemented with individual agent audit trails, group-based authorization, and production-ready service account management. [Documentation](docs/keycloak-integration.md)
-
-For the complete list of open issues, feature requests, and bug reports, visit our [GitHub Issues page](https://github.com/agentic-community/mcp-gateway-registry/issues).
+For the complete list of all issues, feature requests, and detailed release history, visit:
+- [All GitHub Issues](https://github.com/agentic-community/mcp-gateway-registry/issues)
+- [All GitHub Milestones](https://github.com/agentic-community/mcp-gateway-registry/milestones)
+- [Release Notes](release-notes/)
 
 ---
 

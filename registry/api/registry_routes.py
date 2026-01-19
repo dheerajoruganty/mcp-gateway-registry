@@ -86,12 +86,12 @@ async def list_servers(
 
     for path, server_info in all_servers.items():
         # Add health status and enabled state for transformation
-        health_data = health_service._get_service_health_data(path)
+        health_data = health_service._get_service_health_data(path, server_info)
 
         server_info_with_status = server_info.copy()
         server_info_with_status["health_status"] = health_data["status"]
         server_info_with_status["last_checked_iso"] = health_data["last_checked_iso"]
-        server_info_with_status["is_enabled"] = server_service.is_service_enabled(path)
+        server_info_with_status["is_enabled"] = await server_service.is_service_enabled(path)
 
         filtered_servers.append(server_info_with_status)
 
@@ -154,10 +154,10 @@ async def list_server_versions(
     lookup_path = "/" + decoded_name.replace(expected_prefix, "")
 
     # Get server info - try with and without trailing slash
-    server_info = server_service.get_server_info(lookup_path)
+    server_info = await server_service.get_server_info(lookup_path)
     if not server_info:
         # Try with trailing slash
-        server_info = server_service.get_server_info(lookup_path + "/")
+        server_info = await server_service.get_server_info(lookup_path + "/")
 
     if not server_info:
         logger.warning(f"Server not found: {lookup_path}")
@@ -183,12 +183,12 @@ async def list_server_versions(
             )
 
     # Add health and status info using the correct path
-    health_data = health_service._get_service_health_data(path)
+    health_data = health_service._get_service_health_data(path, server_info)
 
     server_info_with_status = server_info.copy()
     server_info_with_status["health_status"] = health_data["status"]
     server_info_with_status["last_checked_iso"] = health_data["last_checked_iso"]
-    server_info_with_status["is_enabled"] = server_service.is_service_enabled(path)
+    server_info_with_status["is_enabled"] = await server_service.is_service_enabled(path)
 
     # Since we only have one version, return a list with one item
     server_list = transform_to_server_list([server_info_with_status])
@@ -250,10 +250,10 @@ async def get_server_version(
     lookup_path = "/" + decoded_name.replace(expected_prefix, "")
 
     # Get server info - try with and without trailing slash
-    server_info = server_service.get_server_info(lookup_path)
+    server_info = await server_service.get_server_info(lookup_path)
     if not server_info:
         # Try with trailing slash
-        server_info = server_service.get_server_info(lookup_path + "/")
+        server_info = await server_service.get_server_info(lookup_path + "/")
 
     if not server_info:
         logger.warning(f"Server not found: {lookup_path}")
@@ -286,12 +286,12 @@ async def get_server_version(
         )
 
     # Add health and status info
-    health_data = health_service._get_service_health_data(path)
+    health_data = health_service._get_service_health_data(path, server_info)
 
     server_info_with_status = server_info.copy()
     server_info_with_status["health_status"] = health_data["status"]
     server_info_with_status["last_checked_iso"] = health_data["last_checked_iso"]
-    server_info_with_status["is_enabled"] = server_service.is_service_enabled(path)
+    server_info_with_status["is_enabled"] = await server_service.is_service_enabled(path)
 
     # Transform to Anthropic format
     server_response = transform_to_server_response(

@@ -1,50 +1,58 @@
 version: '3.8'
 
+# DocumentDB Initialization:
+# For AWS DocumentDB Elastic Cluster setup, run the initialization script:
+#   export DOCUMENTDB_HOST=your-cluster.docdb.amazonaws.com
+#   export DOCUMENTDB_USERNAME=admin
+#   export DOCUMENTDB_PASSWORD=yourpassword
+#   ./scripts/init-documentdb.sh
+#
+# Then set STORAGE_BACKEND=documentdb in your environment and restart services.
+# Note: DocumentDB is a managed AWS service and runs outside of Docker.
+
 services:
-  # OpenSearch for registry data storage and hybrid search
-  opensearch:
-    image: opensearchproject/opensearch:2.11.0
-    container_name: mcp-opensearch
-    environment:
-      - cluster.name=mcp-gateway-cluster
-      - node.name=opensearch-node1
-      - discovery.type=single-node
-      - bootstrap.memory_lock=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
-      - DISABLE_INSTALL_DEMO_CONFIG=true
-      - DISABLE_SECURITY_PLUGIN=true
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-      nofile:
-        soft: 65536
-        hard: 65536
-    volumes:
-      - opensearch-data:/usr/share/opensearch/data
+  # MongoDB Community Edition 8.2 (alternative to DocumentDB for local development)
+  # Vector search is implemented in application code (see search_repository.py)
+  # Running without authentication for local development simplicity
+  mongodb:
+    image: mongo:8.2
+    container_name: mcp-mongodb
+    command: mongod --replSet rs0 --bind_ip 127.0.0.1,mongodb
     ports:
-      - "9200:9200"
-      - "9600:9600"
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q 'green\\|yellow'"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 60s
+      timeout: 5s
       retries: 5
+      start_period: 20s
     restart: unless-stopped
 
-  # OpenSearch Dashboards
-  opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:2.11.0
-    container_name: mcp-opensearch-dashboards
-    environment:
-      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
-      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
-    ports:
-      - "5601:5601"
+  # MongoDB initialization (creates replica set, indexes, and loads scopes)
+  mongodb-init:
+    image: python:3.11-slim
+    container_name: mcp-mongodb-init
     depends_on:
-      opensearch:
+      mongodb:
         condition: service_healthy
-    restart: unless-stopped
+    environment:
+      - DOCUMENTDB_HOST=mongodb
+      - DOCUMENTDB_PORT=27017
+      - DOCUMENTDB_DATABASE=${DOCUMENTDB_DATABASE:-mcp_registry}
+      - DOCUMENTDB_NAMESPACE=${DOCUMENTDB_NAMESPACE:-default}
+      - SCOPES_FILE=/app/config/scopes.yml
+    volumes:
+      - ./scripts/init-mongodb-ce.py:/app/init-mongodb-ce.py:ro
+      - ./auth_server/scopes.yml:/app/config/scopes.yml:ro
+    command: >
+      sh -c "
+      pip install --quiet motor pymongo pyyaml &&
+      python /app/init-mongodb-ce.py
+      "
+    restart: "no"
 
   # Registry service (includes nginx, SSL, FAISS, models)
   registry:
@@ -61,9 +69,14 @@ services:
       - AUTH_SERVER_EXTERNAL_URL=${AUTH_SERVER_EXTERNAL_URL}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_ENABLED=${GITHUB_ENABLED:-false}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_ENABLED=${GOOGLE_ENABLED:-false}
       - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
       - COGNITO_CLIENT_SECRET=${COGNITO_CLIENT_SECRET}
       - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - COGNITO_ENABLED=${COGNITO_ENABLED:-false}
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - HEALTH_CHECK_INTERVAL_SECONDS=${HEALTH_CHECK_INTERVAL_SECONDS:-30}
       - SRE_GATEWAY_AUTH_TOKEN=${SRE_GATEWAY_AUTH_TOKEN}
@@ -95,11 +108,20 @@ services:
       - SECURITY_SCAN_TIMEOUT=${SECURITY_SCAN_TIMEOUT:-60}
       - SECURITY_ADD_PENDING_TAG=${SECURITY_ADD_PENDING_TAG:-true}
       - MCP_SCANNER_LLM_API_KEY=${MCP_SCANNER_LLM_API_KEY}
-      # OpenSearch Configuration
+      # Storage Backend Configuration
       - STORAGE_BACKEND=${STORAGE_BACKEND:-file}
-      - OPENSEARCH_HOST=opensearch
-      - OPENSEARCH_PORT=9200
-      - OPENSEARCH_NAMESPACE=${OPENSEARCH_NAMESPACE:-default}
+      # DocumentDB/MongoDB Configuration (when STORAGE_BACKEND=documentdb)
+      - DOCUMENTDB_HOST=${DOCUMENTDB_HOST:-mongodb}
+      - DOCUMENTDB_PORT=${DOCUMENTDB_PORT:-27017}
+      - DOCUMENTDB_USERNAME=${DOCUMENTDB_USERNAME}
+      - DOCUMENTDB_PASSWORD=${DOCUMENTDB_PASSWORD}
+      - DOCUMENTDB_DATABASE=${DOCUMENTDB_DATABASE:-mcp_registry}
+      - DOCUMENTDB_NAMESPACE=${DOCUMENTDB_NAMESPACE:-default}
+      - DOCUMENTDB_USE_TLS=${DOCUMENTDB_USE_TLS:-false}
+      - DOCUMENTDB_TLS_CA_FILE=${DOCUMENTDB_TLS_CA_FILE:-}
+      - DOCUMENTDB_USE_IAM=${DOCUMENTDB_USE_IAM:-false}
+      - DOCUMENTDB_REPLICA_SET=${DOCUMENTDB_REPLICA_SET:-rs0}
+      - DOCUMENTDB_READ_PREFERENCE=${DOCUMENTDB_READ_PREFERENCE:-secondaryPreferred}
       # Embeddings Configuration
       - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-sentence-transformers}
       - EMBEDDINGS_MODEL_NAME=${EMBEDDINGS_MODEL_NAME:-all-MiniLM-L6-v2}
@@ -124,8 +146,6 @@ services:
       auth-server:
         condition: service_started
       metrics-service:
-        condition: service_healthy
-      opensearch:
         condition: service_healthy
     restart: unless-stopped
 
@@ -173,19 +193,22 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_ENABLED=${GITHUB_ENABLED:-false}
       - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
       - COGNITO_CLIENT_SECRET=${COGNITO_CLIENT_SECRET}
       - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
       - COGNITO_DOMAIN=${COGNITO_DOMAIN:-auto}
+      - COGNITO_ENABLED=${COGNITO_ENABLED:-false}
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_ENABLED=${GOOGLE_ENABLED:-false}
       # Metrics configuration
       - METRICS_SERVICE_URL=http://metrics-service:8890
       - METRICS_API_KEY=${METRICS_API_KEY_AUTH_SERVER}
       # Keycloak configuration
       - AUTH_PROVIDER=${AUTH_PROVIDER:-cognito}  # 'cognito' or 'keycloak'
-      - KEYCLOAK_ENABLED=${KEYCLOAK_ENABLED:-false}
+      - KEYCLOAK_ENABLED=${KEYCLOAK_ENABLED:-true}  # Enable Keycloak by default
       - KEYCLOAK_URL=${KEYCLOAK_URL:-http://keycloak:8080}
       - KEYCLOAK_EXTERNAL_URL=${KEYCLOAK_EXTERNAL_URL:-http://localhost:8080}
       - KEYCLOAK_REALM=${KEYCLOAK_REALM:-mcp-gateway}
@@ -198,21 +221,26 @@ services:
       - ENTRA_CLIENT_ID=${ENTRA_CLIENT_ID}
       - ENTRA_CLIENT_SECRET=${ENTRA_CLIENT_SECRET}
       - ENTRA_ENABLED=${ENTRA_ENABLED:-false}
-      # OpenSearch Configuration
+      # Storage Backend Configuration
       - STORAGE_BACKEND=${STORAGE_BACKEND:-file}
-      - OPENSEARCH_HOST=opensearch
-      - OPENSEARCH_PORT=9200
-      - OPENSEARCH_INDEX_PREFIX=${OPENSEARCH_INDEX_PREFIX:-mcp}
-      - OPENSEARCH_USERNAME=${OPENSEARCH_USERNAME:-admin}
-      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD:-admin}
+      # DocumentDB/MongoDB Configuration (when STORAGE_BACKEND=documentdb or mongodb-ce)
+      - DOCUMENTDB_HOST=${DOCUMENTDB_HOST:-mongodb}
+      - DOCUMENTDB_PORT=${DOCUMENTDB_PORT:-27017}
+      - DOCUMENTDB_USERNAME=${DOCUMENTDB_USERNAME}
+      - DOCUMENTDB_PASSWORD=${DOCUMENTDB_PASSWORD}
+      - DOCUMENTDB_DATABASE=${DOCUMENTDB_DATABASE:-mcp_registry}
+      - DOCUMENTDB_NAMESPACE=${DOCUMENTDB_NAMESPACE:-default}
+      - DOCUMENTDB_USE_TLS=${DOCUMENTDB_USE_TLS:-false}
+      - DOCUMENTDB_TLS_CA_FILE=${DOCUMENTDB_TLS_CA_FILE}
+      - DOCUMENTDB_USE_IAM=${DOCUMENTDB_USE_IAM:-false}
+      - DOCUMENTDB_REPLICA_SET=${DOCUMENTDB_REPLICA_SET:-rs0}
+      - DOCUMENTDB_READ_PREFERENCE=${DOCUMENTDB_READ_PREFERENCE:-secondaryPreferred}
     ports:
       - "8888:8888"
     volumes:
       - ${HOME}/mcp-gateway/logs:/app/logs
       # - ${HOME}/mcp-gateway/auth_server/scopes.yml:/app/scopes.yml
     depends_on:
-      opensearch:
-        condition: service_healthy
       metrics-service:
         condition: service_healthy
     restart: unless-stopped
@@ -274,21 +302,6 @@ services:
       - PORT=8002
     ports:
       - "8002:8002"
-    restart: unless-stopped
-
-
-  # Atlassian MCP Server
-  atlassian-server:
-    image: ghcr.io/sooperset/mcp-atlassian:latest
-    environment:
-      - ATLASSIAN_OAUTH_ENABLE=true
-      - MCP_VERY_VERBOSE=true
-      - MCP_LOGGING_STDOUT=true
-    ports:
-      - "8005:8005"
-    volumes:
-      - $HOME/.mcp-atlassian:/home/app/.mcp-atlassian
-    command: --transport streamable-http --port 8005
     restart: unless-stopped
 
   # SQLite container for metrics database
@@ -407,4 +420,5 @@ volumes:
   metrics-db-data:
   prometheus-data:
   grafana-data:
-  opensearch-data:
+  mongodb-data:
+  mongodb-config:

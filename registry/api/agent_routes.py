@@ -15,6 +15,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Request,
     status,
     Query,
 )
@@ -108,7 +109,7 @@ async def _perform_agent_security_scan_on_registration(
                     current_tags.append("security-pending")
                     agent_card.tags = current_tags
                     # Update agent with new tags
-                    agent_info = agent_service.get_agent_info(path)
+                    agent_info = await agent_service.get_agent_info(path)
                     if agent_info:
                         updated_card = agent_info.model_dump()
                         updated_card["tags"] = current_tags
@@ -299,7 +300,7 @@ async def register_agent(
 
     path = _normalize_path(request.path, request.name)
 
-    if agent_service.get_agent_info(path):
+    if await agent_service.get_agent_info(path):
         logger.error(f"Agent registration failed: path '{path}' already exists")
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
@@ -416,6 +417,7 @@ async def register_agent(
 
 @router.get("/agents")
 async def list_agents(
+    request: Request,
     query: Optional[str] = Query(None, description="Search query string"),
     enabled_only: bool = Query(False, description="Show only enabled agents"),
     visibility: Optional[str] = Query(None, description="Filter by visibility"),
@@ -433,15 +435,20 @@ async def list_agents(
     Returns:
         List of agent info objects
     """
-    # CRITICAL DIAGNOSTIC: Log user_context received by endpoint (for comparison with /servers)
-    logger.debug(f"[GET_AGENTS_DEBUG] Received user_context: {user_context}")
-    logger.debug(f"[GET_AGENTS_DEBUG] user_context type: {type(user_context)}")
-    if user_context:
-        logger.debug(f"[GET_AGENTS_DEBUG] Username: {user_context.get('username', 'NOT PRESENT')}")
-        logger.debug(f"[GET_AGENTS_DEBUG] Scopes: {user_context.get('scopes', 'NOT PRESENT')}")
-        logger.debug(f"[GET_AGENTS_DEBUG] Auth method: {user_context.get('auth_method', 'NOT PRESENT')}")
+    # CRITICAL DIAGNOSTIC: Log that we reached this endpoint
+    logger.info(f"[GET_AGENTS_ENTRY] GET /api/agents called from {request.client.host if request.client else 'unknown'}")
+    logger.info(f"[GET_AGENTS_ENTRY] Request headers: {dict(request.headers)}")
 
-    all_agents = agent_service.get_all_agents()
+    # CRITICAL DIAGNOSTIC: Log user_context received by endpoint (for comparison with /servers)
+    logger.info(f"[GET_AGENTS_DEBUG] Received user_context: {user_context}")
+    logger.info(f"[GET_AGENTS_DEBUG] user_context type: {type(user_context)}")
+    if user_context:
+        logger.info(f"[GET_AGENTS_DEBUG] Username: {user_context.get('username', 'NOT PRESENT')}")
+        logger.info(f"[GET_AGENTS_DEBUG] Scopes: {user_context.get('scopes', 'NOT PRESENT')}")
+        logger.info(f"[GET_AGENTS_DEBUG] Auth method: {user_context.get('auth_method', 'NOT PRESENT')}")
+        logger.info(f"[GET_AGENTS_DEBUG] Accessible agents: {user_context.get('accessible_agents', 'NOT PRESENT')}")
+
+    all_agents = await agent_service.get_all_agents()
 
     accessible_agents = _filter_agents_by_access(all_agents, user_context)
 
@@ -506,7 +513,7 @@ async def check_agent_health(
     """Perform a live /ping health check against an agent endpoint."""
     path = _normalize_path(path)
 
-    agent_card = agent_service.get_agent_info(path)
+    agent_card = await agent_service.get_agent_info(path)
     if not agent_card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -585,7 +592,7 @@ async def rate_agent(
     """Save integer ratings to agent card."""
     path = _normalize_path(path)
 
-    agent_card = agent_service.get_agent_info(path)
+    agent_card = await agent_service.get_agent_info(path)
     if not agent_card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -603,7 +610,7 @@ async def rate_agent(
         )
 
     try:
-        avg_rating = agent_service.update_rating(path, user_context["username"], request.rating)
+        avg_rating = await agent_service.update_rating(path, user_context["username"], request.rating)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -630,7 +637,7 @@ async def get_agent_rating(
     """Get agent rating information."""
     path = _normalize_path(path)
 
-    agent_card = agent_service.get_agent_info(path)
+    agent_card = await agent_service.get_agent_info(path)
     if not agent_card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -674,7 +681,7 @@ async def toggle_agent(
     """
     path = _normalize_path(path)
 
-    agent_card = agent_service.get_agent_info(path)
+    agent_card = await agent_service.get_agent_info(path)
     if not agent_card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -735,7 +742,7 @@ async def get_agent(
     """
     path = _normalize_path(path)
 
-    agent_card = agent_service.get_agent_info(path)
+    agent_card = await agent_service.get_agent_info(path)
     if not agent_card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -788,7 +795,7 @@ async def update_agent(
     """
     path = _normalize_path(path)
 
-    existing_agent = agent_service.get_agent_info(path)
+    existing_agent = await agent_service.get_agent_info(path)
     if not existing_agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -902,7 +909,7 @@ async def delete_agent(
     """
     path = _normalize_path(path)
 
-    existing_agent = agent_service.get_agent_info(path)
+    existing_agent = await agent_service.get_agent_info(path)
     if not existing_agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -979,7 +986,7 @@ async def discover_agents_by_skills(
         f"User {user_context['username']} discovering agents with skills: {skills}"
     )
 
-    all_agents = agent_service.get_all_agents()
+    all_agents = await agent_service.get_all_agents()
     accessible_agents = _filter_agents_by_access(all_agents, user_context)
 
     matched_agents = []
@@ -1064,7 +1071,7 @@ async def discover_agents_semantic(
     """
     Discover agents using natural language semantic search.
 
-    Uses search repository (FAISS or OpenSearch) to find agents matching the query intent.
+    Uses search repository (FAISS or DocumentDB) to find agents matching the query intent.
 
     Args:
         query: Natural language query describing needed capabilities
@@ -1098,7 +1105,7 @@ async def discover_agents_semantic(
         # Extract agents from search results
         results = search_results.get("agents", [])
 
-        all_agents = agent_service.get_all_agents()
+        all_agents = await agent_service.get_all_agents()
         agent_map = {agent.path: agent for agent in all_agents}
 
         accessible_results = []
@@ -1164,7 +1171,7 @@ async def get_agent_security_scan(
         path = "/" + path
 
     # Check if agent exists
-    agent_info = agent_service.get_agent_info(path)
+    agent_info = await agent_service.get_agent_info(path)
     if not agent_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1230,7 +1237,7 @@ async def rescan_agent(
         path = "/" + path
 
     # Check if agent exists
-    agent_info = agent_service.get_agent_info(path)
+    agent_info = await agent_service.get_agent_info(path)
     if not agent_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

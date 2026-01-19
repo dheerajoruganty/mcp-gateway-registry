@@ -2,6 +2,244 @@
 
 This directory contains utility scripts for building, testing, and deploying MCP Gateway Registry services.
 
+## DocumentDB Initialization Scripts
+
+### Overview
+
+The DocumentDB initialization scripts set up collections and indexes for the MCP Gateway Registry when using AWS DocumentDB Elastic Cluster as the storage backend.
+
+### Quick Start
+
+```bash
+# Set environment variables
+export DOCUMENTDB_HOST=your-cluster.docdb.amazonaws.com
+export DOCUMENTDB_USERNAME=admin
+export DOCUMENTDB_PASSWORD=yourpassword
+
+# Run initialization
+./scripts/init-documentdb.sh
+
+# Or with namespace
+export DOCUMENTDB_NAMESPACE=production
+./scripts/init-documentdb.sh
+```
+
+### Scripts
+
+#### init-documentdb.sh
+
+Bash wrapper script that downloads the CA bundle (if needed) and runs the Python initialization script.
+
+**Features:**
+- Downloads AWS DocumentDB CA bundle automatically if missing
+- Validates environment configuration
+- Color-coded output for easy readability
+- Supports both environment variables and command-line arguments
+
+**Usage:**
+```bash
+# Using environment variables (recommended)
+export DOCUMENTDB_HOST=your-cluster.docdb.amazonaws.com
+export DOCUMENTDB_USERNAME=admin
+export DOCUMENTDB_PASSWORD=yourpassword
+./scripts/init-documentdb.sh
+
+# Pass through command-line arguments to Python script
+./scripts/init-documentdb.sh --recreate --namespace production
+```
+
+#### init-documentdb-indexes.py
+
+Python script that creates all necessary DocumentDB collections and indexes.
+
+**Features:**
+- Creates vector indexes for embeddings (HNSW, 1536 dimensions, cosine similarity)
+- Creates standard indexes for servers, agents, scopes, security scans, and federation config
+- Supports both IAM and username/password authentication
+- Namespace support for multi-tenancy
+- Recreate mode to drop and recreate indexes
+
+**Usage:**
+```bash
+# Using environment variables
+uv run python scripts/init-documentdb-indexes.py
+
+# Using command-line arguments
+uv run python scripts/init-documentdb-indexes.py \
+  --host your-cluster.docdb.amazonaws.com \
+  --username admin \
+  --password yourpassword
+
+# With IAM authentication
+uv run python scripts/init-documentdb-indexes.py \
+  --use-iam \
+  --host your-cluster.docdb.amazonaws.com
+
+# With namespace
+uv run python scripts/init-documentdb-indexes.py --namespace production
+
+# Recreate indexes
+uv run python scripts/init-documentdb-indexes.py --recreate
+```
+
+#### download-documentdb-ca-bundle.sh
+
+Downloads the AWS DocumentDB global CA bundle certificate required for TLS connections.
+
+**Usage:**
+```bash
+./scripts/download-documentdb-ca-bundle.sh
+```
+
+### Collections and Indexes Created
+
+The initialization script creates the following collections with indexes:
+
+1. **mcp_servers_{namespace}**
+   - Unique index on `_id` (path)
+   - Index on `server_name`
+   - Index on `is_enabled`
+   - Index on `version`
+   - Index on `tags`
+
+2. **mcp_agents_{namespace}**
+   - Unique index on `_id` (path)
+   - Index on `name`
+   - Index on `is_enabled`
+   - Index on `version`
+   - Index on `tags`
+
+3. **mcp_scopes_{namespace}**
+   - Unique index on `_id` (scope name)
+   - Index on `name`
+
+4. **mcp_embeddings_1536_{namespace}**
+   - HNSW vector index on `embedding` (1536 dimensions, cosine similarity)
+   - Unique index on `path`
+   - Index on `name`
+   - Index on `entity_type`
+
+5. **mcp_security_scans_{namespace}**
+   - Unique index on `_id` (scan ID)
+   - Index on `entity_path`
+   - Index on `entity_type`
+   - Index on `scan_status`
+   - Index on `scanned_at`
+
+6. **mcp_federation_config_{namespace}**
+   - Unique index on `_id` (config ID)
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DOCUMENTDB_HOST` | `localhost` | DocumentDB cluster endpoint |
+| `DOCUMENTDB_PORT` | `27017` | DocumentDB port |
+| `DOCUMENTDB_DATABASE` | `mcp_registry` | Database name |
+| `DOCUMENTDB_USERNAME` | - | Username for authentication |
+| `DOCUMENTDB_PASSWORD` | - | Password for authentication |
+| `DOCUMENTDB_USE_IAM` | `false` | Use AWS IAM authentication |
+| `DOCUMENTDB_USE_TLS` | `true` | Enable TLS for connections |
+| `DOCUMENTDB_TLS_CA_FILE` | `global-bundle.pem` | Path to TLS CA bundle |
+| `DOCUMENTDB_NAMESPACE` | `default` | Namespace for multi-tenancy |
+
+### Prerequisites
+
+- Python 3.11+ with motor and boto3 installed
+- AWS credentials configured (for IAM authentication or DocumentDB access)
+- Network access to DocumentDB cluster
+- DocumentDB cluster provisioned via Terraform (see terraform/aws-ecs/documentdb-elastic.tf)
+
+### Authentication Methods
+
+#### Username/Password Authentication
+
+```bash
+export DOCUMENTDB_HOST=your-cluster.docdb.amazonaws.com
+export DOCUMENTDB_USERNAME=admin
+export DOCUMENTDB_PASSWORD=yourpassword
+export DOCUMENTDB_USE_TLS=true
+./scripts/init-documentdb.sh
+```
+
+#### IAM Authentication
+
+```bash
+export DOCUMENTDB_HOST=your-cluster.docdb.amazonaws.com
+export DOCUMENTDB_USE_IAM=true
+export DOCUMENTDB_USE_TLS=true
+# AWS credentials from environment or IAM role
+./scripts/init-documentdb.sh
+```
+
+#### Local Development (No Authentication)
+
+```bash
+export DOCUMENTDB_HOST=localhost
+export DOCUMENTDB_USE_TLS=false
+./scripts/init-documentdb.sh
+```
+
+### Troubleshooting
+
+#### "DOCUMENTDB_HOST environment variable is not set"
+Set the required environment variables before running:
+```bash
+export DOCUMENTDB_HOST=your-cluster.docdb.amazonaws.com
+```
+
+#### "AWS credentials not found for DocumentDB IAM auth"
+Configure AWS credentials:
+```bash
+aws configure
+# Or use IAM role attached to EC2/ECS task
+```
+
+#### "Failed to download CA bundle"
+- Check network connectivity
+- Verify wget or curl is installed
+- Download manually from: https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+
+#### "Failed to create vector index"
+- Ensure DocumentDB cluster version supports vector search
+- Check that dimensions (1536) match your embeddings model
+- Verify DocumentDB Elastic Cluster (not instance-based cluster)
+
+### Using with Docker Compose
+
+DocumentDB is a managed AWS service and runs outside of Docker. To use DocumentDB with docker-compose services:
+
+1. Initialize DocumentDB:
+```bash
+export DOCUMENTDB_HOST=your-cluster.docdb.amazonaws.com
+export DOCUMENTDB_USERNAME=admin
+export DOCUMENTDB_PASSWORD=yourpassword
+./scripts/init-documentdb.sh
+```
+
+2. Update docker-compose environment:
+```yaml
+services:
+  registry:
+    environment:
+      - STORAGE_BACKEND=documentdb
+      - DOCUMENTDB_HOST=your-cluster.docdb.amazonaws.com
+      - DOCUMENTDB_USERNAME=admin
+      - DOCUMENTDB_PASSWORD=yourpassword
+```
+
+3. Restart services:
+```bash
+docker-compose up -d
+```
+
+### Further Reading
+
+- [AWS DocumentDB Elastic Cluster Documentation](https://docs.aws.amazon.com/documentdb/latest/developerguide/elastic-clusters.html)
+- [DocumentDB Vector Search](https://docs.aws.amazon.com/documentdb/latest/developerguide/vector-search.html)
+- [Motor AsyncIO MongoDB Driver](https://motor.readthedocs.io/)
+- [Terraform Configuration](../terraform/aws-ecs/documentdb-elastic.tf)
+
 ## Keycloak Build & Push Script
 
 ### Overview

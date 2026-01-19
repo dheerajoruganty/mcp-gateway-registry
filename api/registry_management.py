@@ -2070,11 +2070,11 @@ def cmd_group_list(args: argparse.Namespace) -> int:
         logger.info(f"Found {response.total} IAM groups:\n")
 
         for group in response.groups:
-            print(f"Group: {group.name}")
-            print(f"  ID: {group.id}")
-            print(f"  Path: {group.path}")
-            if group.attributes:
-                print(f"  Attributes: {json.dumps(group.attributes, indent=4)}")
+            print(f"Group: {group['name']}")
+            print(f"  ID: {group['id']}")
+            print(f"  Path: {group['path']}")
+            if group.get('attributes'):
+                print(f"  Attributes: {json.dumps(group['attributes'], indent=4)}")
             print()
 
         return 0

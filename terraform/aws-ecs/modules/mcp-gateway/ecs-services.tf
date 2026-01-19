@@ -77,6 +77,7 @@ module "ecs_service_auth" {
       memory                 = tonumber(var.memory)
       essential              = true
       image                  = var.auth_server_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -125,6 +126,10 @@ module "ecs_service_auth" {
           value = "mcp-gateway-web"
         },
         {
+          name  = "KEYCLOAK_M2M_CLIENT_ID"
+          value = "mcp-gateway-m2m"
+        },
+        {
           name  = "SCOPES_CONFIG_PATH"
           value = "/efs/auth_config/auth_config/scopes.yml"
         },
@@ -135,9 +140,63 @@ module "ecs_service_auth" {
         {
           name  = "SESSION_COOKIE_DOMAIN"
           value = var.session_cookie_domain
+        },
+        {
+          name  = "STORAGE_BACKEND"
+          value = var.storage_backend
+        },
+        {
+          name  = "DOCUMENTDB_HOST"
+          value = var.documentdb_endpoint
+        },
+        {
+          name  = "DOCUMENTDB_PORT"
+          value = "27017"
+        },
+        {
+          name  = "DOCUMENTDB_DATABASE"
+          value = var.documentdb_database
+        },
+        {
+          name  = "DOCUMENTDB_NAMESPACE"
+          value = var.documentdb_namespace
+        },
+        {
+          name  = "DOCUMENTDB_USE_TLS"
+          value = tostring(var.documentdb_use_tls)
+        },
+        {
+          name  = "DOCUMENTDB_USE_IAM"
+          value = tostring(var.documentdb_use_iam)
+        },
+        {
+          name  = "DOCUMENTDB_TLS_CA_FILE"
+          value = "/app/global-bundle.pem"
         }
       ]
 
+      secrets = concat(
+        [
+          {
+            name      = "SECRET_KEY"
+            valueFrom = aws_secretsmanager_secret.secret_key.arn
+          },
+          {
+            name      = "KEYCLOAK_CLIENT_SECRET"
+            valueFrom = "${aws_secretsmanager_secret.keycloak_client_secret.arn}:client_secret::"
+          }
+        ],
+        var.storage_backend == "documentdb" ? [
+          {
+            name      = "DOCUMENTDB_USERNAME"
+            valueFrom = "${var.documentdb_credentials_secret_arn}:username::"
+          },
+          {
+            name      = "DOCUMENTDB_PASSWORD"
+            valueFrom = "${var.documentdb_credentials_secret_arn}:password::"
+          }
+        ] : []
+      )
       secrets = [
         {
           name      = "SECRET_KEY"
@@ -146,6 +205,18 @@ module "ecs_service_auth" {
         {
           name      = "KEYCLOAK_CLIENT_SECRET"
           valueFrom = "${aws_secretsmanager_secret.keycloak_client_secret.arn}:client_secret::"
+        },
+        {
+          name      = "KEYCLOAK_M2M_CLIENT_SECRET"
+          valueFrom = "${aws_secretsmanager_secret.keycloak_m2m_client_secret.arn}:client_secret::"
+        },
+        {
+          name      = "DOCUMENTDB_USERNAME"
+          valueFrom = "${var.documentdb_credentials_secret_arn}:username::"
+        },
+        {
+          name      = "DOCUMENTDB_PASSWORD"
+          valueFrom = "${var.documentdb_credentials_secret_arn}:password::"
         }
       ]
 
@@ -298,6 +369,7 @@ module "ecs_service_registry" {
       memory                 = tonumber(var.memory)
       essential              = true
       image                  = var.registry_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -321,7 +393,7 @@ module "ecs_service_registry" {
       environment = [
         {
           name  = "GATEWAY_ADDITIONAL_SERVER_NAMES"
-          value = var.domain_name != "" ? var.domain_name : ""
+          value = join(" ", compact([var.domain_name, var.additional_server_names]))
         },
         {
           name  = "EC2_PUBLIC_DNS"
@@ -414,35 +486,79 @@ module "ecs_service_registry" {
         {
           name  = "KEYCLOAK_ADMIN"
           value = "admin"
+        },
+        {
+          name  = "STORAGE_BACKEND"
+          value = var.storage_backend
+        },
+        {
+          name  = "DOCUMENTDB_HOST"
+          value = var.documentdb_endpoint
+        },
+        {
+          name  = "DOCUMENTDB_PORT"
+          value = "27017"
+        },
+        {
+          name  = "DOCUMENTDB_DATABASE"
+          value = var.documentdb_database
+        },
+        {
+          name  = "DOCUMENTDB_NAMESPACE"
+          value = var.documentdb_namespace
+        },
+        {
+          name  = "DOCUMENTDB_USE_TLS"
+          value = tostring(var.documentdb_use_tls)
+        },
+        {
+          name  = "DOCUMENTDB_USE_IAM"
+          value = tostring(var.documentdb_use_iam)
+        },
+        {
+          name  = "DOCUMENTDB_TLS_CA_FILE"
+          value = "/app/global-bundle.pem"
         }
       ]
 
-      secrets = [
-        {
-          name      = "SECRET_KEY"
-          valueFrom = aws_secretsmanager_secret.secret_key.arn
-        },
-        {
-          name      = "ADMIN_PASSWORD"
-          valueFrom = aws_secretsmanager_secret.admin_password.arn
-        },
-        {
-          name      = "KEYCLOAK_CLIENT_SECRET"
-          valueFrom = "${aws_secretsmanager_secret.keycloak_client_secret.arn}:client_secret::"
-        },
-        {
-          name      = "KEYCLOAK_M2M_CLIENT_SECRET"
-          valueFrom = "${aws_secretsmanager_secret.keycloak_m2m_client_secret.arn}:client_secret::"
-        },
-        {
-          name      = "KEYCLOAK_ADMIN_PASSWORD"
-          valueFrom = aws_secretsmanager_secret.keycloak_admin_password.arn
-        },
-        {
-          name      = "EMBEDDINGS_API_KEY"
-          valueFrom = aws_secretsmanager_secret.embeddings_api_key.arn
-        }
-      ]
+      secrets = concat(
+        [
+          {
+            name      = "SECRET_KEY"
+            valueFrom = aws_secretsmanager_secret.secret_key.arn
+          },
+          {
+            name      = "ADMIN_PASSWORD"
+            valueFrom = aws_secretsmanager_secret.admin_password.arn
+          },
+          {
+            name      = "KEYCLOAK_CLIENT_SECRET"
+            valueFrom = "${aws_secretsmanager_secret.keycloak_client_secret.arn}:client_secret::"
+          },
+          {
+            name      = "KEYCLOAK_M2M_CLIENT_SECRET"
+            valueFrom = "${aws_secretsmanager_secret.keycloak_m2m_client_secret.arn}:client_secret::"
+          },
+          {
+            name      = "KEYCLOAK_ADMIN_PASSWORD"
+            valueFrom = aws_secretsmanager_secret.keycloak_admin_password.arn
+          },
+          {
+            name      = "EMBEDDINGS_API_KEY"
+            valueFrom = aws_secretsmanager_secret.embeddings_api_key.arn
+          }
+        ],
+        var.storage_backend == "documentdb" ? [
+          {
+            name      = "DOCUMENTDB_USERNAME"
+            valueFrom = "${var.documentdb_credentials_secret_arn}:username::"
+          },
+          {
+            name      = "DOCUMENTDB_PASSWORD"
+            valueFrom = "${var.documentdb_credentials_secret_arn}:password::"
+          }
+        ] : []
+      )
 
       mountPoints = [
         {
@@ -650,6 +766,7 @@ module "ecs_service_currenttime" {
       memory                 = 1024
       essential              = true
       image                  = var.currenttime_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -773,6 +890,7 @@ module "ecs_service_mcpgw" {
       memory                 = 1024
       essential              = true
       image                  = var.mcpgw_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -923,6 +1041,7 @@ module "ecs_service_realserverfaketools" {
       memory                 = 1024
       essential              = true
       image                  = var.realserverfaketools_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -1044,6 +1163,7 @@ module "ecs_service_flight_booking_agent" {
       memory                 = 1024
       essential              = true
       image                  = var.flight_booking_agent_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [
@@ -1165,6 +1285,7 @@ module "ecs_service_travel_assistant_agent" {
       memory                 = 1024
       essential              = true
       image                  = var.travel_assistant_agent_image_uri
+      versionConsistency     = "disabled"
       readonlyRootFilesystem = false
 
       portMappings = [

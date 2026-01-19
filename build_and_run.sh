@@ -16,7 +16,9 @@ handle_error() {
 
 # Parse command line arguments
 USE_PREBUILT=false
+USE_PODMAN=false
 DOCKER_COMPOSE_FILE="docker-compose.yml"
+PODMAN_COMPOSE_FILE="docker-compose.podman.yml"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -25,22 +27,35 @@ while [[ $# -gt 0 ]]; do
       DOCKER_COMPOSE_FILE="docker-compose.prebuilt.yml"
       shift
       ;;
+    --podman)
+      USE_PODMAN=true
+      shift
+      ;;
     --help)
-      echo "Usage: $0 [--prebuilt] [--help]"
+      echo "Usage: $0 [--prebuilt] [--podman] [--help]"
       echo ""
       echo "Options:"
       echo "  --prebuilt    Use pre-built container images (faster startup)"
+      echo "  --podman      Use Podman instead of Docker (rootless-friendly)"
       echo "  --help        Show this help message"
       echo ""
       echo "Examples:"
-      echo "  $0                # Build containers locally (default)"
-      echo "  $0 --prebuilt    # Use pre-built images from registry"
+      echo "  $0                     # Build containers locally with Docker (default)"
+      echo "  $0 --prebuilt          # Use pre-built images from registry with Docker"
+      echo "  $0 --podman            # Build containers locally with Podman"
+      echo "  $0 --prebuilt --podman # Use pre-built images with Podman"
       echo ""
       echo "Benefits of --prebuilt:"
       echo "  - Instant deployment (no build time)"
       echo "  - Reduced friction (eliminate build environment issues)"
       echo "  - Consistent experience (all users get the same tested images)"
       echo "  - Bandwidth efficient (pull optimized, compressed images)"
+      echo ""
+      echo "Benefits of --podman:"
+      echo "  - Rootless container execution (no privileged ports)"
+      echo "  - Compatible with macOS Podman Desktop"
+      echo "  - Uses non-privileged ports (8080 for HTTP, 8443 for HTTPS)"
+      echo "  - No Docker daemon required"
       exit 0
       ;;
     *)
@@ -54,15 +69,70 @@ done
 echo "MCP Gateway Registry Deployment"
 echo "==============================="
 
-if [ "$USE_PREBUILT" = true ]; then
-    log "🚀 Using pre-built container images for fast deployment"
-    log "📥 Will pull latest images from container registry during startup..."
+# Detect and configure container engine
+COMPOSE_CMD=""
+COMPOSE_FILES=""
+
+if [ "$USE_PODMAN" = true ]; then
+    # User explicitly requested Podman
+    if command -v podman &> /dev/null; then
+        COMPOSE_CMD="podman compose"
+        # Use standalone Podman compose file to avoid port merge issues
+        COMPOSE_FILES="-f $PODMAN_COMPOSE_FILE"
+        log "Using Podman (rootless mode)"
+        log "Services will be available at:"
+        log "   - HTTP:  http://localhost:8080"
+        log "   - HTTPS: https://localhost:8443"
+    else
+        log "ERROR: --podman flag specified but podman command not found"
+        log "Please install Podman: https://podman.io/getting-started/installation"
+        exit 1
+    fi
 else
-    log "🔨 Building containers locally (this may take several minutes)"
+    # Auto-detect: prefer Docker, fallback to Podman
+    if command -v docker &> /dev/null && docker compose version &> /dev/null; then
+        COMPOSE_CMD="docker compose"
+        COMPOSE_FILES="-f $DOCKER_COMPOSE_FILE"
+        log "Using Docker"
+        log "Services will be available at:"
+        log "   - HTTP:  http://localhost"
+        log "   - HTTPS: https://localhost"
+    elif command -v podman &> /dev/null; then
+        log "WARNING: Docker not found, automatically using Podman (rootless mode)"
+        log "To suppress this message, use --podman flag explicitly"
+        COMPOSE_CMD="podman compose"
+        # Use standalone Podman compose file to avoid port merge issues
+        COMPOSE_FILES="-f $PODMAN_COMPOSE_FILE"
+        log "Services will be available at:"
+        log "   - HTTP:  http://localhost:8080"
+        log "   - HTTPS: https://localhost:8443"
+    else
+        log "ERROR: Neither 'docker compose' nor 'podman compose' is available"
+        log "Please install one of:"
+        log "  - Docker: https://docs.docker.com/compose/install/"
+        log "  - Podman: https://podman.io/getting-started/installation"
+        exit 1
+    fi
 fi
 
-log "Using Docker Compose file: $DOCKER_COMPOSE_FILE"
-log "Starting MCP Gateway Docker Compose deployment script"
+if [ "$USE_PREBUILT" = true ]; then
+    log "Using pre-built container images for fast deployment"
+    log "Will pull latest images from container registry during startup..."
+
+    # Warn about ARM64 compatibility with Podman
+    if [[ "$COMPOSE_CMD" == "podman compose" ]] && [[ $(uname -m) == "arm64" ]]; then
+        log "WARNING: Pre-built images are amd64. On Apple Silicon, consider:"
+        log "   - Building locally: ./build_and_run.sh --podman"
+        log "   - Or using Docker Desktop: ./build_and_run.sh --prebuilt"
+        log "   Continuing in 5 seconds... (Ctrl+C to cancel)"
+        sleep 5
+    fi
+else
+    log "Building containers locally (this may take several minutes)"
+fi
+
+log "Using compose files: $COMPOSE_FILES"
+log "Starting MCP Gateway deployment script"
 
 # Only check Node.js and build frontend when building locally
 if [ "$USE_PREBUILT" = false ]; then
@@ -136,7 +206,7 @@ fi
 
 # Stop and remove existing services if they exist
 log "Stopping existing services (if any)..."
-docker compose -f "$DOCKER_COMPOSE_FILE" down --remove-orphans || log "No existing services to stop"
+$COMPOSE_CMD $COMPOSE_FILES down --remove-orphans || log "No existing services to stop"
 log "Existing services stopped"
 
 # Clean up FAISS index files to force registry to recreate them
@@ -157,7 +227,7 @@ done
 if [ "$FAISS_EXISTS" = true ]; then
     echo ""
     echo "╔════════════════════════════════════════════════════════════════════════════╗"
-    echo "║                       ⚠️  FAISS INDEX FILES EXIST  ⚠️                       ║"
+    echo "║                         FAISS INDEX FILES EXIST                            ║"
     echo "╠════════════════════════════════════════════════════════════════════════════╣"
     echo "║                                                                            ║"
     echo "║  Existing FAISS index files were found in:                                ║"
@@ -178,18 +248,16 @@ else
     log "No existing FAISS index files found - will be created on first startup"
 fi
 
-# Clean up any root-owned directories from previous Docker runs when using OpenSearch backend
-if [ "${STORAGE_BACKEND:-file}" = "opensearch" ]; then
-    log "Cleaning up root-owned directories from previous Docker runs..."
+# Clean up any root-owned directories from previous Docker runs
+log "Checking for root-owned directories from previous Docker runs..."
 
-    # Check and remove root-owned directories
-    for dir in "$MCPGATEWAY_SERVERS_DIR" "${HOME}/mcp-gateway/agents" "${HOME}/mcp-gateway/auth_server" "${HOME}/mcp-gateway/security_scans" "${HOME}/mcp-gateway/federation.json"; do
-        if [ -e "$dir" ] && [ "$(stat -c '%U' "$dir" 2>/dev/null)" = "root" ]; then
-            log "Removing root-owned: $dir"
-            sudo rm -rf "$dir"
-        fi
-    done
-fi
+# Check and remove root-owned directories
+for dir in "$MCPGATEWAY_SERVERS_DIR" "${HOME}/mcp-gateway/agents" "${HOME}/mcp-gateway/auth_server" "${HOME}/mcp-gateway/security_scans" "${HOME}/mcp-gateway/federation.json"; do
+    if [ -e "$dir" ] && [ "$(stat -c '%U' "$dir" 2>/dev/null)" = "root" ]; then
+        log "Removing root-owned: $dir"
+        sudo rm -rf "$dir"
+    fi
+done
 
 # Copy JSON files from registry/servers to ${HOME}/mcp-gateway/servers with environment variable substitution
 # Skip if using OpenSearch backend (data is stored in OpenSearch, not files)
@@ -270,7 +338,33 @@ TARGET_SCOPES_FILE="$AUTH_SERVER_DIR/scopes.yml"
 if [ "${STORAGE_BACKEND:-file}" = "opensearch" ]; then
     log "STORAGE_BACKEND=opensearch - creating empty auth_server directory and scopes.yml for Docker mount (scopes stored in OpenSearch)"
     mkdir -p "$AUTH_SERVER_DIR"
-    touch "$TARGET_SCOPES_FILE"
+
+    # Check if scopes.yml already exists in the target directory
+    if [ -f "$TARGET_SCOPES_FILE" ]; then
+        echo ""
+        echo "╔════════════════════════════════════════════════════════════════════════════╗"
+        echo "║                            SCOPES.YML EXISTS                               ║"
+        echo "╠════════════════════════════════════════════════════════════════════════════╣"
+        echo "║                                                                            ║"
+        echo "║  An existing scopes.yml file was found at:                                ║"
+        echo "║  $TARGET_SCOPES_FILE"
+        echo "║                                                                            ║"
+        echo "║  This file contains your custom groups and server configurations.         ║"
+        echo "║  To preserve your settings, this file will NOT be overwritten.            ║"
+        echo "║                                                                            ║"
+        echo "║  If you need to restore the default scopes.yml from the codebase:         ║"
+        echo "║  1. Delete the existing file:                                             ║"
+        echo "║     rm $TARGET_SCOPES_FILE"
+        echo "║  2. Re-run this script                                                    ║"
+        echo "║                                                                            ║"
+        echo "╚════════════════════════════════════════════════════════════════════════════╝"
+        echo ""
+        log "Keeping existing scopes.yml - NOT overwriting"
+    else
+        # Copy scopes.yml for first-time setup
+        cp auth_server/scopes.yml "$AUTH_SERVER_DIR/"
+        log "scopes.yml copied successfully to $AUTH_SERVER_DIR (initial setup)"
+    fi
 else
     log "Checking scopes.yml configuration..."
     if [ -f "auth_server/scopes.yml" ]; then
@@ -327,6 +421,16 @@ else
     log "Creating empty federation.json for Docker mount (not used in file-based mode)"
     touch "$FEDERATION_JSON_FILE"
 fi
+
+# Create empty security_scans directory for Docker mount
+SECURITY_SCANS_DIR="${HOME}/mcp-gateway/security_scans"
+log "Creating empty security_scans directory for Docker mount"
+mkdir -p "$SECURITY_SCANS_DIR"
+
+# Create empty federation.json file for Docker mount
+FEDERATION_JSON_FILE="${HOME}/mcp-gateway/federation.json"
+log "Creating empty federation.json for Docker mount"
+touch "$FEDERATION_JSON_FILE"
 
 # Setup SSL certificate directory structure
 SSL_DIR="${HOME}/mcp-gateway/ssl"
@@ -402,25 +506,27 @@ else
     log "Git not available, using default version: $BUILD_VERSION"
 fi
 
-# Build or pull Docker images
+# Build or pull container images
 if [ "$USE_PREBUILT" = true ]; then
-    log "Pulling pre-built Docker images..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" pull || handle_error "Docker Compose pull failed"
-    log "Pre-built Docker images pulled successfully"
+    log "Pulling pre-built container images..."
+    $COMPOSE_CMD $COMPOSE_FILES pull || handle_error "Compose pull failed"
+    log "Pre-built container images pulled successfully"
 else
-    log "Building Docker images with optimization..."
-    # Enable BuildKit for better caching and parallel builds
-    export DOCKER_BUILDKIT=1
-    export COMPOSE_DOCKER_CLI_BUILD=1
+    log "Building container images with optimization..."
+    # Enable BuildKit for better caching and parallel builds (Docker only)
+    if [[ "$COMPOSE_CMD" == "docker compose" ]]; then
+        export DOCKER_BUILDKIT=1
+        export COMPOSE_DOCKER_CLI_BUILD=1
+    fi
 
     # Build with parallel jobs and build cache
-    docker compose -f "$DOCKER_COMPOSE_FILE" build --parallel --progress=auto || handle_error "Docker Compose build failed"
-    log "Docker images built successfully with optimization"
+    $COMPOSE_CMD $COMPOSE_FILES build --parallel --progress=auto || handle_error "Compose build failed"
+    log "Container images built successfully with optimization"
 fi
 
 # Start metrics service first to generate API keys
 log "Starting metrics service first..."
-docker compose -f "$DOCKER_COMPOSE_FILE" up -d metrics-service || handle_error "Failed to start metrics service"
+$COMPOSE_CMD $COMPOSE_FILES up -d metrics-service || handle_error "Failed to start metrics service"
 
 # Wait for metrics service to be ready
 log "Waiting for metrics service to be ready..."
@@ -443,8 +549,8 @@ fi
 # Generate dynamic pre-shared tokens for metrics authentication
 log "Setting up dynamic pre-shared tokens for services..."
 
-# Get all services from docker-compose that might need metrics (exclude monitoring services)
-METRICS_SERVICES=$(docker compose config --services 2>/dev/null | grep -v -E "(prometheus|grafana|metrics-db)" | sort | uniq)
+# Get all services from compose file that might need metrics (exclude monitoring services)
+METRICS_SERVICES=$($COMPOSE_CMD $COMPOSE_FILES config --services 2>/dev/null | grep -v -E "(prometheus|grafana|metrics-db)" | sort | uniq)
 
 if [ -z "$METRICS_SERVICES" ]; then
     log "WARNING: No services found for metrics configuration"
@@ -488,8 +594,8 @@ done
 log "Dynamic metrics API tokens configured successfully"
 
 # Now start all other services with the API keys in environment
-log "Starting remaining Docker Compose services..."
-docker compose -f "$DOCKER_COMPOSE_FILE" up -d || handle_error "Failed to start remaining services"
+log "Starting remaining services..."
+$COMPOSE_CMD $COMPOSE_FILES up -d || handle_error "Failed to start remaining services"
 
 # Wait a moment for services to initialize
 log "Waiting for services to initialize..."
@@ -497,7 +603,7 @@ sleep 10
 
 # Check service status
 log "Checking service status..."
-docker compose -f "$DOCKER_COMPOSE_FILE" ps
+$COMPOSE_CMD $COMPOSE_FILES ps
 
 # Verify key services are running
 log "Verifying services are healthy..."
@@ -558,19 +664,33 @@ fi
 
 log "Deployment completed successfully"
 log ""
-log "Services are available at:"
-log "  - Main interface: http://localhost or https://localhost"
-log "  - Registry API: http://localhost:7860"
-log "  - Auth service: http://localhost:8888"
-log "  - Current Time MCP: http://localhost:8000"
-log "  - Financial Info MCP: http://localhost:8001"
-log "  - Real Server Fake Tools MCP: http://localhost:8002"
-log "  - MCP Gateway MCP: http://localhost:8003"
-log "  - Atlassian MCP: http://localhost:8005"
+
+# Display correct URLs based on container engine
+if [[ "$COMPOSE_CMD" == "podman compose" ]]; then
+    log "Services are available at:"
+    log "  - Main interface: http://localhost:8080 or https://localhost:8443"
+    log "  - Registry API: http://localhost:7860"
+    log "  - Auth service: http://localhost:8888"
+    log "  - Current Time MCP: http://localhost:8000"
+    log "  - Financial Info MCP: http://localhost:8001"
+    log "  - Real Server Fake Tools MCP: http://localhost:8002"
+    log "  - MCP Gateway MCP: http://localhost:8003"
+    log "  - Atlassian MCP: http://localhost:8005"
+else
+    log "Services are available at:"
+    log "  - Main interface: http://localhost or https://localhost"
+    log "  - Registry API: http://localhost:7860"
+    log "  - Auth service: http://localhost:8888"
+    log "  - Current Time MCP: http://localhost:8000"
+    log "  - Financial Info MCP: http://localhost:8001"
+    log "  - Real Server Fake Tools MCP: http://localhost:8002"
+    log "  - MCP Gateway MCP: http://localhost:8003"
+    log "  - Atlassian MCP: http://localhost:8005"
+fi
 log ""
-log "To view logs for all services: docker compose -f $DOCKER_COMPOSE_FILE logs -f"
-log "To view logs for a specific service: docker compose -f $DOCKER_COMPOSE_FILE logs -f <service-name>"
-log "To stop services: docker compose -f $DOCKER_COMPOSE_FILE down"
+log "To view logs for all services: $COMPOSE_CMD $COMPOSE_FILES logs -f"
+log "To view logs for a specific service: $COMPOSE_CMD $COMPOSE_FILES logs -f <service-name>"
+log "To stop services: $COMPOSE_CMD $COMPOSE_FILES down"
 log ""
 
 # Ask if user wants to follow logs
@@ -578,8 +698,8 @@ read -p "Do you want to follow the logs? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     log "Following container logs (press Ctrl+C to stop following logs without stopping the services):"
-    echo "---------- DOCKER COMPOSE LOGS ----------"
-    docker compose -f "$DOCKER_COMPOSE_FILE" logs -f
+    echo "---------- CONTAINER LOGS ----------"
+    $COMPOSE_CMD $COMPOSE_FILES logs -f
 else
-    log "Services are running in the background. Use 'docker compose -f $DOCKER_COMPOSE_FILE logs -f' to view logs."
+    log "Services are running in the background. Use '$COMPOSE_CMD $COMPOSE_FILES logs -f' to view logs."
 fi

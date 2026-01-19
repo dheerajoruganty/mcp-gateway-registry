@@ -1,7 +1,7 @@
 """
 Federation configuration API routes.
 
-Provides endpoints to manage federation configurations in OpenSearch.
+Provides endpoints to manage federation configurations.
 """
 
 import logging
@@ -527,7 +527,7 @@ async def sync_federation(
                 config.anthropic.servers
             )
 
-            # Register servers in OpenSearch via server service
+            # Register servers via server service
             from ..services.server_service import server_service
 
             for server_data in servers:
@@ -537,7 +537,7 @@ async def sync_federation(
                         logger.warning(f"Server missing path: {server_data.get('server_name')}, skipping")
                         continue
 
-                    # Register server (this stores it in OpenSearch)
+                    # Register server
                     # server_data already includes the "path" field
                     success = await server_service.register_server(server_data)
 

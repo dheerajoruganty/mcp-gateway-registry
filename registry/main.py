@@ -27,8 +27,6 @@ from registry.api.registry_routes import router as registry_router
 from registry.api.agent_routes import router as agent_router
 from registry.api.management_routes import router as management_router
 from registry.api.federation_routes import router as federation_router
-from registry.api.federation_export_routes import router as federation_export_router
-from registry.api.peer_management_routes import router as peer_management_router
 from registry.health.routes import router as health_router
 
 # Import auth dependencies
@@ -118,7 +116,7 @@ async def lifespan(app: FastAPI):
 
         # Get repository based on STORAGE_BACKEND configuration
         search_repo = get_search_repository()
-        backend_name = "OpenSearch" if settings.storage_backend == "opensearch" else "FAISS"
+        backend_name = "DocumentDB" if settings.storage_backend == "documentdb" else "FAISS"
 
         logger.info(f"🔍 Initializing {backend_name} search service...")
         await search_repo.initialize()
@@ -157,7 +155,7 @@ async def lifespan(app: FastAPI):
         from registry.repositories.factory import get_federation_config_repository
 
         try:
-            # Load federation config from OpenSearch
+            # Load federation config
             federation_repo = get_federation_config_repository()
             federation_config = await federation_repo.get_config("default")
 
@@ -218,16 +216,13 @@ async def lifespan(app: FastAPI):
             logger.error(f"Failed to load federation config: {e}")
             logger.info("Continuing without federation")
 
-        logger.info("🤝 Initializing peer federation service...")
-        peer_federation_service = get_peer_federation_service()
-        peer_federation_service.load_peers_and_state()
-        logger.info(f"✅ Loaded {len(peer_federation_service.registered_peers)} peer registries")
-
         logger.info("🌐 Generating initial Nginx configuration...")
-        enabled_servers = {
-            path: server_service.get_server_info(path)
-            for path in server_service.get_enabled_services()
-        }
+        enabled_service_paths = await server_service.get_enabled_services()
+        enabled_servers = {}
+        for path in enabled_service_paths:
+            server_info = await server_service.get_server_info(path)
+            if server_info:
+                enabled_servers[path] = server_info
         await nginx_service.generate_config_async(enabled_servers)
 
         logger.info("✅ All services initialized successfully!")
@@ -289,11 +284,7 @@ app = FastAPI(
         },
         {
             "name": "federation",
-            "description": "Federation APIs: External federation (Anthropic/ASOR) and peer-to-peer registry synchronization"
-        },
-        {
-            "name": "peer-management",
-            "description": "Peer registry management API for configuring and synchronizing with peer registries. Requires JWT Bearer token authentication."
+            "description": "Federation configuration management API for Anthropic and ASOR integrations"
         }
     ]
 )
@@ -375,7 +366,7 @@ async def get_current_user(user_context: Dict[str, Any] = Depends(enhanced_auth)
     user_scopes = user_context.get("scopes", [])
 
     # Get UI permissions for the user based on their scopes
-    ui_permissions = get_ui_permissions_for_user(user_scopes)
+    ui_permissions = await get_ui_permissions_for_user(user_scopes)
 
     # Return user info with scopes and UI permissions for token generation
     return {
@@ -386,7 +377,10 @@ async def get_current_user(user_context: Dict[str, Any] = Depends(enhanced_auth)
         "groups": user_context.get("groups", []),
         "can_modify_servers": user_context.get("can_modify_servers", False),
         "is_admin": user_context.get("is_admin", False),
-        "ui_permissions": ui_permissions
+        "ui_permissions": ui_permissions,
+        "accessible_servers": user_context.get("accessible_servers", []),
+        "accessible_services": user_context.get("accessible_services", []),
+        "accessible_agents": user_context.get("accessible_agents", [])
     }
 
 # Basic health check endpoint

@@ -22,3 +22,7 @@ terraform.rc
 *.tfstate*
 *.backup
 *.backup
+
+# Terraform plan files (contain sensitive data)
+*.tfplan
+*.tfplan.json

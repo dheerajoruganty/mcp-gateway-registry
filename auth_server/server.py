@@ -12,12 +12,12 @@ import requests
 import json
 import yaml
 import time
-import uuid
 import hashlib
 from jwt.api_jwk import PyJWK
 from datetime import datetime
 from typing import Dict, Optional, List, Any
 from functools import lru_cache
+from contextlib import asynccontextmanager
 from botocore.exceptions import ClientError
 from fastapi import FastAPI, Header, HTTPException, Request, Cookie
 from fastapi.responses import JSONResponse, Response, RedirectResponse
@@ -36,10 +36,12 @@ from metrics_middleware import add_auth_metrics_middleware
 # Import provider factory
 from providers.factory import get_auth_provider
 
-# Import shared scopes loader from registry common module
+# Import shared scopes loader and repository factory from registry common module
 import sys
 sys.path.insert(0, '/app')
 from registry.common.scopes_loader import reload_scopes_config
+from registry.repositories.factory import get_scope_repository
+from registry.core.config import settings
 
 # Configure logging
 logging.basicConfig(
@@ -63,6 +65,35 @@ MAX_TOKENS_PER_USER_PER_HOUR = int(os.environ.get('MAX_TOKENS_PER_USER_PER_HOUR'
 SCOPES_CONFIG = {}
 
 # Utility functions for GDPR/SOX compliance
+
+def is_request_https(request) -> bool:
+    """
+    Detect if the original request was HTTPS.
+    
+    Priority order:
+    1. X-Cloudfront-Forwarded-Proto header (CloudFront deployments)
+    2. x-forwarded-proto header (ALB/custom domain deployments)
+    3. Request URL scheme (direct access)
+    
+    Args:
+        request: FastAPI Request object
+        
+    Returns:
+        True if the original request was HTTPS
+    """
+    # Check CloudFront header first (ALB won't overwrite this)
+    cloudfront_proto = request.headers.get("x-cloudfront-forwarded-proto", "")
+    if cloudfront_proto.lower() == "https":
+        return True
+    
+    # Fall back to standard x-forwarded-proto
+    x_forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    if x_forwarded_proto.lower() == "https":
+        return True
+    
+    # Finally check request scheme
+    return request.url.scheme == "https"
+
 def mask_sensitive_id(value: str) -> str:
     """Mask sensitive IDs showing only first and last 4 characters."""
     if not value or len(value) <= 8:
@@ -120,27 +151,40 @@ def mask_headers(headers: dict) -> dict:
             masked[key] = value
     return masked
 
-def map_groups_to_scopes(groups: List[str]) -> List[str]:
+async def map_groups_to_scopes(groups: List[str]) -> List[str]:
     """
-    Map identity provider groups to MCP scopes using the group_mappings from scopes.yml configuration.
-    
+    Map identity provider groups to MCP scopes by querying DocumentDB directly.
+
     Args:
         groups: List of group names from identity provider (Cognito, Keycloak, etc.)
-        
+
     Returns:
         List of MCP scopes
     """
     scopes = []
-    group_mappings = SCOPES_CONFIG.get('group_mappings', {})
-    
-    for group in groups:
-        if group in group_mappings:
-            group_scopes = group_mappings[group]
-            scopes.extend(group_scopes)
-            logger.debug(f"Mapped group '{group}' to scopes: {group_scopes}")
-        else:
-            logger.debug(f"No scope mapping found for group: {group}")
-    
+
+    # Query DocumentDB directly for group mappings
+    try:
+        scope_repo = get_scope_repository()
+
+        for group in groups:
+            # Query DocumentDB for this group's scope mappings
+            group_scopes = await scope_repo.get_group_mappings(group)
+            if group_scopes:
+                scopes.extend(group_scopes)
+                logger.debug(f"Mapped group '{group}' to scopes: {group_scopes}")
+            else:
+                logger.debug(f"No scope mapping found for group: {group}")
+    except Exception as e:
+        logger.error(f"Error querying group mappings from DocumentDB: {e}", exc_info=True)
+        # Fall back to in-memory config if DocumentDB query fails
+        group_mappings = SCOPES_CONFIG.get('group_mappings', {})
+        for group in groups:
+            if group in group_mappings:
+                group_scopes = group_mappings[group]
+                scopes.extend(group_scopes)
+                logger.debug(f"Mapped group '{group}' to scopes (fallback): {group_scopes}")
+
     # Remove duplicates while preserving order
     seen = set()
     unique_scopes = []
@@ -148,17 +192,17 @@ def map_groups_to_scopes(groups: List[str]) -> List[str]:
         if scope not in seen:
             seen.add(scope)
             unique_scopes.append(scope)
-    
+
     logger.info(f"Final mapped scopes: {unique_scopes}")
     return unique_scopes
 
-def validate_session_cookie(cookie_value: str) -> Dict[str, any]:
+async def validate_session_cookie(cookie_value: str) -> Dict[str, any]:
     """
     Validate session cookie using itsdangerous serializer.
-    
+
     Args:
         cookie_value: The session cookie value
-        
+
     Returns:
         Dict containing validation results matching JWT validation format:
         {
@@ -168,7 +212,7 @@ def validate_session_cookie(cookie_value: str) -> Dict[str, any]:
             'method': 'session_cookie',
             'groups': List[str]
         }
-        
+
     Raises:
         ValueError: If cookie is invalid or expired
     """
@@ -177,20 +221,20 @@ def validate_session_cookie(cookie_value: str) -> Dict[str, any]:
     if not signer:
         logger.warning("Global signer not configured for session cookie validation")
         raise ValueError("Session cookie validation not configured")
-    
+
     try:
         # Decrypt cookie (max_age=28800 for 8 hours)
         data = signer.loads(cookie_value, max_age=28800)
-        
+
         # Extract user info
         username = data.get('username')
         groups = data.get('groups', [])
-        
-        # Map groups to scopes
-        scopes = map_groups_to_scopes(groups)
-        
+
+        # Map groups to scopes (async call to query DocumentDB)
+        scopes = await map_groups_to_scopes(groups)
+
         logger.info(f"Session cookie validated for user: {hash_username(username)}")
-        
+
         return {
             'valid': True,
             'username': username,
@@ -273,16 +317,16 @@ def _server_names_match(name1: str, name2: str) -> bool:
     return normalized_name1 == _normalize_server_name(name2)
 
 
-def validate_server_tool_access(server_name: str, method: str, tool_name: str, user_scopes: List[str]) -> bool:
+async def validate_server_tool_access(server_name: str, method: str, tool_name: str, user_scopes: List[str]) -> bool:
     """
     Validate if the user has access to the specified server method/tool based on scopes.
-    
+
     Args:
         server_name: Name of the MCP server
         method: Name of the method being accessed (e.g., 'initialize', 'notifications/initialized', 'tools/list')
         tool_name: Name of the specific tool being accessed (optional, for tools/call)
         user_scopes: List of user scopes from token
-        
+
     Returns:
         True if access is allowed, False otherwise
     """
@@ -293,22 +337,21 @@ def validate_server_tool_access(server_name: str, method: str, tool_name: str, u
         logger.info(f"Requested method: '{method}'")
         logger.info(f"Requested tool: '{tool_name}'")
         logger.info(f"User scopes: {user_scopes}")
-        logger.info(f"Available scopes config keys: {list(SCOPES_CONFIG.keys()) if SCOPES_CONFIG else 'None'}")
-        
-        if not SCOPES_CONFIG:
-            logger.warning("No scopes configuration loaded, allowing access")
-            logger.info(f"=== VALIDATE_SERVER_TOOL_ACCESS END: ALLOWED (no config) ===")
-            return True
-            
+
+        # Query DocumentDB directly for server access rules
+        scope_repo = get_scope_repository()
+
         # Check each user scope to see if it grants access
         for scope in user_scopes:
             logger.info(f"--- Checking scope: '{scope}' ---")
-            scope_config = SCOPES_CONFIG.get(scope, [])
-            
+
+            # Query DocumentDB for this scope's server access rules
+            scope_config = await scope_repo.get_server_scopes(scope)
+
             if not scope_config:
-                logger.info(f"Scope '{scope}' not found in configuration")
+                logger.info(f"Scope '{scope}' not found in DocumentDB")
                 continue
-                
+
             logger.info(f"Scope '{scope}' config: {scope_config}")
             
             # The scope_config is directly a list of server configurations
@@ -437,11 +480,31 @@ def check_rate_limit(username: str) -> bool:
     user_token_generation_counts[rate_key] = current_count + 1
     return True
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI application."""
+    # Startup: Load scopes configuration
+    global SCOPES_CONFIG
+    try:
+        SCOPES_CONFIG = await reload_scopes_config()
+        logger.info(f"Loaded scopes configuration on startup with {len(SCOPES_CONFIG.get('group_mappings', {}))} group mappings")
+    except Exception as e:
+        logger.error(f"Failed to load scopes configuration on startup: {e}", exc_info=True)
+        # Fall back to empty config
+        SCOPES_CONFIG = {"group_mappings": {}}
+
+    yield
+
+    # Shutdown: Add cleanup code here if needed in the future
+    logger.info("Shutting down auth server")
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Simplified Auth Server",
     description="Authentication server for validating JWT tokens against Amazon Cognito with header-based configuration",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan
 )
 
 
@@ -873,8 +936,9 @@ async def validate_request(request: Request):
         original_url = request.headers.get("X-Original-URL")
         body = request.headers.get("X-Body")
         
-        # Extract server_name from original_url early for logging
+        # Extract server_name and endpoint from original_url early for logging
         server_name_from_url = None
+        endpoint_from_url = None
         if original_url:
             try:
                 from urllib.parse import urlparse
@@ -882,7 +946,9 @@ async def validate_request(request: Request):
                 path = parsed_url.path.strip('/')
                 path_parts = path.split('/') if path else []
                 server_name_from_url = path_parts[0] if path_parts else None
-                logger.info(f"Extracted server_name '{server_name_from_url}' from original_url: {original_url}")
+                # For REST API requests, the second path component is the endpoint/method
+                endpoint_from_url = path_parts[1] if len(path_parts) > 1 else None
+                logger.info(f"Extracted server_name '{server_name_from_url}' and endpoint '{endpoint_from_url}' from original_url: {original_url}")
             except Exception as e:
                 logger.warning(f"Failed to extract server_name from original_url {original_url}: {e}")
         
@@ -935,7 +1001,7 @@ async def validate_request(request: Request):
             
             if cookie_value:
                 try:
-                    validation_result = validate_session_cookie(cookie_value)
+                    validation_result = await validate_session_cookie(cookie_value)
                     # Log validation result without exposing username
                     safe_result = {k: v for k, v in validation_result.items() if k != 'username'}
                     safe_result['username'] = hash_username(validation_result.get('username', ''))
@@ -1043,8 +1109,8 @@ async def validate_request(request: Request):
         user_groups = validation_result.get('groups', [])
         auth_method = validation_result.get('method', '')
         if user_groups and auth_method in ['keycloak', 'entra', 'cognito']:
-            # Map IdP groups to scopes using the group mappings
-            user_scopes = map_groups_to_scopes(user_groups)
+            # Map IdP groups to scopes using the group mappings (query DocumentDB)
+            user_scopes = await map_groups_to_scopes(user_groups)
             logger.info(f"Mapped {auth_method} groups {user_groups} to scopes: {user_scopes}")
         else:
             user_scopes = validation_result.get('scopes', [])
@@ -1052,7 +1118,12 @@ async def validate_request(request: Request):
             # For ANY server access, enforce scope validation (fail closed principle)
             # This includes MCP initialization methods that may not have a specific tool
 
-            method = tool_name if tool_name else "initialize"  # Default to initialize if no tool specified
+            # Determine the method to validate:
+            # 1. If we have a tool_name from JSON-RPC payload, use that
+            # 2. If we have an endpoint from the REST API URL, use that
+            # 3. Otherwise default to "initialize"
+            method = tool_name if tool_name else (endpoint_from_url if endpoint_from_url else "initialize")
+            logger.info(f"Method determined for validation: '{method}' (tool_name={tool_name}, endpoint_from_url={endpoint_from_url})")
             actual_tool_name = None
 
             # For tools/call, extract the actual tool name from params
@@ -1071,7 +1142,7 @@ async def validate_request(request: Request):
                     headers={"Connection": "close"}
                 )
 
-            if not validate_server_tool_access(server_name, method, actual_tool_name, user_scopes):
+            if not await validate_server_tool_access(server_name, method, actual_tool_name, user_scopes):
                 logger.warning(f"Access denied for user {hash_username(validation_result.get('username', ''))} to {server_name}.{method} (tool: {actual_tool_name})")
                 raise HTTPException(
                     status_code=403,
@@ -1181,36 +1252,36 @@ async def generate_user_token(
     request: GenerateTokenRequest
 ):
     """
-    Generate a JWT token for a user with specified scopes.
-    
+    Generate a JWT token for a user using Keycloak M2M client credentials.
+
+    This endpoint generates a Keycloak M2M token that is validated the same way
+    as other Keycloak tokens in the system, ensuring consistent authentication.
+
     This is an internal API endpoint meant to be called only by the registry service.
     The generated token will have the same or fewer privileges than the user currently has.
-    
+
     Args:
         request: Token generation request containing user context and requested scopes
-        internal_api_key: Internal API key for authentication
-        
+
     Returns:
         Generated JWT token with expiration info
-        
+
     Raises:
         HTTPException: If request is invalid or user doesn't have required permissions
     """
     try:
-        # Note: No internal API key validation needed since registry already validates user session
-        
         # Extract user context
         user_context = request.user_context
         username = user_context.get('username')
         user_scopes = user_context.get('scopes', [])
-        
+
         if not username:
             raise HTTPException(
                 status_code=400,
                 detail="Username is required in user context",
                 headers={"Connection": "close"}
             )
-        
+
         # Check rate limiting
         if not check_rate_limit(username):
             raise HTTPException(
@@ -1218,19 +1289,10 @@ async def generate_user_token(
                 detail=f"Rate limit exceeded. Maximum {MAX_TOKENS_PER_USER_PER_HOUR} tokens per hour.",
                 headers={"Connection": "close"}
             )
-        
-        # Validate expiration time
-        expires_in_hours = request.expires_in_hours
-        if expires_in_hours <= 0 or expires_in_hours > MAX_TOKEN_LIFETIME_HOURS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid expiration time. Must be between 1 and {MAX_TOKEN_LIFETIME_HOURS} hours.",
-                headers={"Connection": "close"}
-            )
-        
+
         # Use user's current scopes if no specific scopes requested
         requested_scopes = request.requested_scopes if request.requested_scopes else user_scopes
-        
+
         # Validate that requested scopes are subset of user's current scopes
         if not validate_scope_subset(user_scopes, requested_scopes):
             invalid_scopes = set(requested_scopes) - set(user_scopes)
@@ -1239,47 +1301,59 @@ async def generate_user_token(
                 detail=f"Requested scopes exceed user permissions. Invalid scopes: {list(invalid_scopes)}",
                 headers={"Connection": "close"}
             )
-        
-        # Generate JWT access token
-        current_time = int(time.time())
-        expires_at = current_time + (expires_in_hours * 3600)
 
-        access_payload = {
-            "iss": JWT_ISSUER,
-            "aud": JWT_AUDIENCE,
-            "sub": username,
-            "scope": " ".join(requested_scopes),
-            "exp": expires_at,
-            "iat": current_time,
-            "jti": str(uuid.uuid4()),  # Unique token ID
-            "token_use": "access",
-            "client_id": "user-generated",
-            "token_type": "user_generated"
-        }
+        # Get Keycloak M2M token using client credentials flow
+        try:
+            auth_provider = get_auth_provider()
+            provider_info = auth_provider.get_provider_info()
 
-        # Add description if provided
-        if request.description:
-            access_payload["description"] = request.description
+            if provider_info.get('provider_type') != 'keycloak':
+                raise HTTPException(
+                    status_code=500,
+                    detail="Token generation requires Keycloak provider",
+                    headers={"Connection": "close"}
+                )
 
-        # Sign the access token using HS256 with shared SECRET_KEY
-        access_token = jwt.encode(access_payload, SECRET_KEY, algorithm='HS256')
+            # Request token from Keycloak using M2M client credentials
+            # Note: We don't pass user's requested scopes to Keycloak because the M2M
+            # client has its own configured scopes. The returned token will have scopes
+            # based on the M2M client configuration in Keycloak.
+            token_data = auth_provider.get_m2m_token(scope="openid email profile")
 
-        # No refresh tokens - users should configure longer token lifetimes in Keycloak if needed
-        refresh_token = None
-        refresh_expires_in_seconds = 0
+            access_token = token_data.get("access_token")
+            refresh_token_value = token_data.get("refresh_token")
+            expires_in = token_data.get("expires_in", 300)
+            refresh_expires_in = token_data.get("refresh_expires_in", 0)
+            scope = token_data.get("scope", "openid email profile")
 
-        logger.info(f"Generated access token for user '{hash_username(username)}' with scopes: {requested_scopes}, expires in {expires_in_hours} hours (no refresh token - configure longer token lifetime in Keycloak if needed)")
+            if not access_token:
+                raise ValueError("No access token returned from Keycloak")
 
-        return GenerateTokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_in=expires_in_hours * 3600,
-            refresh_expires_in=refresh_expires_in_seconds,
-            scope=" ".join(requested_scopes),
-            issued_at=current_time,
-            description=request.description
-        )
-        
+            current_time = int(time.time())
+
+            logger.info(
+                f"Generated Keycloak M2M token for user '{hash_username(username)}' "
+                f"with scopes: {requested_scopes}, expires in {expires_in} seconds"
+            )
+
+            return GenerateTokenResponse(
+                access_token=access_token,
+                refresh_token=refresh_token_value,
+                expires_in=expires_in,
+                refresh_expires_in=refresh_expires_in,
+                scope=scope,
+                issued_at=current_time,
+                description=request.description
+            )
+
+        except ValueError as e:
+            logger.error(f"Keycloak token generation failed: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate token from Keycloak: {e}",
+                headers={"Connection": "close"}
+            )
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1455,7 +1529,15 @@ def substitute_env_vars(config):
                 config = config.replace('${COGNITO_DOMAIN:-auto}', cognito_domain)
             
             template = Template(config)
-            return template.substitute(os.environ)
+            result = template.substitute(os.environ)
+
+            # Convert string booleans to actual booleans
+            if result.lower() == "true":
+                return True
+            elif result.lower() == "false":
+                return False
+
+            return result
         except KeyError as e:
             logger.warning(f"Environment variable not found for template {config}: {e}")
             return config
@@ -1556,37 +1638,36 @@ async def oauth2_login(provider: str, request: Request, redirect_uri: str = None
         # Generate state parameter for security
         state = secrets.token_urlsafe(32)
         
-        # Store state and redirect URI in session for callback validation
+        # Determine the OAuth2 callback URI based on the request origin
+        # This is critical for dual-mode (CloudFront + custom domain) deployments
+        # The callback_uri MUST match exactly between authorization and token exchange
+        host = request.headers.get("host", "localhost:8888")
+        # Check CloudFront header first, then X-Forwarded-Proto for HTTPS detection
+        cloudfront_proto = request.headers.get("x-cloudfront-forwarded-proto", "").lower()
+        forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
+        scheme = "https" if cloudfront_proto == "https" or forwarded_proto == "https" or request.url.scheme == "https" else "http"
+        logger.info(f"OAuth2 login - host: {host}, x-cloudfront-forwarded-proto: {cloudfront_proto}, x-forwarded-proto: {forwarded_proto}, scheme: {scheme}")
+        
+        # Special case for localhost to include port
+        if "localhost" in host and ":" not in host:
+            auth_server_url = f"{scheme}://localhost:8888"
+        else:
+            auth_server_url = f"{scheme}://{host}"
+        
+        callback_uri = f"{auth_server_url}/oauth2/callback/{provider}"
+        logger.info(f"OAuth2 callback URI (from request host): {callback_uri}")
+        
+        # Store state, redirect URI, and callback_uri in session for callback validation
+        # The callback_uri is stored so token exchange uses the exact same URI
         session_data = {
             "state": state,
             "provider": provider,
-            "redirect_uri": redirect_uri or OAUTH2_CONFIG.get("registry", {}).get("success_redirect", "/")
+            "redirect_uri": redirect_uri or OAUTH2_CONFIG.get("registry", {}).get("success_redirect", "/"),
+            "callback_uri": callback_uri  # Store for token exchange
         }
         
         # Create temporary session for OAuth2 flow
         temp_session = signer.dumps(session_data)
-        
-        # Use configured external URL or build dynamically
-        auth_server_external_url = os.environ.get('AUTH_SERVER_EXTERNAL_URL')
-        if auth_server_external_url:
-            # Use configured external URL (recommended for production)
-            auth_server_url = auth_server_external_url.rstrip('/')
-            logger.info(f"Using configured AUTH_SERVER_EXTERNAL_URL: {auth_server_url}")
-        else:
-            # Fall back to dynamic construction (for development)
-            host = request.headers.get("host", "localhost:8888")
-            scheme = "https" if request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https" else "http"
-            
-            # Special case for localhost to include port
-            if "localhost" in host and ":" not in host:
-                auth_server_url = f"{scheme}://localhost:8888"
-            else:
-                auth_server_url = f"{scheme}://{host}"
-            
-            logger.warning(f"AUTH_SERVER_EXTERNAL_URL not set, using dynamic URL: {auth_server_url}")
-        
-        callback_uri = f"{auth_server_url}/oauth2/callback/{provider}"
-        logger.info(f"OAuth2 callback URI: {callback_uri}")
         
         auth_params = {
             "client_id": provider_config["client_id"],
@@ -1654,24 +1735,27 @@ async def oauth2_callback(
         provider_config = OAUTH2_CONFIG["providers"][provider]
         
         # Exchange authorization code for access token
-        # Use configured external URL or build dynamically
-        auth_server_external_url = os.environ.get('AUTH_SERVER_EXTERNAL_URL')
-        if auth_server_external_url:
-            # Use configured external URL (recommended for production)
-            auth_server_url = auth_server_external_url.rstrip('/')
-            logger.info(f"Using configured AUTH_SERVER_EXTERNAL_URL for token exchange: {auth_server_url}")
+        # Use the callback_uri stored in the session (must match what was used in authorization)
+        callback_uri = temp_session_data.get("callback_uri")
+        if callback_uri:
+            # Extract auth_server_url from the stored callback_uri
+            # callback_uri format: {auth_server_url}/oauth2/callback/{provider}
+            auth_server_url = callback_uri.rsplit(f"/oauth2/callback/{provider}", 1)[0]
+            logger.info(f"Using stored callback_uri for token exchange: {callback_uri}")
         else:
-            # Fall back to dynamic construction (for development)
-            host = request.headers.get("host", "localhost:8888")
-            scheme = "https" if request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https" else "http"
-            
-            # Special case for localhost to include port
-            if "localhost" in host and ":" not in host:
-                auth_server_url = f"{scheme}://localhost:8888"
+            # Fallback for sessions created before this fix
+            auth_server_external_url = os.environ.get('AUTH_SERVER_EXTERNAL_URL')
+            if auth_server_external_url:
+                auth_server_url = auth_server_external_url.rstrip('/')
+                logger.info(f"Fallback: Using AUTH_SERVER_EXTERNAL_URL for token exchange: {auth_server_url}")
             else:
-                auth_server_url = f"{scheme}://{host}"
-            
-            logger.warning(f"AUTH_SERVER_EXTERNAL_URL not set, using dynamic URL for token exchange: {auth_server_url}")
+                host = request.headers.get("host", "localhost:8888")
+                scheme = "https" if request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https" else "http"
+                if "localhost" in host and ":" not in host:
+                    auth_server_url = f"{scheme}://localhost:8888"
+                else:
+                    auth_server_url = f"{scheme}://{host}"
+                logger.warning(f"Fallback: Using dynamic URL for token exchange: {auth_server_url}")
             
         token_data = await exchange_code_for_token(provider, code, provider_config, auth_server_url)
         logger.info(f"Token data keys: {list(token_data.keys())}")
@@ -1792,9 +1876,8 @@ async def oauth2_callback(
         response = RedirectResponse(url=redirect_url, status_code=302)
         
         # Set registry-compatible session cookie
-        # Check if HTTPS is terminated at load balancer (x-forwarded-proto header)
-        x_forwarded_proto = request.headers.get("x-forwarded-proto", "")
-        is_https = x_forwarded_proto == "https" or request.url.scheme == "https"
+        # Check if HTTPS is terminated at load balancer/CloudFront
+        is_https = is_request_https(request)
 
         # Only set secure=True if the original request was HTTPS
         cookie_secure_config = OAUTH2_CONFIG.get("session", {}).get("secure", False)
@@ -1810,7 +1893,7 @@ async def oauth2_callback(
         else:
             logger.info(f"Using explicitly configured cookie domain: {cookie_domain}")
 
-        logger.info(f"Auth server setting session cookie: secure={cookie_secure} (config={cookie_secure_config}, is_https={is_https}), samesite={cookie_samesite}, domain={cookie_domain or 'not set'}, x-forwarded-proto={x_forwarded_proto}, request_scheme={request.url.scheme}")
+        logger.info(f"Auth server setting session cookie: secure={cookie_secure} (config={cookie_secure_config}, is_https={is_https}), samesite={cookie_samesite}, domain={cookie_domain or 'not set'}, x-forwarded-proto={request.headers.get('x-forwarded-proto', 'not set')}, request_scheme={request.url.scheme}")
 
         cookie_params = {
             "key": "mcp_gateway_session",  # Same as registry SESSION_COOKIE_NAME
@@ -1932,8 +2015,8 @@ async def oauth2_logout(provider: str, request: Request, redirect_uri: str = Non
             redirect_url = redirect_uri or OAUTH2_CONFIG.get("registry", {}).get("success_redirect", "/login")
             return RedirectResponse(url=redirect_url, status_code=302)
         
-        # For Cognito, we need to construct the full redirect URI
-        full_redirect_uri = redirect_uri or "/logout"
+        # Build full redirect URI
+        full_redirect_uri = redirect_uri or "/login"
         if not full_redirect_uri.startswith("http"):
             # Make it a full URL - extract registry URL from request's referer or use environment
             registry_base = os.environ.get('REGISTRY_URL')
@@ -1949,11 +2032,20 @@ async def oauth2_logout(provider: str, request: Request, redirect_uri: str = Non
             
             full_redirect_uri = f"{registry_base.rstrip('/')}{full_redirect_uri}"
         
-        # Build logout URL with correct parameters for Cognito
-        logout_params = {
-            "client_id": provider_config["client_id"],
-            "logout_uri": full_redirect_uri
-        }
+        # Detect provider type and build appropriate logout URL
+        # Keycloak uses post_logout_redirect_uri, Cognito uses logout_uri
+        if "keycloak" in provider.lower() or "/realms/" in logout_url:
+            # Keycloak logout parameters
+            logout_params = {
+                "client_id": provider_config["client_id"],
+                "post_logout_redirect_uri": full_redirect_uri
+            }
+        else:
+            # Cognito logout parameters
+            logout_params = {
+                "client_id": provider_config["client_id"],
+                "logout_uri": full_redirect_uri
+            }
         
         logout_redirect_url = f"{logout_url}?{urllib.parse.urlencode(logout_params)}"
         

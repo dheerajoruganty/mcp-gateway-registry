@@ -147,30 +147,42 @@ class TestAPIKeyHashingHelpers:
 
 class TestAuthenticationIntegration:
     """Test authentication integration with API endpoints."""
-    
-    def test_metrics_endpoint_auth_integration(self):
+
+    @patch('app.api.auth.MetricsStorage')
+    def test_metrics_endpoint_auth_integration(self, mock_storage_class):
         """Test that metrics endpoint properly integrates with auth."""
+        # Mock storage to return None for key lookup (key not found)
+        mock_storage = AsyncMock()
+        mock_storage.get_api_key.return_value = None
+        mock_storage_class.return_value = mock_storage
+
         client = TestClient(app)
-        
+
         # Test without API key
         response = client.post("/metrics", json={"service": "test", "metrics": []})
         assert response.status_code == 401
-        
-        # Test with invalid API key  
+
+        # Test with invalid API key
         headers = {"X-API-Key": "invalid_key"}
         response = client.post("/metrics", json={"service": "test", "metrics": []}, headers=headers)
         assert response.status_code == 401
-    
-    def test_flush_endpoint_auth_integration(self):
+
+    @patch('app.api.auth.MetricsStorage')
+    def test_flush_endpoint_auth_integration(self, mock_storage_class):
         """Test that flush endpoint properly integrates with auth."""
+        # Mock storage to return None for key lookup (key not found)
+        mock_storage = AsyncMock()
+        mock_storage.get_api_key.return_value = None
+        mock_storage_class.return_value = mock_storage
+
         client = TestClient(app)
-        
+
         # Test without API key
         response = client.post("/flush")
         assert response.status_code == 401
-        
+
         # Test with invalid API key
-        headers = {"X-API-Key": "invalid_key"}  
+        headers = {"X-API-Key": "invalid_key"}
         response = client.post("/flush", headers=headers)
         assert response.status_code == 401
     
@@ -191,18 +203,22 @@ class TestAuthenticationIntegration:
 
 class TestSecurityBestPractices:
     """Test security best practices in authentication."""
-    
-    def test_api_key_not_logged_in_error_messages(self):
+
+    @patch('app.api.auth.MetricsStorage')
+    async def test_api_key_not_logged_in_error_messages(self, mock_storage_class):
         """Test that API keys are not exposed in error messages."""
+        # Mock storage to return None (key not found)
+        mock_storage = AsyncMock()
+        mock_storage.get_api_key.return_value = None
+        mock_storage_class.return_value = mock_storage
+
         from unittest.mock import MagicMock
         mock_request = MagicMock()
         mock_request.headers = {"X-API-Key": "secret_key_should_not_appear_in_logs"}
-        
+
         with pytest.raises(HTTPException) as exc_info:
-            # This will fail because no mock storage is set up
-            import asyncio
-            asyncio.run(verify_api_key(mock_request))
-        
+            await verify_api_key(mock_request)
+
         # Error message should not contain the actual API key
         error_detail = str(exc_info.value.detail)
         assert "secret_key_should_not_appear_in_logs" not in error_detail

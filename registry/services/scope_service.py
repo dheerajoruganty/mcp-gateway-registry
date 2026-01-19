@@ -184,7 +184,7 @@ async def add_server_to_groups(
         scope_repo = get_scope_repository()
 
         # Get server info to find its tools
-        server_info = server_service.get_server_info(server_path)
+        server_info = await server_service.get_server_info(server_path)
         if not server_info:
             logger.error(f"Server {server_path} not found in registry")
             return False
@@ -251,7 +251,7 @@ async def remove_server_from_groups(
         scope_repo = get_scope_repository()
 
         # Get server info for UI-Scopes updates
-        server_info = server_service.get_server_info(server_path)
+        server_info = await server_service.get_server_info(server_path)
         if server_info:
             server_name = server_info.get("server_name", server_path.lstrip("/").rstrip("/"))
         else:

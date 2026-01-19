@@ -23,6 +23,12 @@ def get_search_repo() -> SearchRepositoryBase:
 
 
 class MatchingToolResult(BaseModel):
+    """Tool matching result - basic info for display.
+
+    Note: inputSchema is NOT included here to avoid duplication.
+    Full tool details including inputSchema are in the tools[] array.
+    """
+
     tool_name: str
     description: Optional[str] = None
     relevance_score: float = Field(0.0, ge=0.0)
@@ -46,7 +52,8 @@ class ToolSearchResult(BaseModel):
     server_name: str
     tool_name: str
     description: Optional[str] = None
-    relevance_score: float = Field(..., ge=0.0)
+    inputSchema: Optional[dict] = Field(default=None, description="JSON Schema for tool input")
+    relevance_score: float = Field(..., ge=0.0, le=1.0)
     match_context: Optional[str] = None
 
 
@@ -83,7 +90,7 @@ class SemanticSearchResponse(BaseModel):
     total_agents: int = 0
 
 
-def _user_can_access_server(path: str, server_name: str, user_context: dict) -> bool:
+async def _user_can_access_server(path: str, server_name: str, user_context: dict) -> bool:
     """Validate whether the current user can view the specified server."""
     if user_context.get("is_admin"):
         return True
@@ -96,7 +103,7 @@ def _user_can_access_server(path: str, server_name: str, user_context: dict) -> 
         return False
 
     try:
-        if server_service.user_can_access_server_path(path, accessible_servers):
+        if await server_service.user_can_access_server_path(path, accessible_servers):
             return True
     except Exception:
         # Fall through to string comparisons if server lookup failed
@@ -109,7 +116,7 @@ def _user_can_access_server(path: str, server_name: str, user_context: dict) -> 
     )
 
 
-def _user_can_access_agent(agent_path: str, user_context: dict) -> bool:
+async def _user_can_access_agent(agent_path: str, user_context: dict) -> bool:
     """Validate user access for a given agent."""
     if user_context.get("is_admin"):
         return True
@@ -118,7 +125,7 @@ def _user_can_access_agent(agent_path: str, user_context: dict) -> bool:
     if "all" not in accessible_agents and agent_path not in accessible_agents:
         return False
 
-    agent_card = agent_service.get_agent_info(agent_path)
+    agent_card = await agent_service.get_agent_info(agent_path)
     if not agent_card:
         return False
 
@@ -175,7 +182,7 @@ async def semantic_search(
 
     filtered_servers: List[ServerSearchResult] = []
     for server in raw_results.get("servers", []):
-        if not _user_can_access_server(
+        if not await _user_can_access_server(
             server.get("path", ""),
             server.get("server_name", ""),
             user_context,
@@ -210,7 +217,7 @@ async def semantic_search(
     for tool in raw_results.get("tools", []):
         server_path = tool.get("server_path", "")
         server_name = tool.get("server_name", "")
-        if not _user_can_access_server(server_path, server_name, user_context):
+        if not await _user_can_access_server(server_path, server_name, user_context):
             continue
 
         filtered_tools.append(
@@ -219,6 +226,7 @@ async def semantic_search(
                 server_name=server_name,
                 tool_name=tool.get("tool_name", ""),
                 description=tool.get("description"),
+                inputSchema=tool.get("inputSchema"),
                 relevance_score=tool.get("relevance_score", 0.0),
                 match_context=tool.get("match_context"),
             )
@@ -230,10 +238,10 @@ async def semantic_search(
         if not agent_path:
             continue
 
-        if not _user_can_access_agent(agent_path, user_context):
+        if not await _user_can_access_agent(agent_path, user_context):
             continue
 
-        agent_card_obj = agent_service.get_agent_info(agent_path)
+        agent_card_obj = await agent_service.get_agent_info(agent_path)
         agent_card_dict = (
             agent_card_obj.model_dump()
             if agent_card_obj

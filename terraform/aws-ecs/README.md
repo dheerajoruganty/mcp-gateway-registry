@@ -9,6 +9,7 @@ Production-grade infrastructure for the MCP Gateway Registry using AWS ECS Farga
 ## Table of Contents
 
 - [Architecture](#architecture)
+- [Deployment Modes](#deployment-modes)
 - [Quick Start](#quick-start)
 - [Post-Deployment](#post-deployment)
 - [Operations and Maintenance](#operations-and-maintenance)
@@ -45,17 +46,17 @@ The infrastructure is deployed within a dedicated VPC spanning two availability 
 
 The infrastructure runs on an ECS cluster with Fargate launch type, eliminating server management. Three primary service types run as containerized tasks:
 
-**Registry Tasks** provide the core MCP server registry and discovery service. An auto-scaling group manages task count based on CPU and memory utilization, with tasks deployed across both availability zones for high availability. The registry retrieves secrets from AWS Secrets Manager for secure credential management, writes logs to CloudWatch Logs for centralized monitoring, and stores server metadata in Amazon EFS for persistent, shared access.
+**Registry Tasks** provide the core MCP server registry and discovery service. An auto-scaling group manages task count based on CPU and memory utilization, with tasks deployed across both availability zones for high availability. The registry retrieves secrets from AWS Secrets Manager for secure credential management, writes logs to CloudWatch Logs for centralized monitoring, and stores server metadata in DocumentDB for persistent, distributed access with native vector search capabilities.
 
 **Auth Server Tasks** handle OAuth2/OIDC authentication and authorization for the entire platform. These tasks manage user sessions and token validation, integrate with Keycloak for identity federation, and auto-scale based on demand. User data and session information is stored in Aurora PostgreSQL Serverless for reliable, scalable persistence.
 
-**Keycloak Tasks** serve as the identity and access management layer, providing user authentication, single sign-on (SSO), and an admin console for user management. Keycloak connects to Aurora PostgreSQL for data persistence and stores configuration files in Amazon EFS for shared access across multiple task instances.
+**Keycloak Tasks** serve as the identity and access management layer, providing user authentication, single sign-on (SSO), and an admin console for user management. Keycloak connects to Aurora PostgreSQL for data persistence, providing reliable session management and user credential storage.
 
 ### Data Layer
 
 **Amazon Aurora PostgreSQL Serverless v2** provides a fully managed, auto-scaling database with capacity ranging from 0.5 to 2 ACUs based on workload demands. The database stores user credentials, session data, and application state with automatic backups and point-in-time recovery capabilities. Deployed in a multi-AZ configuration for high availability, Aurora uses RDS Proxy for efficient connection pooling and management across ECS tasks.
 
-**Amazon EFS (Elastic File System)** serves as shared persistent storage accessible from all ECS tasks across availability zones. EFS stores Keycloak configuration files, server metadata, and registry information that needs to be shared between multiple container instances. The file system automatically scales capacity and throughput based on storage requirements while maintaining high availability across multiple availability zones.
+**Amazon DocumentDB** (MongoDB-compatible) serves as the primary data store for the MCP Gateway Registry. DocumentDB provides distributed, scalable storage for server metadata, agent registrations, scopes, and security scan results. With native HNSW vector search support, DocumentDB enables sub-100ms semantic queries for server and agent discovery. The cluster automatically scales storage and replicates data across multiple availability zones for high availability and durability.
 
 ### Observability
 
@@ -64,6 +65,40 @@ The infrastructure runs on an ECS cluster with Fargate launch type, eliminating 
 **CloudWatch Alarms** continuously monitor key infrastructure and application metrics including CPU and memory utilization across all ECS tasks, database connection counts and pool exhaustion, and HTTP error rates from the load balancers. When alarm thresholds are breached, notifications are sent through Amazon SNS to configured endpoints such as email, SMS, or other automated incident response systems.
 
 **AWS Secrets Manager** provides secure storage and lifecycle management for sensitive credentials including Keycloak admin passwords, database connection strings, and API keys. ECS tasks retrieve these secrets at runtime as environment variables, eliminating the need to hardcode credentials in container images or configuration files. Secrets Manager supports automatic rotation of credentials on a scheduled basis to enhance security posture.
+
+---
+
+## Deployment Modes
+
+MCP Gateway supports three deployment modes. Choose based on your requirements:
+
+| Mode | Best For | Custom Domain Required? | Configuration (in `terraform.tfvars`) |
+|------|----------|------------------------|---------------------------------------|
+| **CloudFront Only** | Workshops, demos, evaluations, quick setup | No | `enable_cloudfront=true`, `enable_route53_dns=false` |
+| **Custom Domain** | Production with brand consistency | Yes (Route53) | `enable_cloudfront=false`, `enable_route53_dns=true` |
+| **CloudFront + Custom Domain** | Production with CDN benefits | Yes (Route53) | `enable_cloudfront=true`, `enable_route53_dns=true` |
+
+### Recommended Deployment Path
+
+**Mode 1: CloudFront Only (Easiest - No Custom Domain Required):**
+- No custom domain or Route53 hosted zone required
+- Get HTTPS URLs immediately (`https://d1234abcd.cloudfront.net`)
+- Perfect for workshops, demos, evaluations, or any deployment where custom DNS isn't available
+- Simply set `enable_cloudfront = true` and `enable_route53_dns = false`
+
+**Mode 2: Custom Domain Only:**
+- Custom branded URLs without CloudFront
+- Direct ALB access with ACM certificates
+- Simpler architecture if CDN isn't needed
+- Set `enable_cloudfront = false` and `enable_route53_dns = true`
+
+**Mode 3: CloudFront + Custom Domain (Production Recommended):**
+- Custom branded URLs (`https://registry.us-east-1.yourdomain.com`)
+- CloudFront CDN for global edge caching and DDoS protection
+- Requires a Route53 hosted zone for your domain
+- Set `enable_cloudfront = true` and `enable_route53_dns = true`
+
+For detailed configuration and troubleshooting, see [Deployment Modes Guide](../../docs/deployment-modes.md).
 
 ---
 
@@ -215,18 +250,28 @@ cd terraform/aws-ecs
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-**Edit the following mandatory parameters in `terraform.tfvars`:**
+**Edit the following parameters in `terraform.tfvars`:**
+
+**Common Parameters (Required for ALL modes):**
 
 | Parameter | Description |
 |-----------|-------------|
 | `aws_region` | AWS region (must match where you pushed ECR images) |
-| `base_domain` | Your Route53 domain (e.g., `YOUR.DOMAIN`) |
 | `ingress_cidr_blocks` | IP addresses allowed to access the ALB |
 | `keycloak_admin_password` | Keycloak admin password (min 12 chars) |
 | `keycloak_database_password` | Database password (min 12 chars) |
-| `session_cookie_secure` | HTTPS-only cookie flag (true for production, false for HTTP) |
-| `session_cookie_domain` | Cookie domain for cross-subdomain auth (empty for single domain) |
+| `session_cookie_secure` | Set to `true` for HTTPS (all modes except development) |
 | 7 ECR image URIs | Container image URIs with your account ID and region |
+
+**Mode-Specific Parameters:**
+
+| Mode | Required Parameters |
+|------|---------------------|
+| **Mode 1: CloudFront Only** | `enable_cloudfront = true`<br>`enable_route53_dns = false`<br>`session_cookie_domain = ""` |
+| **Mode 2: Custom Domain** | `enable_cloudfront = false`<br>`enable_route53_dns = true`<br>`base_domain = "your.domain"`<br>`session_cookie_domain = ".your.domain"` |
+| **Mode 3: CloudFront + Custom Domain** | `enable_cloudfront = true`<br>`enable_route53_dns = true`<br>`base_domain = "your.domain"`<br>`session_cookie_domain = ".your.domain"` |
+
+**Note:** For Mode 1 (CloudFront Only), `base_domain` is not required since URLs use `*.cloudfront.net`.
 
 **Helper commands to get your configuration values:**
 
@@ -267,14 +312,15 @@ If you are running this from an EC2 instance, you may also want to run `curl -s 
 
 **Warning:** Setting `ingress_cidr_blocks` to `["0.0.0.0/0"]` opens access to anyone on the internet. While authentication (username/password) is still required, this is not recommended for production environments.
 
-**Example minimal terraform.tfvars:**
+**Example terraform.tfvars for Mode 1 (CloudFront Only - Easiest):**
 
 ```hcl
 # AWS Region (must match where you pushed ECR images)
 aws_region = "us-east-1"
 
-# Your Route53 domain
-base_domain = "YOUR.DOMAIN"
+# Deployment Mode: CloudFront Only (no custom domain required)
+enable_cloudfront  = true
+enable_route53_dns = false
 
 # IP addresses allowed to access the ALB
 ingress_cidr_blocks = [
@@ -286,10 +332,9 @@ ingress_cidr_blocks = [
 keycloak_admin_password    = "YourSecurePassword123!"
 keycloak_database_password = "YourDBPassword456!"
 
-# Session cookie configuration (IMPORTANT for login to work)
-session_cookie_secure = true        # Set to true for HTTPS production deployments
-session_cookie_domain = ""          # Leave empty for single-domain (recommended)
-                                    # Set to ".your.domain" for cross-subdomain auth
+# Session cookie configuration
+session_cookie_secure = true   # Always true for HTTPS
+session_cookie_domain = ""     # Empty for CloudFront mode
 
 # ECR image URIs (after running sed commands above)
 registry_image_uri               = "123456789012.dkr.ecr.us-east-1.amazonaws.com/mcp-gateway-registry:latest"
@@ -299,6 +344,24 @@ mcpgw_image_uri                  = "123456789012.dkr.ecr.us-east-1.amazonaws.com
 realserverfaketools_image_uri    = "123456789012.dkr.ecr.us-east-1.amazonaws.com/mcp-gateway-realserverfaketools:latest"
 flight_booking_agent_image_uri   = "123456789012.dkr.ecr.us-east-1.amazonaws.com/mcp-gateway-flight-booking-agent:latest"
 travel_assistant_agent_image_uri = "123456789012.dkr.ecr.us-east-1.amazonaws.com/mcp-gateway-travel-assistant-agent:latest"
+```
+
+**Example terraform.tfvars for Mode 2 or 3 (Custom Domain):**
+
+```hcl
+# For Mode 2 (Custom Domain Only):
+enable_cloudfront  = false
+enable_route53_dns = true
+
+# For Mode 3 (CloudFront + Custom Domain):
+# enable_cloudfront  = true
+# enable_route53_dns = true
+
+# Required for custom domain modes
+base_domain           = "your.domain"
+session_cookie_domain = ".your.domain"
+
+# ... plus all common parameters from Mode 1 example above
 ```
 
 ### Step 4: Deploy Infrastructure (~20 min)
@@ -362,7 +425,7 @@ export INITIAL_ADMIN_PASSWORD="YourSecureRealmAdminPassword"  # Password for 'ad
 3. Waits for DNS propagation (up to 10 minutes)
 4. Verifies ECS services are running and healthy
 5. Initializes Keycloak (realm, clients, users, groups, scopes)
-6. Initializes MCP scopes on EFS
+6. Initializes DocumentDB collections, indexes, and MCP scopes
 7. Restarts registry and auth services to pick up new configuration
 8. Verifies all endpoints are responding
 
@@ -393,8 +456,8 @@ Step 4: Verifying ECS Services
 Step 5: Initializing Keycloak
 [SUCCESS] Keycloak initialized successfully!
 
-Step 6: Initializing MCP Scopes on EFS
-[SUCCESS] MCP scopes initialized on EFS!
+Step 6: Initializing DocumentDB
+[SUCCESS] DocumentDB collections and scopes initialized!
 
 Step 7: Restarting Registry and Auth Services
 [SUCCESS] All services restarted successfully!
@@ -560,61 +623,64 @@ You can now:
 
 For advanced usage, see the [Operations and Maintenance](#operations-and-maintenance) section below.
 
-### Optional: OpenSearch Backend Setup
+### DocumentDB Backend Setup
 
-The MCP Gateway Registry supports two storage backends: **file-based** (default) and **OpenSearch** (for production/scale).
+The MCP Gateway Registry uses **DocumentDB** (MongoDB-compatible) for production storage backend.
 
-**When to use OpenSearch:**
+**DocumentDB provides:**
 - Multi-instance deployments (horizontal scaling)
-- High concurrent write operations
-- Distributed storage requirements
-- Advanced search capabilities
+- High concurrent read/write operations
+- Distributed storage with automatic replication
+- ACID transactions and strong consistency
 
-**Setup OpenSearch backend:**
+**DocumentDB Setup:**
+
+The DocumentDB cluster is automatically provisioned by Terraform. To initialize the database with indexes and scopes:
 
 ```bash
-# 1. Deploy OpenSearch infrastructure (add to terraform if not already present)
-# Or use AWS OpenSearch Service
+# 1. Run the DocumentDB initialization script
+./terraform/aws-ecs/scripts/run-documentdb-init.sh
 
-# 2. SSH into a registry task
-./scripts/ecs-ssh.sh registry
+# This creates:
+# - All required collections (servers, agents, scopes, embeddings)
+# - Database indexes for optimal query performance
+# - Initial scope configurations from auth_server/scopes.yml
 
-# 3. Create OpenSearch indices
-uv run python scripts/init-opensearch.py
-
-# 4. Import existing scopes.yml to OpenSearch (one-time migration)
-uv run python scripts/import-scopes-to-opensearch.py
-
-# 5. Exit the SSH session
-exit
-
-# 6. Update environment variable in ECS task definition
-# Add: STORAGE_BACKEND=opensearch
-# Then force new deployment:
-aws ecs update-service \
-  --cluster mcp-gateway-ecs-cluster \
-  --service mcp-gateway-v2-registry \
-  --force-new-deployment \
-  --region $AWS_REGION
+# 2. Verify initialization completed successfully
+aws logs tail /ecs/mcp-gateway-v2-registry --since 5m --region us-east-1 | grep "Loaded from repository"
 ```
 
-**Verify OpenSearch is working:**
+**Loading Scopes into DocumentDB:**
 
 ```bash
-# Check indices created
-curl "https://your-opensearch-endpoint/mcp-scopes-default/_count?pretty"
+# Load a scope configuration file
+./terraform/aws-ecs/scripts/run-documentdb-cli.sh load-scopes cli/examples/currenttime-users.json
 
-# View registry logs
-./scripts/view-cloudwatch-logs.sh --component registry --minutes 5 --filter "opensearch"
+# Or use the Python script directly (if DocumentDB credentials are in env)
+uv run python scripts/load-scopes.py --scopes-file cli/examples/currenttime-users.json
+```
+
+**Managing DocumentDB:**
+
+```bash
+# Interactive DocumentDB CLI
+./terraform/aws-ecs/scripts/run-documentdb-cli.sh
+
+# List all scopes
+./terraform/aws-ecs/scripts/run-documentdb-cli.sh list-scopes
+
+# View a specific scope
+./terraform/aws-ecs/scripts/run-documentdb-cli.sh get-scope currenttime-users4
 ```
 
 **Important Notes:**
-- The `import-scopes-to-opensearch.py` script is for **one-time migration only**
-- After switching to OpenSearch, all scopes changes are made via API and stored in OpenSearch
-- `auth_server/scopes.yml` is no longer the source of truth with OpenSearch backend
-- You can switch back to file backend by changing `STORAGE_BACKEND=file`
+- Auth-server queries DocumentDB directly on every request for real-time scope validation
+- No cache refresh needed - scope changes are immediately effective
+- DocumentDB credentials are managed via AWS Secrets Manager
+- TLS is enabled by default with automatic CA bundle download
+- Both auth-server and registry connect to the same DocumentDB cluster
 
-See [docs/configuration.md](../../docs/configuration.md#storage-backend-configuration) for detailed backend configuration options.
+See [terraform/aws-ecs/scripts/README-DOCUMENTDB-CLI.md](terraform/aws-ecs/scripts/README-DOCUMENTDB-CLI.md) for detailed DocumentDB CLI documentation.
 
 ## Operations and Maintenance
 
@@ -724,12 +790,12 @@ terraform state show aws_ecs_service.registry
 | Resource | Configuration | Estimated Cost |
 |----------|--------------|----------------|
 | RDS Aurora Serverless v2 | 0.5-2 ACU, PostgreSQL | $40-100/month |
+| DocumentDB | 1 instance, db.t3.medium | $60-80/month |
 | ECS Fargate Tasks | 3 services, 0.25 vCPU, 0.5GB each | $20-50/month |
 | Application Load Balancers | 2 ALBs | $32-50/month |
-| EFS | 5GB storage | $1.50/month |
 | CloudWatch Logs | 10GB/month | $5/month |
 | Data Transfer | 100GB/month | $9/month |
-| **Total** | | **~$110-250/month** |
+| **Total** | | **~$170-330/month** |
 
 ### Cost Reduction Strategies
 
@@ -792,15 +858,16 @@ For running Terraform and the deployment scripts, your IAM user or role needs th
         "ec2:*",
         "ecs:*",
         "rds:*",
+        "docdb:*",
         "elasticloadbalancing:*",
         "route53:*",
         "acm:*",
         "iam:*",
         "logs:*",
-        "elasticfilesystem:*",
         "ecr:*",
         "application-autoscaling:*",
         "cloudwatch:*",
+        "cloudfront:*",
         "sns:*",
         "ssm:*",
         "kms:*",
@@ -811,6 +878,8 @@ For running Terraform and the deployment scripts, your IAM user or role needs th
 ```
 
 **Note:** For production, consider restricting these permissions to specific resource ARNs.
+
+**Note:** The `cloudfront:*` permission is required for CloudFront deployment modes (Mode 1: CloudFront Only, Mode 3: CloudFront + Custom Domain). If you are only using Mode 2 (Custom Domain Only), you can omit this permission.
 
 **ECS Task Role Security:**
 - ECS task roles follow principle of least privilege
@@ -866,10 +935,19 @@ aws rds describe-db-cluster-snapshots \
 # Restore from snapshot (requires terraform changes)
 ```
 
-### EFS Backup
+### DocumentDB Backup
 ```bash
-# EFS backup to AWS Backup (configure in AWS Backup console)
-# Or use EFS-to-EFS replication for cross-region DR
+# DocumentDB automated backups are enabled by default (7 day retention)
+# Create manual snapshot
+aws docdb create-db-cluster-snapshot \
+  --db-cluster-identifier mcp-gateway-documentdb-cluster \
+  --db-cluster-snapshot-identifier manual-backup-$(date +%Y%m%d) \
+  --region $AWS_REGION
+
+# List snapshots
+aws docdb describe-db-cluster-snapshots \
+  --db-cluster-identifier mcp-gateway-documentdb-cluster \
+  --region $AWS_REGION
 ```
 
 ### Terraform State Backup
@@ -1064,7 +1142,7 @@ terraform/aws-ecs/
 ├── auth-*.tf                          # Auth server resources
 ├── network.tf                         # VPC, subnets, security groups
 ├── database.tf                        # RDS Aurora configuration
-├── efs.tf                             # Elastic File System
+├── documentdb.tf                      # DocumentDB cluster configuration
 ├── img/
 │   └── architecture-ecs.png           # Architecture diagram
 └── scripts/

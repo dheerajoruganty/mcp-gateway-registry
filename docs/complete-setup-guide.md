@@ -9,10 +9,12 @@ This guide provides a comprehensive, step-by-step walkthrough for setting up the
 4. [Cloning and Configuring the Project](#4-cloning-and-configuring-the-project)
 5. [Setting Up Keycloak Identity Provider](#5-setting-up-keycloak-identity-provider)
 6. [Starting the MCP Gateway Services](#6-starting-the-mcp-gateway-services)
-7. [Verification and Testing](#7-verification-and-testing)
-8. [Configuring AI Agents and Coding Assistants](#8-configuring-ai-agents-and-coding-assistants)
-9. [Troubleshooting](#9-troubleshooting)
-10. [Next Steps](#10-next-steps)
+7. [Storage Backend Setup (Optional)](#7-storage-backend-setup-optional)
+   - [MongoDB CE Setup (Recommended)](#mongodb-ce-setup-recommended-for-local-development)
+8. [Verification and Testing](#8-verification-and-testing)
+9. [Configuring AI Agents and Coding Assistants](#9-configuring-ai-agents-and-coding-assistants)
+10. [Troubleshooting](#10-troubleshooting)
+11. [Next Steps](#11-next-steps)
 
 ---
 
@@ -592,7 +594,77 @@ curl http://localhost:7860/health
 
 ---
 
-## 7. Verification and Testing
+## 7. Storage Backend Setup
+
+The MCP Gateway Registry supports multiple storage backends for production and development use.
+
+**DEPRECATION WARNING**: The file-based storage backend is deprecated and will be removed in a future release. MongoDB CE is now the recommended approach for local development.
+
+**Storage Backend Options:**
+- **MongoDB CE**: Recommended for local development (see below)
+- **DocumentDB**: Used automatically in production (AWS ECS/EKS deployments)
+- **File-based**: Deprecated - will be removed in future releases
+
+### MongoDB CE Setup (Recommended for Local Development)
+
+**Note**: This section is for local Docker Compose installations using MongoDB Community Edition 8.2. For AWS ECS deployments, DocumentDB is used and initialized automatically.
+
+MongoDB CE provides a production-like environment for local development with replica set support and application-level vector search capabilities.
+
+**Why use MongoDB CE (Recommended):**
+- Production-like environment for local development
+- Testing production workflows locally
+- Multi-instance development environments
+- Feature development requiring database operations
+- Compatibility with DocumentDB for seamless cloud migration
+
+**Setup MongoDB CE:**
+
+```bash
+# 1. Set storage backend in .env
+echo "STORAGE_BACKEND=mongodb-ce" >> .env
+echo "DOCUMENTDB_HOST=mongodb" >> .env
+echo "DOCUMENTDB_PORT=27017" >> .env
+echo "DOCUMENTDB_DATABASE=mcp_registry" >> .env
+echo "DOCUMENTDB_NAMESPACE=default" >> .env
+echo "DOCUMENTDB_USE_TLS=false" >> .env
+
+# 2. Start MongoDB container
+docker compose up -d mongodb
+
+# 3. Wait for MongoDB to be ready (about 30 seconds for replica set initialization)
+sleep 30
+
+# 4. Initialize collections and indexes
+docker compose up mongodb-init
+
+# 5. Verify MongoDB setup
+docker exec mcp-mongodb mongosh --eval "use mcp_registry; show collections"
+
+# Expected output should show:
+# - mcp_servers_default
+# - mcp_agents_default
+# - mcp_scopes_default
+# - mcp_embeddings_1536_default
+# - mcp_security_scans_default
+# - mcp_federation_config_default
+
+# 6. Restart registry to use MongoDB backend
+docker compose restart registry
+```
+
+**MongoDB CE Features:**
+- Replica set configuration for production-like testing
+- Automatic collection and index management
+- Application-level vector search for semantic queries
+- Multi-namespace support for tenant isolation
+- Compatible with DocumentDB API for seamless cloud migration
+
+For detailed MongoDB CE architecture and configuration options, see [Storage Architecture Documentation](design/storage-architecture-mongodb-documentdb.md).
+
+---
+
+## 8. Verification and Testing
 
 ### Test the Registry Web Interface
 
@@ -680,7 +752,7 @@ uv run python agents/agent.py --agent-name agent-test-agent-m2m --mcp-registry-u
 
 ---
 
-## 8. Configuring AI Agents and Coding Assistants
+## 9. Configuring AI Agents and Coding Assistants
 
 ### Configure OAuth Credentials
 
@@ -826,7 +898,7 @@ uv run python agent.py --config agent_config.json
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 ### Common Issues and Solutions
 
@@ -1054,7 +1126,7 @@ docker-compose up -d keycloak-db keycloak
 
 ---
 
-## 10. Custom HTTPS Domain Configuration
+## 11. Custom HTTPS Domain Configuration
 
 If you're running this setup with a custom HTTPS domain (e.g., `https://mcpgateway.mycorp.com`) instead of localhost, you'll need to update the following parameters in your `.env` file:
 
@@ -1109,7 +1181,7 @@ curl -f https://mcpgateway.mycorp.com/realms/mcp-gateway
 
 ---
 
-## 11. Next Steps
+## 12. Next Steps
 
 ### Secure Your Installation
 

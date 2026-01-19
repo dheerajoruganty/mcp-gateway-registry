@@ -2,34 +2,34 @@ name: Build and Deploy Documentation
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'README.md'
       - '.github/workflows/docs.yml'
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'README.md'
+  workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: "pages"
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # Build job
   build:
+    name: "Build Documentation"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,13 +71,14 @@ jobs:
         with:
           path: ./site
 
-  # Deployment job
   deploy:
+    name: "Deploy to GitHub Pages"
     if: github.ref == 'refs/heads/main'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: build
     steps:
       - name: Deploy to GitHub Pages

@@ -145,7 +145,7 @@ class ScopeRepositoryBase(ABC):
 
     Implementations:
     - FileScopeRepository: reads auth_server/scopes.yml
-    - OpenSearchScopeRepository: reads mcp-scopes index
+    - DocumentDBScopeRepository: reads mcp-scopes collection
     """
 
     @abstractmethod
@@ -511,7 +511,7 @@ class SecurityScanRepositoryBase(ABC):
 
     Implementations:
     - FileSecurityScanRepository: reads ~/mcp-gateway/security_scans/*.json
-    - OpenSearchSecurityScanRepository: reads mcp-security-scans index
+    - DocumentDBSecurityScanRepository: reads mcp-security-scans collection
     """
 
     @abstractmethod
@@ -598,7 +598,7 @@ class SecurityScanRepositoryBase(ABC):
 
 
 class SearchRepositoryBase(ABC):
-    """Abstract base class for semantic/hybrid search."""
+    """Abstract base class for semantic/hybrid search using FAISS or DocumentDB."""
 
     @abstractmethod
     async def initialize(self) -> None:

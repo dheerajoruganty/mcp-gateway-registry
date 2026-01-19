@@ -36,9 +36,9 @@ def get_server_repository() -> ServerRepositoryBase:
     backend = settings.storage_backend
     logger.info(f"Creating server repository with backend: {backend}")
 
-    if backend == "opensearch":
-        from .opensearch.server_repository import OpenSearchServerRepository
-        _server_repo = OpenSearchServerRepository()
+    if backend in ("documentdb", "mongodb-ce"):
+        from .documentdb.server_repository import DocumentDBServerRepository
+        _server_repo = DocumentDBServerRepository()
     else:
         from .file.server_repository import FileServerRepository
         _server_repo = FileServerRepository()
@@ -56,9 +56,9 @@ def get_agent_repository() -> AgentRepositoryBase:
     backend = settings.storage_backend
     logger.info(f"Creating agent repository with backend: {backend}")
 
-    if backend == "opensearch":
-        from .opensearch.agent_repository import OpenSearchAgentRepository
-        _agent_repo = OpenSearchAgentRepository()
+    if backend in ("documentdb", "mongodb-ce"):
+        from .documentdb.agent_repository import DocumentDBAgentRepository
+        _agent_repo = DocumentDBAgentRepository()
     else:
         from .file.agent_repository import FileAgentRepository
         _agent_repo = FileAgentRepository()
@@ -76,9 +76,9 @@ def get_scope_repository() -> ScopeRepositoryBase:
     backend = settings.storage_backend
     logger.info(f"Creating scope repository with backend: {backend}")
 
-    if backend == "opensearch":
-        from .opensearch.scope_repository import OpenSearchScopeRepository
-        _scope_repo = OpenSearchScopeRepository()
+    if backend in ("documentdb", "mongodb-ce"):
+        from .documentdb.scope_repository import DocumentDBScopeRepository
+        _scope_repo = DocumentDBScopeRepository()
     else:
         from .file.scope_repository import FileScopeRepository
         _scope_repo = FileScopeRepository()
@@ -96,9 +96,9 @@ def get_security_scan_repository() -> SecurityScanRepositoryBase:
     backend = settings.storage_backend
     logger.info(f"Creating security scan repository with backend: {backend}")
 
-    if backend == "opensearch":
-        from .opensearch.security_scan_repository import OpenSearchSecurityScanRepository
-        _security_scan_repo = OpenSearchSecurityScanRepository()
+    if backend in ("documentdb", "mongodb-ce"):
+        from .documentdb.security_scan_repository import DocumentDBSecurityScanRepository
+        _security_scan_repo = DocumentDBSecurityScanRepository()
     else:
         from .file.security_scan_repository import FileSecurityScanRepository
         _security_scan_repo = FileSecurityScanRepository()
@@ -116,9 +116,9 @@ def get_search_repository() -> SearchRepositoryBase:
     backend = settings.storage_backend
     logger.info(f"Creating search repository with backend: {backend}")
 
-    if backend == "opensearch":
-        from .opensearch.search_repository import OpenSearchSearchRepository
-        _search_repo = OpenSearchSearchRepository()
+    if backend in ("documentdb", "mongodb-ce"):
+        from .documentdb.search_repository import DocumentDBSearchRepository
+        _search_repo = DocumentDBSearchRepository()
     else:
         from .file.search_repository import FaissSearchRepository
         _search_repo = FaissSearchRepository()
@@ -136,9 +136,9 @@ def get_federation_config_repository() -> FederationConfigRepositoryBase:
     backend = settings.storage_backend
     logger.info(f"Creating federation config repository with backend: {backend}")
 
-    if backend == "opensearch":
-        from .opensearch.federation_config_repository import OpenSearchFederationConfigRepository
-        _federation_config_repo = OpenSearchFederationConfigRepository()
+    if backend in ("documentdb", "mongodb-ce"):
+        from .documentdb.federation_config_repository import DocumentDBFederationConfigRepository
+        _federation_config_repo = DocumentDBFederationConfigRepository()
     else:
         from .file.federation_config_repository import FileFederationConfigRepository
         _federation_config_repo = FileFederationConfigRepository()

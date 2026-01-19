@@ -228,7 +228,14 @@ push:
 	@$(if $(IMAGE),IMAGE=$(IMAGE),) ./scripts/build-images.sh push
 
 build-push:
-	@$(if $(IMAGE),IMAGE=$(IMAGE),) ./scripts/build-images.sh build-push
+	@$(if $(NO_CACHE),NO_CACHE=$(NO_CACHE),) $(if $(IMAGE),IMAGE=$(IMAGE),) ./scripts/build-images.sh build-push
+
+build-push-deploy:
+	@if [ "$(IMAGE)" != "registry" ]; then \
+		echo "Error: build-push-deploy only supports IMAGE=registry"; \
+		exit 1; \
+	fi
+	@$(if $(NO_CACHE),NO_CACHE=$(NO_CACHE),) IMAGE=registry ./scripts/deploy-registry.sh
 
 # ========================================
 # DockerHub Publishing

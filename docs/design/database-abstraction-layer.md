@@ -1,7 +1,7 @@
 # Database Abstraction Layer Design
 
 **Status:** Current Implementation
-**Last Updated:** December 26, 2024
+**Last Updated:** January 5, 2026
 **Target Audience:** Senior/Staff Engineers, Architecture Review
 
 ## Table of Contents
@@ -16,7 +16,7 @@
 
 ## Architecture Overview
 
-The MCP Gateway Registry implements a **repository pattern with abstract base classes** to provide a clean separation between business logic and data storage. This design enables seamless switching between file-based storage (legacy, backwards compatible) and OpenSearch (recommended, production-ready) without modifying application code.
+The MCP Gateway Registry implements a **repository pattern with abstract base classes** to provide a clean separation between business logic and data storage. This design enables seamless switching between file-based storage (legacy, backwards compatible) and DocumentDB/MongoDB (recommended, production-ready) without modifying application code.
 
 ### System Diagram
 
@@ -41,25 +41,25 @@ The MCP Gateway Registry implements a **repository pattern with abstract base cl
          │ STORAGE_BACKEND)             │ STORAGE_BACKEND)
          ▼                              ▼
 ┌──────────────────────┐      ┌──────────────────────────┐
-│ File-Based Impl      │      │ OpenSearch Impl          │
+│ File-Based Impl      │      │ DocumentDB Impl          │
 ├──────────────────────┤      ├──────────────────────────┤
-│ FileServerRepo       │      │ OpenSearchServerRepo     │
-│ FileAgentRepo        │      │ OpenSearchAgentRepo      │
-│ FileScopeRepo        │      │ OpenSearchScopeRepo      │
-│ FileSecurityScanRepo │      │ OpenSearchSecurityRepo   │
-│ FaissSearchRepo      │      │ OpenSearchSearchRepo     │
-│ FileFederationRepo   │      │ OpenSearchFederationRepo │
+│ FileServerRepo       │      │ DocumentDBServerRepo     │
+│ FileAgentRepo        │      │ DocumentDBAgentRepo      │
+│ FileScopeRepo        │      │ DocumentDBScopeRepo      │
+│ FileSecurityScanRepo │      │ DocumentDBSecurityRepo   │
+│ FaissSearchRepo      │      │ DocumentDBSearchRepo     │
+│ FileFederationRepo   │      │ DocumentDBFederationRepo │
 └──────────┬───────────┘      └──────────┬───────────────┘
            │                             │
            ▼                             ▼
-    Local File System              OpenSearch Cluster
-    (JSON files, FAISS)            (Indexes, Mappings)
+    Local File System         DocumentDB/MongoDB Cluster
+    (JSON files, FAISS)       (Collections, Vector Search)
 ```
 
 ### Key Principles
 
 1. **Abstraction**: All repositories implement abstract base classes defining strict contracts
-2. **Polymorphism**: Multiple storage backend implementations (file, OpenSearch)
+2. **Polymorphism**: Multiple storage backend implementations (file, DocumentDB/MongoDB)
 3. **Dependency Injection**: Factory pattern provides single point of repository creation
 4. **Consistency**: All implementations provide identical behavior regardless of backend
 5. **Testability**: Mock implementations easy to create; reset_repositories() enables test isolation
@@ -89,7 +89,7 @@ The factory pattern manages **repository instantiation** by:
 Different storage backends are **strategies** implementing the same interface:
 
 - **File Strategy**: YAML/JSON files + FAISS for search
-- **OpenSearch Strategy**: Distributed search index with hybrid search (BM25 + k-NN)
+- **DocumentDB/MongoDB Strategy**: Distributed document database with vector search and aggregation pipelines
 
 ## Abstract Base Classes
 
@@ -121,7 +121,7 @@ async def load_all() -> None  # Load/reload from storage at startup
 
 **Implementations:**
 - [`registry/repositories/file/server_repository.py`](../../registry/repositories/file/server_repository.py) - File-based
-- [`registry/repositories/opensearch/server_repository.py`](../../registry/repositories/opensearch/server_repository.py) - OpenSearch
+- [`registry/repositories/documentdb/server_repository.py`](../../registry/repositories/documentdb/server_repository.py) - DocumentDB/MongoDB
 
 ---
 
@@ -148,7 +148,7 @@ async def load_all() -> None  # Load/reload from storage
 
 **Implementations:**
 - [`registry/repositories/file/agent_repository.py`](../../registry/repositories/file/agent_repository.py) - File-based
-- [`registry/repositories/opensearch/agent_repository.py`](../../registry/repositories/opensearch/agent_repository.py) - OpenSearch
+- [`registry/repositories/documentdb/agent_repository.py`](../../registry/repositories/documentdb/agent_repository.py) - DocumentDB/MongoDB
 
 ---
 
@@ -215,7 +215,7 @@ async def load_all() -> None  # Load/reload from storage
 
 **Implementations:**
 - [`registry/repositories/file/scope_repository.py`](../../registry/repositories/file/scope_repository.py) - File-based (YAML)
-- [`registry/repositories/opensearch/scope_repository.py`](../../registry/repositories/opensearch/scope_repository.py) - OpenSearch
+- [`registry/repositories/documentdb/scope_repository.py`](../../registry/repositories/documentdb/scope_repository.py) - DocumentDB/MongoDB
 
 ---
 
@@ -242,7 +242,7 @@ async def load_all() -> None  # Load/reload from storage
 
 **Implementations:**
 - [`registry/repositories/file/security_scan_repository.py`](../../registry/repositories/file/security_scan_repository.py) - File-based
-- [`registry/repositories/opensearch/security_scan_repository.py`](../../registry/repositories/opensearch/security_scan_repository.py) - OpenSearch
+- [`registry/repositories/documentdb/security_scan_repository.py`](../../registry/repositories/documentdb/security_scan_repository.py) - DocumentDB/MongoDB
 
 ---
 
@@ -282,7 +282,7 @@ async def remove_entity(path: str) -> None
 
 **Implementations:**
 - [`registry/repositories/file/search_repository.py`](../../registry/repositories/file/search_repository.py) - FAISS (Facebook AI Similarity Search)
-- [`registry/repositories/opensearch/search_repository.py`](../../registry/repositories/opensearch/search_repository.py) - OpenSearch Hybrid Search (BM25 + k-NN)
+- [`registry/repositories/documentdb/search_repository.py`](../../registry/repositories/documentdb/search_repository.py) - DocumentDB/MongoDB Hybrid Search (BM25 + k-NN)
 
 ---
 
@@ -308,7 +308,7 @@ async def list_configs() -> List[Dict[str, Any]]
 
 **Implementations:**
 - [`registry/repositories/file/federation_config_repository.py`](../../registry/repositories/file/federation_config_repository.py) - File-based (JSON)
-- [`registry/repositories/opensearch/federation_config_repository.py`](../../registry/repositories/opensearch/federation_config_repository.py) - OpenSearch
+- [`registry/repositories/documentdb/federation_config_repository.py`](../../registry/repositories/documentdb/federation_config_repository.py) - DocumentDB/MongoDB
 
 ---
 
@@ -370,40 +370,41 @@ registry/
 
 ---
 
-### OpenSearch Backend (Recommended for Production)
+### DocumentDB/MongoDB Backend (Recommended for Production)
 
-**Purpose:** Distributed search and storage backend for production deployments
+**Purpose:** Distributed document database for production deployments
 
 **Characteristics:**
-- **Scalability**: Clustered deployment for high availability
-- **Query Capabilities**: Rich query DSL, complex filtering, aggregations
-- **Hybrid Search**: Combines BM25 (full-text) + k-NN (semantic) search
-- **Index Management**: Automatic index creation with proper mappings
+- **Scalability**: Clustered deployment for high availability (DocumentDB) or replica sets (MongoDB)
+- **Query Capabilities**: Rich aggregation pipelines, complex filtering, projections
+- **Vector Search**: Native vector search (DocumentDB) or application-level (MongoDB CE)
+- **Collection Management**: Automatic index creation with proper field mappings
 - **Async Support**: Full async/await implementation for non-blocking I/O
+- **Strong Consistency**: ACID transactions and strong consistency guarantees
 
-**Index Structure:**
+**Collection Structure:**
 ```
-OpenSearch Cluster
-├── mcp-servers-{namespace}         # Server definitions
-├── mcp-agents-{namespace}          # Agent definitions
-├── mcp-scopes-{namespace}          # Authorization scopes
-├── mcp-security-scans-{namespace}  # Security scan results
-├── mcp-embeddings-{namespace}      # Vector embeddings
-└── mcp-federation-config-{namespace} # Federation configurations
+DocumentDB/MongoDB Cluster
+├── mcp_servers_{namespace}         # Server definitions
+├── mcp_agents_{namespace}          # Agent definitions
+├── mcp_scopes_{namespace}          # Authorization scopes
+├── mcp_security_scans_{namespace}  # Security scan results
+├── mcp_embeddings_1536_{namespace} # Vector embeddings
+└── mcp_federation_config_{namespace} # Federation configurations
 ```
 
 **Implementation Classes:**
-- [`OpenSearchServerRepository`](../../registry/repositories/opensearch/server_repository.py)
-- [`OpenSearchAgentRepository`](../../registry/repositories/opensearch/agent_repository.py)
-- [`OpenSearchScopeRepository`](../../registry/repositories/opensearch/scope_repository.py)
-- [`OpenSearchSecurityScanRepository`](../../registry/repositories/opensearch/security_scan_repository.py)
-- [`OpenSearchSearchRepository`](../../registry/repositories/opensearch/search_repository.py)
-- [`OpenSearchFederationConfigRepository`](../../registry/repositories/opensearch/federation_config_repository.py)
+- [`DocumentDBServerRepository`](../../registry/repositories/documentdb/server_repository.py)
+- [`DocumentDBAgentRepository`](../../registry/repositories/documentdb/agent_repository.py)
+- [`DocumentDBScopeRepository`](../../registry/repositories/documentdb/scope_repository.py)
+- [`DocumentDBSecurityScanRepository`](../../registry/repositories/documentdb/security_scan_repository.py)
+- [`DocumentDBSearchRepository`](../../registry/repositories/documentdb/search_repository.py)
+- [`DocumentDBFederationConfigRepository`](../../registry/repositories/documentdb/federation_config_repository.py)
 
-**OpenSearch Client:** [`registry/repositories/opensearch/client.py`](../../registry/repositories/opensearch/client.py)
+**DocumentDB Client:** [`registry/repositories/documentdb/client.py`](../../registry/repositories/documentdb/client.py)
 
 Provides:
-- Async OpenSearch client singleton
+- Async MongoDB client singleton
 - Connection pooling and authentication
 - Index name management with namespace support
 - Client lifecycle management (initialization and cleanup)
@@ -417,14 +418,14 @@ Provides:
 - Production-ready
 
 **Limitations:**
-- Requires separate OpenSearch infrastructure
+- Requires DocumentDB cluster or MongoDB CE instance
 - Higher operational complexity
 - More network I/O
 - Requires proper index tuning for performance
 
 **Hybrid Search Explanation:**
 
-OpenSearch's hybrid search combines two approaches:
+DocumentDB/MongoDB vector search provides semantic similarity:
 
 1. **BM25 (Best Matching 25)**: Full-text relevance scoring based on term frequency
    - Good for exact keyword matches
@@ -438,8 +439,8 @@ OpenSearch's hybrid search combines two approaches:
 
 **Default Weighting:**
 ```python
-opensearch_hybrid_bm25_weight: float = 0.4
-opensearch_hybrid_knn_weight: float = 0.6
+# Legacy - removed: float = 0.4
+# Legacy - removed: float = 0.6
 ```
 
 This gives 60% weight to semantic search (vector similarity) and 40% to keyword matching, optimized for finding semantically relevant servers/agents.
@@ -465,9 +466,9 @@ def get_server_repository() -> ServerRepositoryBase:
     backend = settings.storage_backend
     logger.info(f"Creating server repository with backend: {backend}")
 
-    if backend == "opensearch":
-        from .opensearch.server_repository import OpenSearchServerRepository
-        _server_repo = OpenSearchServerRepository()
+    if backend == "documentdb":
+        from .documentdb.server_repository import DocumentDBServerRepository
+        _server_repo = DocumentDBServerRepository()
     else:
         from .file.server_repository import FileServerRepository
         _server_repo = FileServerRepository()
@@ -487,14 +488,14 @@ def get_server_repository() -> ServerRepositoryBase:
 Backend selection is controlled by the `storage_backend` setting in [`registry/core/config.py`](../../registry/core/config.py):
 
 ```python
-storage_backend: str = "file"  # Options: "file", "opensearch"
+storage_backend: str = "file"  # Options: "file", "documentdb"
 ```
 
 **How it works:**
 
 1. **At startup**: Application reads `STORAGE_BACKEND` environment variable (or defaults to "file")
 2. **On first access**: Factory function checks backend setting
-3. **Instance creation**: Creates appropriate implementation (file vs OpenSearch)
+3. **Instance creation**: Creates appropriate implementation (file vs DocumentDB/MongoDB)
 4. **Caching**: Returns cached singleton on subsequent calls
 
 ### Dependency Injection Pattern
@@ -506,7 +507,7 @@ Services consume repositories through factory functions:
 from registry.repositories.factory import get_server_repository
 
 async def list_servers():
-    repo = get_server_repository()  # Gets file or OpenSearch impl
+    repo = get_server_repository()  # Gets file or DocumentDB/MongoDB impl
     servers = await repo.list_all()
     return servers
 ```
@@ -543,7 +544,7 @@ The repository pattern addresses several critical concerns:
    - Easier to test services in isolation
 
 2. **Multiple Storage Backends**: Single interface, multiple implementations
-   - Same code works with file or OpenSearch backend
+   - Same code works with file or DocumentDB/MongoDB backend
    - Switching backends requires only env var change
    - No code changes needed
 
@@ -553,7 +554,7 @@ The repository pattern addresses several critical concerns:
    - Consistent data transformations
 
 4. **Abstraction**: Storage complexity hidden behind simple interface
-   - `repo.get(path)` is simple whether backed by files or OpenSearch
+   - `repo.get(path)` is simple whether backed by files or DocumentDB/MongoDB
    - Consumers don't care about implementation details
 
 ### Benefits of Repository Abstraction
@@ -564,7 +565,7 @@ The repository pattern addresses several critical concerns:
 - Easy to add new storage backends
 
 **For Deployment:**
-- Production uses OpenSearch (scalable)
+- Production uses DocumentDB/MongoDB (scalable)
 - Backwards compatible with file storage
 - Can migrate gradually
 
@@ -605,7 +606,7 @@ This consistent interface means:
 - No transactions (file-by-file consistency)
 - Best effort on concurrent writes
 
-**OpenSearch Backend:**
+**DocumentDB/MongoDB Backend:**
 - Document-level consistency
 - Index operations with refresh flags
 - No distributed transactions
@@ -633,14 +634,14 @@ registry/repositories/
 │   ├── search_repository.py             # FAISS-based
 │   └── federation_config_repository.py
 │
-└── opensearch/                          # OpenSearch implementations
+└── documentdb/                          # DocumentDB/MongoDB implementations
     ├── __init__.py
-    ├── client.py                        # OpenSearch client management
+    ├── client.py                        # MongoDB client management
     ├── server_repository.py
     ├── agent_repository.py
     ├── scope_repository.py
     ├── security_scan_repository.py
-    ├── search_repository.py             # Hybrid search (BM25 + k-NN)
+    ├── search_repository.py             # Vector search (native or app-level)
     └── federation_config_repository.py
 ```
 
@@ -662,44 +663,44 @@ registry/repositories/
 - `FaissSearchRepository` (special: uses FAISS, not files)
 - `FileFederationConfigRepository`
 
-**OpenSearch Implementations** (in `opensearch/`):
-- `OpenSearchServerRepository`
-- `OpenSearchAgentRepository`
-- `OpenSearchScopeRepository`
-- `OpenSearchSecurityScanRepository`
-- `OpenSearchSearchRepository`
-- `OpenSearchFederationConfigRepository`
+**DocumentDB/MongoDB Implementations** (in `documentdb/`):
+- `DocumentDBServerRepository`
+- `DocumentDBAgentRepository`
+- `DocumentDBScopeRepository`
+- `DocumentDBSecurityScanRepository`
+- `DocumentDBSearchRepository`
+- `DocumentDBFederationConfigRepository`
 
 ### Configuration
 
-Backend selection and OpenSearch settings in [`registry/core/config.py`](../../registry/core/config.py):
+Backend selection and DocumentDB/MongoDB settings in [`registry/core/config.py`](../../registry/core/config.py):
 
 ```python
 # Backend selection
-storage_backend: str = "file"  # "file" or "opensearch"
+storage_backend: str = "file"  # "file", "mongodb", or "documentdb"
 
-# OpenSearch connection
-opensearch_host: str = "localhost"
-opensearch_port: int = 9200
-opensearch_user: Optional[str] = None
-opensearch_password: Optional[str] = None
-opensearch_use_ssl: bool = False
-opensearch_verify_certs: bool = False
+# DocumentDB/MongoDB connection
+documentdb_endpoint: str = "localhost"
+documentdb_port: int = 27017
+documentdb_username: Optional[str] = None
+documentdb_password: Optional[str] = None
+documentdb_database: str = "mcp_gateway"
+documentdb_use_tls: bool = False
+documentdb_tls_ca_file: Optional[str] = None
 
 # Multi-tenancy support
-opensearch_namespace: str = "default"
+documentdb_namespace: str = "default"
 
-# Index names (with namespace suffix)
-opensearch_index_servers: str = "mcp-servers"
-opensearch_index_agents: str = "mcp-agents"
-opensearch_index_scopes: str = "mcp-scopes"
-opensearch_index_embeddings: str = "mcp-embeddings"
-opensearch_index_security_scans: str = "mcp-security-scans"
-opensearch_index_federation_config: str = "mcp-federation-config"
+# Collection names (with namespace suffix)
+documentdb_collection_servers: str = "mcp_servers"
+documentdb_collection_agents: str = "mcp_agents"
+documentdb_collection_scopes: str = "mcp_scopes"
+documentdb_collection_embeddings: str = "mcp_embeddings_1536"
+documentdb_collection_security_scans: str = "mcp_security_scans"
+documentdb_collection_federation_config: str = "mcp_federation_config"
 
-# Hybrid search weights
-opensearch_hybrid_bm25_weight: float = 0.4
-opensearch_hybrid_knn_weight: float = 0.6
+# Vector search configuration
+documentdb_vector_dimension: int = 1536  # For embeddings
 ```
 
 ---
@@ -708,29 +709,29 @@ opensearch_hybrid_knn_weight: float = 0.6
 
 ### Namespace Support (Multi-Tenancy)
 
-OpenSearch implementation supports multi-tenancy via namespaces:
+DocumentDB/MongoDB implementation supports multi-tenancy via namespaces:
 
 ```python
 # In config.py
-opensearch_namespace: str = "default"
+documentdb_namespace: str = "default"
 
-# Index names are automatically namespaced
-# mcp-servers-{namespace}
-# mcp-agents-{namespace}
+# Collection names are automatically namespaced
+# mcp_servers_{namespace}
+# mcp_agents_{namespace}
 # etc.
 ```
 
 **Use Cases:**
-- Multiple registry instances on shared OpenSearch cluster
+- Multiple registry instances on shared DocumentDB/MongoDB cluster
 - Isolated test environments
 - Customer separation in SaaS deployments
 
-**Implementation:** [`registry/repositories/opensearch/client.py`](../../registry/repositories/opensearch/client.py)
+**Implementation:** [`registry/repositories/documentdb/client.py`](../../registry/repositories/documentdb/client.py)
 
 ```python
 def get_index_name(base_name: str) -> str:
     """Get full index name with namespace."""
-    return f"{base_name}-{settings.opensearch_namespace}"
+    return f"{base_name}-{settings.documentdb_namespace}"
 ```
 
 ### Error Handling
@@ -742,7 +743,7 @@ Both implementations handle errors gracefully:
 - Parse errors → log and skip
 - I/O errors → raised to caller
 
-**OpenSearch Backend:**
+**DocumentDB/MongoDB Backend:**
 - Connection errors → log and attempt retry
 - Index not found → initialize index
 - Query errors → log and raise
@@ -755,7 +756,7 @@ Both implementations handle errors gracefully:
 - FAISS search: O(n) linear scan (not scalable)
 - Not suitable for high concurrency
 
-**OpenSearch Backend:**
+**DocumentDB/MongoDB Backend:**
 - Scalable to millions of entities
 - Network latency (typically <100ms)
 - BM25 + k-NN: O(log n) with proper indexing
@@ -763,8 +764,8 @@ Both implementations handle errors gracefully:
 
 **Recommendations:**
 - Use file backend for development only
-- Use OpenSearch for production
-- Monitor OpenSearch query latency
+- Use DocumentDB/MongoDB for production
+- Monitor DocumentDB/MongoDB query latency
 - Tune index refresh intervals for throughput vs. latency tradeoff
 
 ---
@@ -815,19 +816,19 @@ async def test_server_lifecycle(reset_repos):
 
 ### End-to-End Tests
 
-Test against OpenSearch in Docker:
+Test against MongoDB CE in Docker:
 
 ```yaml
 # docker-compose.yml
 services:
-  opensearch:
-    image: opensearchproject/opensearch:2.x
-    environment:
-      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
-      DISABLE_SECURITY_PLUGIN: "true"
+  mongodb:
+    image: mongo:8.2
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
 ```
 
-Set `STORAGE_BACKEND=opensearch` and run full integration tests.
+Set `STORAGE_BACKEND=mongodb` and run full integration tests.
 
 ---
 
@@ -835,12 +836,12 @@ Set `STORAGE_BACKEND=opensearch` and run full integration tests.
 
 The database abstraction layer provides a **clean, extensible architecture** for data storage in the MCP Gateway Registry:
 
-| Aspect | File | OpenSearch |
-|--------|------|-----------|
+| Aspect | File | DocumentDB/MongoDB |
+|--------|------|-------------------|
 | **Use Case** | Development, testing | Production |
 | **Scalability** | ~1000 entities | Millions |
-| **Dependencies** | None (+ FAISS) | OpenSearch cluster |
-| **Query Power** | Basic | Advanced (full DSL) |
+| **Dependencies** | None (+ FAISS) | DocumentDB/MongoDB cluster |
+| **Query Power** | Basic | Advanced (aggregation pipelines) |
 | **Concurrency** | Limited | High |
 | **Setup Complexity** | None | Moderate |
 | **Cost** | Free | Infrastructure cost |

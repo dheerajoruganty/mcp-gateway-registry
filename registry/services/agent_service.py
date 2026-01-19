@@ -155,7 +155,7 @@ class AgentService:
         """
         return list(self.registered_agents.values())
 
-    def update_rating(
+    async def update_rating(
         self,
         path: str,
         username: str,
@@ -177,15 +177,14 @@ class AgentService:
         """
         from . import rating_service
 
-        if path not in self.registered_agents:
+        # Query repository directly instead of using cache
+        existing_agent = await self._repo.get(path)
+        if not existing_agent:
             logger.error(f"Cannot update agent at path '{path}': not found")
             raise ValueError(f"Agent not found at path: {path}")
 
         # Validate rating using shared service
         rating_service.validate_rating(rating)
-
-        # Get existing agent (Pydantic model)
-        existing_agent = self.registered_agents[path]
 
         # Convert to dict for modification
         agent_dict = existing_agent.model_dump()
@@ -207,23 +206,19 @@ class AgentService:
             agent_dict["rating_details"]
         )
 
-        # Validate updated agent
-        try:
-            updated_agent = AgentCard(**agent_dict)
-        except Exception as e:
-            logger.error(f"Failed to validate updated agent: {e}")
-            raise ValueError(f"Invalid agent update: {e}")
-
-        # Save to disk
-        if not _save_agent_to_disk(updated_agent, settings.agents_dir):
-            raise ValueError("Failed to save updated agent to disk")
+        # Save to repository (this will handle AOSS eventual consistency)
+        await self._repo.update(path, agent_dict)
 
         # Update in-memory registry
-        self.registered_agents[path] = updated_agent
+        try:
+            updated_agent = AgentCard(**agent_dict)
+            self.registered_agents[path] = updated_agent
+        except Exception as e:
+            logger.warning(f"Failed to update in-memory agent cache: {e}")
 
         logger.info(
-            f"Agent '{updated_agent.name}' ({path}) updated with rating {rating} "
-            f"from user {username}, new average: {agent_dict['num_stars']:.2f}"
+            f"Updated rating for agent {path}: user {username} rated {rating}, "
+            f"new average: {agent_dict['num_stars']:.2f}"
         )
 
         return agent_dict["num_stars"]
@@ -459,12 +454,12 @@ class AgentService:
             logger.error(f"Failed to index agent: {e}", exc_info=True)
 
 
-    def get_agent_info(
+    async def get_agent_info(
         self,
         path: str,
     ) -> Optional[AgentCard]:
         """
-        Get agent by path (returns None if not found).
+        Get agent by path - queries repository directly (returns None if not found).
 
         Args:
             path: Agent path
@@ -472,20 +467,18 @@ class AgentService:
         Returns:
             Agent card or None if not found
         """
-        try:
-            return self.get_agent(path)
-        except ValueError:
-            return None
+        return await self._repo.get(path)
 
 
-    def get_all_agents(self) -> List[AgentCard]:
+    async def get_all_agents(self) -> List[AgentCard]:
         """
-        Get all registered agents.
+        Get all registered agents - queries repository directly.
 
         Returns:
             List of all agent cards
         """
-        return self.list_agents()
+        # Query repository directly instead of using cache
+        return await self._repo.list_all()
 
 
     async def remove_agent(
