@@ -1426,7 +1426,14 @@
             formData.append('num_stars', jsonData.num_stars !== undefined ? jsonData.num_stars.toString() : '0');
             formData.append('is_python', jsonData.is_python ? 'true' : ''); // FastAPI expects 'true' or empty for bool
             formData.append('license', jsonData.license || 'N/A');
-            
+            // Custom endpoint fields (optional)
+            if (jsonData.mcp_endpoint) {
+                formData.append('mcp_endpoint', jsonData.mcp_endpoint);
+            }
+            if (jsonData.sse_endpoint) {
+                formData.append('sse_endpoint', jsonData.sse_endpoint);
+            }
+
             handleRegistrationSubmit(formData);
         }
 
@@ -2417,6 +2424,16 @@
                         <input type="url" id="reg-proxy-pass-url" name="proxy_pass_url" class="form-input" required>
                     </div>
                     <div class="form-group">
+                        <label for="reg-mcp-endpoint">MCP Endpoint (optional, for custom endpoint paths)</label>
+                        <input type="url" id="reg-mcp-endpoint" name="mcp_endpoint" class="form-input" placeholder="e.g., http://server.com/custom-path">
+                        <small style="color: #666;">If set, health checks will use this URL instead of appending /mcp to the Proxy Pass URL</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-sse-endpoint">SSE Endpoint (optional, for custom SSE paths)</label>
+                        <input type="url" id="reg-sse-endpoint" name="sse_endpoint" class="form-input" placeholder="e.g., http://server.com/events">
+                        <small style="color: #666;">If set, SSE connections will use this URL instead of appending /sse to the Proxy Pass URL</small>
+                    </div>
+                    <div class="form-group">
                         <label for="reg-description">Description</label>
                         <textarea id="reg-description" name="description" class="form-input" rows="3"></textarea>
                     </div>
@@ -2458,7 +2475,7 @@
                 <form id="paste-json-form">
                     <div class="form-group">
                         <label for="json-paste-area">Paste JSON content here</label>
-                        <textarea id="json-paste-area" class="form-input" rows="10" required placeholder='''{
+                        <textarea id="json-paste-area" class="form-input" rows="12" required placeholder='''{
     "server_name": "My Awesome Service",
     "path": "/my-awesome-service",
     "proxy_pass_url": "http://localhost:8080",
@@ -2466,8 +2483,11 @@
     "tags": ["awesome", "example"],
     "num_stars": 5,
     "is_python": true,
-    "license": "MIT"
+    "license": "MIT",
+    "mcp_endpoint": "http://localhost:8080/custom-path",
+    "sse_endpoint": "http://localhost:8080/events"
 }'''></textarea>
+                        <small style="color: #666;">Note: mcp_endpoint and sse_endpoint are optional. Use them only if your server uses custom endpoint paths instead of /mcp or /sse.</small>
                     </div>
                     <button type="submit" class="edit-button">Paste and Register</button>
                 </form>

@@ -471,6 +471,8 @@ async def register_service(
     num_stars: Annotated[int, Form()] = 0,
     is_python: Annotated[bool, Form()] = False,
     license_str: Annotated[str, Form(alias="license")] = "N/A",
+    mcp_endpoint: Annotated[str | None, Form()] = None,
+    sse_endpoint: Annotated[str | None, Form()] = None,
     user_context: Annotated[dict, Depends(enhanced_auth)] = None,
 ):
     """Register a new service (requires register_service UI permission)."""
@@ -514,6 +516,12 @@ async def register_service(
         "license": license_str,
         "tool_list": [],
     }
+
+    # Add custom endpoint fields if provided
+    if mcp_endpoint:
+        server_entry["mcp_endpoint"] = mcp_endpoint
+    if sse_endpoint:
+        server_entry["sse_endpoint"] = sse_endpoint
 
     # Register the server
     success = await server_service.register_server(server_entry)
@@ -2661,6 +2669,8 @@ async def register_service_api(
     supported_transports: Annotated[str | None, Form()] = None,
     headers: Annotated[str | None, Form()] = None,
     tool_list_json: Annotated[str | None, Form()] = None,
+    mcp_endpoint: Annotated[str | None, Form()] = None,
+    sse_endpoint: Annotated[str | None, Form()] = None,
 ):
     """
     Register a service via JWT Bearer Token authentication (External API).
@@ -2688,6 +2698,8 @@ async def register_service_api(
     - `supported_transports` (optional): JSON array of transports
     - `headers` (optional): JSON object of headers
     - `tool_list_json` (optional): JSON array of tool definitions
+    - `mcp_endpoint` (optional): Full URL for custom MCP endpoint (overrides /mcp suffix)
+    - `sse_endpoint` (optional): Full URL for custom SSE endpoint (overrides /sse suffix)
 
     **Response:**
     - `201 Created`: Service registered successfully
@@ -2780,6 +2792,10 @@ async def register_service_api(
         server_entry["auth_provider"] = auth_provider
     if headers_list:
         server_entry["headers"] = headers_list
+    if mcp_endpoint:
+        server_entry["mcp_endpoint"] = mcp_endpoint
+    if sse_endpoint:
+        server_entry["sse_endpoint"] = sse_endpoint
 
     # Check if server exists and handle overwrite logic
     existing_server = await server_service.get_server_info(path)

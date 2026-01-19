@@ -9,6 +9,7 @@ from collections import defaultdict, deque
 from time import time
 
 from ..core.config import settings
+from ..core.endpoint_utils import get_endpoint_url_from_server_info
 from registry.constants import HealthStatus
 
 logger = logging.getLogger(__name__)
@@ -637,20 +638,17 @@ class HealthMonitoringService:
         # Try endpoints based on supported transports, prioritizing streamable-http
         logger.info(f"[TRACE] No transport endpoint in URL: {proxy_pass_url}")
         logger.info(f"[TRACE] Supported transports: {supported_transports}")
-        base_url = proxy_pass_url.rstrip('/')
-        
+
         # Try streamable-http first (default preference)
         if "streamable-http" in supported_transports:
             logger.info(f"[TRACE] Trying streamable-http transport")
             # Build base headers without session ID
             headers = self._build_headers_for_server(server_info, include_session_id=False)
 
-            # Only try /mcp endpoint for streamable-http transport
-            # Don't append /mcp if URL already has a transport endpoint (/mcp or /sse)
-            if base_url.endswith('/mcp') or base_url.endswith('/sse') or '/mcp/' in base_url or '/sse/' in base_url:
-                endpoint = f"{base_url}"
-            else:
-                endpoint = f"{base_url}/mcp"
+            # Resolve endpoint URL using centralized utility
+            # Priority: explicit mcp_endpoint > URL detection > append /mcp
+            endpoint = get_endpoint_url_from_server_info(server_info, transport_type="streamable-http")
+            logger.info(f"[TRACE] Resolved streamable-http endpoint: {endpoint}")
 
             try:
                 # Step 1: Initialize session to get session ID
@@ -719,10 +717,10 @@ class HealthMonitoringService:
         if "sse" in supported_transports:
             logger.info(f"[TRACE] Trying SSE transport")
             try:
-                if base_url.endswith('/sse'):
-                    sse_endpoint = f"{base_url}"
-                else:
-                    sse_endpoint = f"{base_url}/sse"
+                # Resolve SSE endpoint URL using centralized utility
+                # Priority: explicit sse_endpoint > URL detection > append /sse
+                sse_endpoint = get_endpoint_url_from_server_info(server_info, transport_type="sse")
+                logger.info(f"[TRACE] Resolved SSE endpoint: {sse_endpoint}")
                 # Build headers including server-specific headers
                 headers = self._build_headers_for_server(server_info)
                 # Use shorter timeout for SSE since it starts streaming immediately
@@ -747,11 +745,12 @@ class HealthMonitoringService:
         if not supported_transports or supported_transports == []:
             logger.info(f"[TRACE] No specific transports defined, trying defaults")
             headers = self._build_headers_for_server(server_info)
-            
-            # Only try /mcp endpoint for default streamable-http transport
-            endpoint = f"{base_url}/mcp"
+
+            # Resolve default streamable-http endpoint using centralized utility
+            endpoint = get_endpoint_url_from_server_info(server_info, transport_type="streamable-http")
+            logger.info(f"[TRACE] Resolved default streamable-http endpoint: {endpoint}")
             ping_payload = '{ "jsonrpc": "2.0", "id": "0", "method": "ping" }'
-            
+
             try:
                 logger.info(f"[TRACE] Trying default endpoint: {endpoint}")
                 logger.info(f"[TRACE] Headers being sent: {headers}")
@@ -765,9 +764,11 @@ class HealthMonitoringService:
                     return False, f"unhealthy: status {response.status_code}"
             except Exception as e:
                 logger.warning(f"Health check failed for {endpoint}: {type(e).__name__} - {e}")
-                
+
             try:
-                sse_endpoint = f"{base_url}/sse"
+                # Resolve default SSE endpoint using centralized utility
+                sse_endpoint = get_endpoint_url_from_server_info(server_info, transport_type="sse")
+                logger.info(f"[TRACE] Resolved default SSE endpoint: {sse_endpoint}")
                 # Build headers including server-specific headers
                 headers = self._build_headers_for_server(server_info)
                 # Use shorter timeout for SSE since it starts streaming immediately
