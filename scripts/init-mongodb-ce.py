@@ -152,53 +152,71 @@ async def _create_standard_indexes(
         logger.info(f"Created indexes for {full_name}")
 
 
-async def _load_default_admin_scope(
+async def _load_default_scopes(
     db,
     namespace: str,
 ) -> None:
-    """Load default admin scope from JSON file into scopes collection.
+    """Load default scopes from JSON files into scopes collection.
 
-    This loads the registry-admins.json file which contains the bootstrap
-    admin scope with full permissions.
+    This loads all scope JSON files from the scripts directory:
+    - registry-admins.json: Bootstrap admin scope with full permissions
+    - mcp-registry-admin.json: MCP registry admin scope (Keycloak group)
+    - mcp-servers-unrestricted-read.json: Read-only access to all servers
+    - mcp-servers-unrestricted-execute.json: Full CRUD access to all servers
     """
     collection_name = f"{COLLECTION_SCOPES}_{namespace}"
     collection = db[collection_name]
 
-    # Find the registry-admins.json file in the same directory as this script
+    # Find scope files in the same directory as this script
     script_dir = Path(__file__).parent
-    admin_scope_file = script_dir / "registry-admins.json"
 
-    if not admin_scope_file.exists():
-        logger.warning(f"Default admin scope file not found: {admin_scope_file}")
-        logger.warning("Admin scope will not be loaded. You can create it later using registry_management.py")
-        return
+    # List of scope files to load (order matters - base scopes first)
+    scope_files = [
+        "registry-admins.json",
+        "mcp-registry-admin.json",
+        "mcp-servers-unrestricted-read.json",
+        "mcp-servers-unrestricted-execute.json",
+    ]
 
-    try:
-        with open(admin_scope_file, "r") as f:
-            admin_scope = json.load(f)
+    loaded_count = 0
+    for scope_filename in scope_files:
+        scope_file = script_dir / scope_filename
 
-        logger.info(f"Loading default admin scope from {admin_scope_file}")
+        if not scope_file.exists():
+            logger.warning(f"Scope file not found: {scope_file}")
+            continue
 
-        # Upsert the admin scope document
-        result = await collection.update_one(
-            {"_id": admin_scope["_id"]},
-            {"$set": admin_scope},
-            upsert=True
-        )
+        try:
+            with open(scope_file, "r") as f:
+                scope_data = json.load(f)
 
-        if result.upserted_id:
-            logger.info(f"Inserted admin scope: {admin_scope['_id']}")
-        elif result.modified_count > 0:
-            logger.info(f"Updated admin scope: {admin_scope['_id']}")
-        else:
-            logger.info(f"Admin scope already up-to-date: {admin_scope['_id']}")
+            logger.info(f"Loading scope from {scope_filename}")
 
-        logger.info(
-            f"Admin scope group_mappings: {admin_scope.get('group_mappings', [])}"
-        )
+            # Upsert the scope document
+            result = await collection.update_one(
+                {"_id": scope_data["_id"]},
+                {"$set": scope_data},
+                upsert=True
+            )
 
-    except Exception as e:
-        logger.error(f"Failed to load default admin scope: {e}", exc_info=True)
+            if result.upserted_id:
+                logger.info(f"Inserted scope: {scope_data['_id']}")
+                loaded_count += 1
+            elif result.modified_count > 0:
+                logger.info(f"Updated scope: {scope_data['_id']}")
+                loaded_count += 1
+            else:
+                logger.info(f"Scope already up-to-date: {scope_data['_id']}")
+
+            if "group_mappings" in scope_data:
+                logger.info(
+                    f"  group_mappings: {scope_data.get('group_mappings', [])}"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to load scope from {scope_filename}: {e}", exc_info=True)
+
+    logger.info(f"Loaded {loaded_count} scopes into {collection_name}")
 
 
 async def _initialize_mongodb_ce() -> None:
@@ -264,7 +282,7 @@ async def _initialize_mongodb_ce() -> None:
             await _create_standard_indexes(collection, coll_name, namespace)
 
         # Load default admin scope
-        await _load_default_admin_scope(db, namespace)
+        await _load_default_scopes(db, namespace)
 
         logger.info("")
         logger.info("=" * 60)
