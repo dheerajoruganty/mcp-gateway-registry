@@ -405,3 +405,32 @@ variable "security_add_pending_tag" {
   type        = bool
   default     = false
 }
+
+# =============================================================================
+# MICROSOFT ENTRA ID CONFIGURATION
+# =============================================================================
+
+variable "entra_enabled" {
+  description = "Enable Microsoft Entra ID as authentication provider"
+  type        = bool
+  default     = false
+}
+
+variable "entra_tenant_id" {
+  description = "Azure AD Tenant ID (Directory/tenant ID from Azure Portal)"
+  type        = string
+  default     = ""
+}
+
+variable "entra_client_id" {
+  description = "Entra ID Application (client) ID"
+  type        = string
+  default     = ""
+}
+
+variable "entra_client_secret" {
+  description = "Entra ID Client Secret (Application secret value)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

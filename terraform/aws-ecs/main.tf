@@ -120,6 +120,12 @@ module "mcp_gateway" {
   security_analyzers            = var.security_analyzers
   security_scan_timeout         = var.security_scan_timeout
   security_add_pending_tag      = var.security_add_pending_tag
+
+  # Microsoft Entra ID configuration
+  entra_enabled       = var.entra_enabled
+  entra_tenant_id     = var.entra_tenant_id
+  entra_client_id     = var.entra_client_id
+  entra_client_secret = var.entra_client_secret
 }
 
 # =============================================================================

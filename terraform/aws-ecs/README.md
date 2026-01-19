@@ -650,6 +650,23 @@ The DocumentDB cluster is automatically provisioned by Terraform. To initialize 
 aws logs tail /ecs/mcp-gateway-v2-registry --since 5m --region us-east-1 | grep "Loaded from repository"
 ```
 
+**For Entra ID Deployments:**
+
+When using Microsoft Entra ID as the authentication provider (`entra_enabled = true` in terraform.tfvars), you must specify the Entra ID Group Object ID for admin bootstrapping:
+
+```bash
+# Run with Entra ID Group Object ID for admin scopes
+./terraform/aws-ecs/scripts/run-documentdb-init.sh --entra-group-id "your-entra-group-object-id"
+
+# Example with actual Group Object ID:
+./terraform/aws-ecs/scripts/run-documentdb-init.sh --entra-group-id "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+```
+
+To find your Entra ID Group Object ID:
+1. Go to Azure Portal > Microsoft Entra ID > Groups
+2. Select your admin group (e.g., "mcp-gateway-admins")
+3. Copy the "Object ID" from the Overview page
+
 **Loading Scopes into DocumentDB:**
 
 ```bash
@@ -681,6 +698,121 @@ uv run python scripts/load-scopes.py --scopes-file cli/examples/currenttime-user
 - Both auth-server and registry connect to the same DocumentDB cluster
 
 See [terraform/aws-ecs/scripts/README-DOCUMENTDB-CLI.md](terraform/aws-ecs/scripts/README-DOCUMENTDB-CLI.md) for detailed DocumentDB CLI documentation.
+
+## User and Group Management
+
+After deployment, the system is bootstrapped with **minimal configuration**:
+- **`registry-admins`** group - Administrative group with full registry access
+- **Admin user** - Initial administrator account
+- **Admin scopes** - `registry-admins` scope mapped to the admin group
+
+**All additional groups, users, and M2M service accounts must be created manually.**
+
+### Bootstrap Differences by Provider
+
+| Provider | Bootstrap Process |
+|----------|-------------------|
+| **Keycloak** | Automatic - `init-keycloak.sh` creates realm, clients, admin user, and `registry-admins` group |
+| **Entra ID** | Manual - `registry-admins` group must be created in Azure Portal, Group Object ID passed to `run-documentdb-init.sh --entra-group-id` |
+
+### Creating Groups
+
+Groups control access to MCP servers. Create a group definition JSON file:
+
+```json
+{
+  "scope_name": "public-mcp-users",
+  "description": "Users with access to public MCP servers",
+  "servers": [
+    {"server_name": "currenttime", "tools": ["*"], "access_level": "execute"}
+  ],
+  "create_in_idp": true
+}
+```
+
+Import the group:
+
+```bash
+uv run python api/registry_management.py \
+  --token-file api/.token \
+  --registry-url https://registry.us-east-1.example.com \
+  import-group --file my-group.json
+```
+
+### Creating Human Users
+
+Human users can log in via the web UI:
+
+```bash
+uv run python api/registry_management.py \
+  --token-file api/.token \
+  --registry-url https://registry.us-east-1.example.com \
+  user-create-human \
+  --username jsmith \
+  --email jsmith@example.com \
+  --first-name John \
+  --last-name Smith \
+  --groups public-mcp-users \
+  --password "SecurePassword123!"
+```
+
+### Creating M2M Service Accounts
+
+M2M accounts are used for AI agents and automated systems:
+
+```bash
+uv run python api/registry_management.py \
+  --token-file api/.token \
+  --registry-url https://registry.us-east-1.example.com \
+  user-create-m2m \
+  --name my-ai-agent \
+  --groups public-mcp-users \
+  --description "AI coding assistant"
+```
+
+**Save the client secret immediately - it cannot be retrieved later.**
+
+### Generating JWT Tokens
+
+**For Human Users:**
+1. Log in to the registry web UI
+2. Click the **"Get JWT Token"** button in the top-left sidebar
+3. Copy and use the generated token
+
+**For M2M Accounts:**
+
+Create an agent config file (`.oauth-tokens/agent-my-ai-agent.json`):
+
+```json
+{
+  "client_id": "my-ai-agent",
+  "client_secret": "your-client-secret",
+  "keycloak_url": "https://kc.us-east-1.example.com",
+  "keycloak_realm": "mcp-gateway",
+  "auth_provider": "keycloak"
+}
+```
+
+Generate the token:
+
+```bash
+# For Keycloak
+./credentials-provider/generate_creds.sh -a keycloak -k https://kc.us-east-1.example.com
+
+# For Entra ID
+./credentials-provider/generate_creds.sh -a entra -i .oauth-tokens/entra-identities.json
+```
+
+Use the generated token:
+
+```bash
+uv run python api/registry_management.py \
+  --token-file .oauth-tokens/agent-my-ai-agent-token.json \
+  --registry-url https://registry.us-east-1.example.com \
+  list
+```
+
+For detailed user management documentation, see [docs/auth-mgmt.md](../../docs/auth-mgmt.md).
 
 ## Operations and Maintenance
 

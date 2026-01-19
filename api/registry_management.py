@@ -217,12 +217,12 @@ from registry_client import (
     AnthropicServerResponse,
     M2MAccountRequest,
     HumanUserRequest,
-    KeycloakUserSummary,
+    UserSummary,
     UserListResponse,
     UserDeleteResponse,
     M2MAccountResponse,
     GroupCreateRequest,
-    KeycloakGroupSummary,
+    GroupSummary,
     GroupDeleteResponse,
 )
 
@@ -706,7 +706,7 @@ def cmd_create_group(args: argparse.Namespace) -> int:
         response = client.create_group(
             group_name=args.name,
             description=args.description,
-            create_in_keycloak=args.keycloak
+            create_in_idp=args.idp
         )
 
         logger.info(f"Group created successfully: {args.name}")
@@ -737,7 +737,7 @@ def cmd_delete_group(args: argparse.Namespace) -> int:
         client = _create_client(args)
         response = client.delete_group(
             group_name=args.name,
-            delete_from_keycloak=args.keycloak,
+            delete_from_idp=args.idp,
             force=args.force
         )
 
@@ -1912,9 +1912,12 @@ def cmd_user_create_m2m(args: argparse.Namespace) -> int:
 
         logger.info(f"M2M account created successfully\n")
         print(f"Client ID: {result.client_id}")
+        print(f"Client Secret: {result.client_secret}")
         print(f"Groups: {', '.join(result.groups)}")
+        if result.service_principal_id:
+            print(f"Service Principal ID: {result.service_principal_id}")
         print()
-        print("IMPORTANT: The client secret was created and must be handled securely. It will not be displayed or logged. Please retrieve the secret from a secure source as per documentation.")
+        print("IMPORTANT: Save the client secret securely - it cannot be retrieved later.")
 
         return 0
 
@@ -2517,9 +2520,9 @@ Examples:
         help="Group description"
     )
     create_group_parser.add_argument(
-        "--keycloak",
+        "--idp",
         action="store_true",
-        help="Also create in Keycloak"
+        help="Also create in IdP (Keycloak/Entra)"
     )
 
     # Delete group command
@@ -2530,9 +2533,9 @@ Examples:
         help="Group name"
     )
     delete_group_parser.add_argument(
-        "--keycloak",
+        "--idp",
         action="store_true",
-        help="Also delete from Keycloak"
+        help="Also delete from IdP (Keycloak/Entra)"
     )
     delete_group_parser.add_argument(
         "--force",

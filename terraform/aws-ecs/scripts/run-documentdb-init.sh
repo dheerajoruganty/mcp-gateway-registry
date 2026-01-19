@@ -6,6 +6,7 @@
 #
 # Usage:
 #   ./terraform/aws-ecs/scripts/run-documentdb-init.sh
+#   ./terraform/aws-ecs/scripts/run-documentdb-init.sh --entra-group-id "your-guid"
 
 set -e
 
@@ -20,6 +21,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Default values
+ENTRA_GROUP_ID=""
+
 # Show help function
 show_help() {
     cat << EOF
@@ -32,25 +36,79 @@ with proper network access to the DocumentDB cluster.
 
 Options:
   -h, --help                     Show this help message
+  --entra-group-id <GUID>        Entra ID Group Object ID for admin group
+                                 (required when entra_enabled=true in terraform.tfvars)
 
 Environment Variables:
   DOCUMENTDB_HOST                Override DocumentDB endpoint (optional)
-  AWS_REGION                     AWS region (default: us-east-1)
+  AWS_REGION                     AWS region (default: us-west-2)
+  ENTRA_ADMIN_GROUP_ID           Entra ID Group Object ID (alternative to --entra-group-id)
 
 The script automatically reads the DocumentDB endpoint from SSM Parameter Store
 if available, otherwise falls back to DOCUMENTDB_HOST environment variable.
+
+For Microsoft Entra ID deployments:
+  1. Create a "registry-admins" group in Azure Portal
+  2. Get the Group Object ID: Azure Portal -> Groups -> [group name] -> Object Id
+  3. Pass it via --entra-group-id or ENTRA_ADMIN_GROUP_ID env var
 EOF
     exit 0
 }
 
-# Check for help flag
-if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    show_help
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            ;;
+        --entra-group-id)
+            ENTRA_GROUP_ID="$2"
+            shift 2
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            show_help
+            ;;
+    esac
+done
+
+# Check for env var if not provided via CLI
+if [ -z "$ENTRA_GROUP_ID" ] && [ -n "$ENTRA_ADMIN_GROUP_ID" ]; then
+    ENTRA_GROUP_ID="$ENTRA_ADMIN_GROUP_ID"
 fi
 
 # Get AWS account and region
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 AWS_REGION="${AWS_REGION:-us-west-2}"
+
+# Check if Entra ID is enabled in terraform.tfvars
+TFVARS_FILE="$TERRAFORM_DIR/terraform.tfvars"
+ENTRA_ENABLED="false"
+if [ -f "$TFVARS_FILE" ]; then
+    # Extract entra_enabled value from terraform.tfvars
+    ENTRA_ENABLED=$(grep -E "^entra_enabled\s*=" "$TFVARS_FILE" | sed 's/.*=\s*//' | tr -d ' "' || echo "false")
+fi
+
+# If Entra is enabled, require the group ID
+if [ "$ENTRA_ENABLED" = "true" ]; then
+    if [ -z "$ENTRA_GROUP_ID" ]; then
+        echo -e "${RED}Error: Microsoft Entra ID is enabled (entra_enabled=true in terraform.tfvars)${NC}"
+        echo ""
+        echo "You must provide the Entra ID Group Object ID for the admin group:"
+        echo ""
+        echo "  $0 --entra-group-id \"your-group-object-id\""
+        echo ""
+        echo "To get the Group Object ID:"
+        echo "  1. Go to Azure Portal -> Microsoft Entra ID -> Groups"
+        echo "  2. Find or create your 'registry-admins' group"
+        echo "  3. Copy the 'Object Id' value"
+        echo ""
+        exit 1
+    fi
+    echo -e "${GREEN}Entra ID enabled - using Group Object ID: $ENTRA_GROUP_ID${NC}"
+else
+    echo -e "${BLUE}Keycloak mode - no Entra Group ID required${NC}"
+fi
 
 # ECS configuration
 CLUSTER_NAME="mcp-gateway-ecs-cluster"
@@ -149,11 +207,24 @@ echo "  Cluster: $CLUSTER_NAME"
 echo "  Task: $TASK_FAMILY"
 echo "  DocumentDB Host: $DOCUMENTDB_HOST"
 echo "  DocumentDB Username: ${DOCUMENTDB_USERNAME:-<not set>}"
+echo "  Entra Enabled: $ENTRA_ENABLED"
+echo "  Entra Group ID: ${ENTRA_GROUP_ID:-<not set>}"
 echo ""
 
-# Create simple command to run Python initialization and scopes loading
+# Create simple command to run Python initialization
+# NOTE: init-documentdb-indexes.py now loads the admin scope from registry-admins.json
+# which is sufficient to bootstrap the system. All subsequent groups and users are
+# created via the registry API. The load-scopes.py call is commented out and may be
+# removed in a future version.
 echo -e "${YELLOW}Preparing initialization command...${NC}"
-INIT_COMMAND="source /app/.venv/bin/activate && cd /app/scripts && python init-documentdb-indexes.py && python load-scopes.py --scopes-file /app/config/scopes.yml"
+
+# Build the init command, adding --entra-group-id if provided
+if [ -n "$ENTRA_GROUP_ID" ]; then
+    INIT_COMMAND="source /app/.venv/bin/activate && cd /app/scripts && python init-documentdb-indexes.py --entra-group-id '$ENTRA_GROUP_ID'"
+else
+    INIT_COMMAND="source /app/.venv/bin/activate && cd /app/scripts && python init-documentdb-indexes.py"
+fi
+# INIT_COMMAND="source /app/.venv/bin/activate && cd /app/scripts && python init-documentdb-indexes.py && python load-scopes.py --scopes-file /app/config/scopes.yml"
 
 # Check if task definition exists
 TASK_DEF_ARN=$(aws ecs describe-task-definition \

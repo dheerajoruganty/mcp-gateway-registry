@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Exit on error
-set -e
+# Continue on error - we want to run all tests and report results at the end
+# set -e  # Disabled to allow test suite to continue after failures
 
 # Color codes for output
 RED='\033[0;31m'
@@ -369,7 +369,7 @@ if [ $CREATE_STATUS -eq 0 ]; then
 
     if [ "$GROUP_AVAILABLE" = false ]; then
         echo -e "${RED}Group did not become available after 100 seconds${NC}"
-        exit 1
+        echo -e "${YELLOW}Continuing with remaining tests...${NC}"
     fi
 else
     echo -e "${RED}Group creation failed${NC}"

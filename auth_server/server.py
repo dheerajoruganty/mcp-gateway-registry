@@ -793,8 +793,16 @@ class SimplifiedCognitoValidator:
             scope_string = claims.get('scope', '')
             scopes = scope_string.split() if scope_string else []
             
-            logger.info(f"Successfully validated self-signed token for user: {claims.get('sub')}")
-            
+            # Extract groups from claims (for OAuth user tokens)
+            groups = claims.get('groups', [])
+            if isinstance(groups, str):
+                groups = [groups]
+
+            logger.info(
+                f"Successfully validated self-signed token for user: {claims.get('sub')}, "
+                f"groups: {groups}"
+            )
+
             return {
                 'valid': True,
                 'method': 'self_signed',
@@ -803,7 +811,7 @@ class SimplifiedCognitoValidator:
                 'username': claims.get('sub', ''),
                 'expires_at': claims.get('exp'),
                 'scopes': scopes,
-                'groups': [],  # Self-signed tokens don't have groups
+                'groups': groups,
                 'token_type': 'user_generated'
             }
             
@@ -1252,10 +1260,11 @@ async def generate_user_token(
     request: GenerateTokenRequest
 ):
     """
-    Generate a JWT token for a user using Keycloak M2M client credentials.
+    Generate or refresh a JWT token for a user.
 
-    This endpoint generates a Keycloak M2M token that is validated the same way
-    as other Keycloak tokens in the system, ensuring consistent authentication.
+    This endpoint supports two modes:
+    1. If user has stored OAuth tokens (from login), refresh them if needed and return
+    2. Otherwise, fall back to generating M2M token using client credentials
 
     This is an internal API endpoint meant to be called only by the registry service.
     The generated token will have the same or fewer privileges than the user currently has.
@@ -1264,7 +1273,7 @@ async def generate_user_token(
         request: Token generation request containing user context and requested scopes
 
     Returns:
-        Generated JWT token with expiration info
+        JWT token with expiration info (either refreshed user token or M2M token)
 
     Raises:
         HTTPException: If request is invalid or user doesn't have required permissions
@@ -1302,23 +1311,88 @@ async def generate_user_token(
                 headers={"Connection": "close"}
             )
 
-        # Get Keycloak M2M token using client credentials flow
+        # Check if user has stored OAuth tokens from their login session
+        provider = user_context.get('provider')
+        auth_method = user_context.get('auth_method')
+        user_groups = user_context.get('groups', [])
+        user_email = user_context.get('email', '')
+
+        logger.info(
+            f"Token request for user '{hash_username(username)}': "
+            f"auth_method={auth_method}, provider={provider}, "
+            f"groups={user_groups}, scopes={requested_scopes}"
+        )
+
+        # For OAuth users, generate a self-signed JWT with their identity and groups
+        # This token is issued by our auth server and can be verified using SECRET_KEY
+        if auth_method == 'oauth2':
+            logger.info(
+                f"Generating self-signed JWT for OAuth user '{hash_username(username)}' "
+                f"with groups: {user_groups}"
+            )
+
+            current_time = int(time.time())
+            expires_in = DEFAULT_TOKEN_LIFETIME_HOURS * 3600  # 8 hours default
+
+            # Build JWT claims
+            jwt_claims = {
+                "iss": JWT_ISSUER,
+                "aud": JWT_AUDIENCE,
+                "sub": username,
+                "preferred_username": username,
+                "email": user_email,
+                "groups": user_groups,
+                "scope": " ".join(requested_scopes) if requested_scopes else "",
+                "token_use": "access",
+                "auth_method": "oauth2",
+                "provider": provider,
+                "iat": current_time,
+                "exp": current_time + expires_in,
+                "description": request.description
+            }
+
+            # Sign the JWT with our SECRET_KEY
+            access_token = jwt.encode(
+                jwt_claims,
+                SECRET_KEY,
+                algorithm="HS256"
+            )
+
+            logger.info(
+                f"Generated self-signed JWT for user '{hash_username(username)}', "
+                f"expires in {expires_in} seconds"
+            )
+
+            return GenerateTokenResponse(
+                access_token=access_token,
+                refresh_token=None,
+                expires_in=expires_in,
+                refresh_expires_in=0,
+                scope=" ".join(requested_scopes) if requested_scopes else "openid profile email",
+                issued_at=current_time,
+                description=request.description
+            )
+
+        # Fall back to M2M token using client credentials flow
         try:
             auth_provider = get_auth_provider()
             provider_info = auth_provider.get_provider_info()
+            provider_type = provider_info.get('provider_type', 'unknown')
 
-            if provider_info.get('provider_type') != 'keycloak':
+            logger.info(f"Generating M2M token for user '{hash_username(username)}' using {provider_type}")
+
+            if provider_type == 'keycloak':
+                # Request token from Keycloak using M2M client credentials
+                token_data = auth_provider.get_m2m_token(scope="openid email profile")
+            elif provider_type == 'entra':
+                # Request token from Entra ID using client credentials
+                token_data = auth_provider.get_m2m_token()
+            else:
                 raise HTTPException(
                     status_code=500,
-                    detail="Token generation requires Keycloak provider",
+                    detail=f"Token generation not supported for provider: {provider_type}",
                     headers={"Connection": "close"}
                 )
-
-            # Request token from Keycloak using M2M client credentials
-            # Note: We don't pass user's requested scopes to Keycloak because the M2M
-            # client has its own configured scopes. The returned token will have scopes
-            # based on the M2M client configuration in Keycloak.
-            token_data = auth_provider.get_m2m_token(scope="openid email profile")
 
             access_token = token_data.get("access_token")
             refresh_token_value = token_data.get("refresh_token")
@@ -1327,12 +1401,12 @@ async def generate_user_token(
             scope = token_data.get("scope", "openid email profile")
 
             if not access_token:
-                raise ValueError("No access token returned from Keycloak")
+                raise ValueError(f"No access token returned from {provider_type}")
 
             current_time = int(time.time())
 
             logger.info(
-                f"Generated Keycloak M2M token for user '{hash_username(username)}' "
+                f"Generated {provider_type} M2M token for user '{hash_username(username)}' "
                 f"with scopes: {requested_scopes}, expires in {expires_in} seconds"
             )
 
@@ -1347,10 +1421,10 @@ async def generate_user_token(
             )
 
         except ValueError as e:
-            logger.error(f"Keycloak token generation failed: {e}")
+            logger.error(f"Token generation failed: {e}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to generate token from Keycloak: {e}",
+                detail=f"Failed to generate token: {e}",
                 headers={"Connection": "close"}
             )
 
@@ -1860,13 +1934,19 @@ async def oauth2_callback(
             logger.info(f"Mapped user info: {mapped_user}")
         
         # Create session cookie compatible with registry
+        # Include OAuth tokens for programmatic API access
         session_data = {
             "username": mapped_user["username"],
             "email": mapped_user.get("email"),
             "name": mapped_user.get("name"),
             "groups": mapped_user.get("groups", []),
             "provider": provider,
-            "auth_method": "oauth2"
+            "auth_method": "oauth2",
+            # Store OAuth tokens for later use (e.g., "Get JWT Token" button)
+            "access_token": token_data.get("access_token"),
+            "refresh_token": token_data.get("refresh_token"),
+            "token_expires_in": token_data.get("expires_in"),
+            "token_obtained_at": int(time.time())
         }
         
         registry_session = signer.dumps(session_data)

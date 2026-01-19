@@ -9,7 +9,7 @@ This guide provides a comprehensive, step-by-step walkthrough for setting up the
 4. [Cloning and Configuring the Project](#4-cloning-and-configuring-the-project)
 5. [Setting Up Keycloak Identity Provider](#5-setting-up-keycloak-identity-provider)
 6. [Starting the MCP Gateway Services](#6-starting-the-mcp-gateway-services)
-7. [Storage Backend Setup (Optional)](#7-storage-backend-setup-optional)
+7. [Storage Backend Setup](#7-storage-backend-setup-optional)
    - [MongoDB CE Setup (Recommended)](#mongodb-ce-setup-recommended-for-local-development)
 8. [Verification and Testing](#8-verification-and-testing)
 9. [Configuring AI Agents and Coding Assistants](#9-configuring-ai-agents-and-coding-assistants)
