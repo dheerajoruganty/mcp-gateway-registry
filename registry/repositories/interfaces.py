@@ -9,6 +9,7 @@ from typing import Dict, List, Any, Optional
 
 from ..schemas.agent_models import AgentCard
 from ..schemas.federation_schema import FederationConfig
+from ..schemas.peer_federation_schema import PeerRegistryConfig, PeerSyncStatus
 
 
 class ServerRepositoryBase(ABC):
@@ -704,5 +705,149 @@ class FederationConfigRepositoryBase(ABC):
 
         Returns:
             List of config summaries with id, created_at, updated_at
+        """
+        pass
+
+
+class PeerFederationRepositoryBase(ABC):
+    """
+    Abstract base class for peer federation data access.
+
+    Implementations:
+    - FilePeerFederationRepository: reads ~/mcp-gateway/peers/*.json
+    - DocumentDBPeerFederationRepository: reads mcp-peers collection
+    """
+
+    @abstractmethod
+    async def get_peer(
+        self,
+        peer_id: str,
+    ) -> Optional[PeerRegistryConfig]:
+        """
+        Get peer configuration by ID.
+
+        Args:
+            peer_id: Peer identifier
+
+        Returns:
+            PeerRegistryConfig if found, None otherwise
+        """
+        pass
+
+    @abstractmethod
+    async def list_peers(
+        self,
+        enabled: Optional[bool] = None,
+    ) -> List[PeerRegistryConfig]:
+        """
+        List all peer configurations.
+
+        Args:
+            enabled: If True, return only enabled peers.
+                    If False, return only disabled peers.
+                    If None, return all peers.
+
+        Returns:
+            List of peer configurations
+        """
+        pass
+
+    @abstractmethod
+    async def save_peer(
+        self,
+        peer: PeerRegistryConfig,
+    ) -> PeerRegistryConfig:
+        """
+        Save or update peer configuration.
+
+        Args:
+            peer: Peer configuration to save
+
+        Returns:
+            Saved peer configuration
+        """
+        pass
+
+    @abstractmethod
+    async def delete_peer(
+        self,
+        peer_id: str,
+    ) -> bool:
+        """
+        Delete peer configuration.
+
+        Args:
+            peer_id: Peer identifier
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+
+    @abstractmethod
+    async def get_sync_state(
+        self,
+        peer_id: str,
+    ) -> Optional[PeerSyncStatus]:
+        """
+        Get sync state for a peer.
+
+        Args:
+            peer_id: Peer identifier
+
+        Returns:
+            PeerSyncStatus if found, None otherwise
+        """
+        pass
+
+    @abstractmethod
+    async def save_sync_state(
+        self,
+        peer_id: str,
+        state: PeerSyncStatus,
+    ) -> bool:
+        """
+        Save sync state for a peer.
+
+        Args:
+            peer_id: Peer identifier
+            state: Sync state to save
+
+        Returns:
+            True if saved successfully
+        """
+        pass
+
+    @abstractmethod
+    async def delete_sync_state(
+        self,
+        peer_id: str,
+    ) -> bool:
+        """
+        Delete sync state for a peer.
+
+        Args:
+            peer_id: Peer identifier
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+
+    @abstractmethod
+    async def list_all_sync_states(self) -> Dict[str, PeerSyncStatus]:
+        """
+        List all sync states.
+
+        Returns:
+            Dictionary mapping peer_id to PeerSyncStatus
+        """
+        pass
+
+    @abstractmethod
+    async def load_all(self) -> None:
+        """
+        Load/reload all peer configurations and sync states from storage.
+        Called once at application startup.
         """
         pass

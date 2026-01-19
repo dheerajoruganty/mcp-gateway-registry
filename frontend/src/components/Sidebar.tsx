@@ -11,7 +11,8 @@ import {
   ChevronUpIcon,
   ClipboardIcon,
   CheckIcon,
-  ArrowDownTrayIcon
+  ArrowDownTrayIcon,
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
@@ -150,6 +151,16 @@ const fetchAdminTokens = async () => {
             >
               <KeyIcon className="h-4 w-4" />
               <span>Generate Token</span>
+            </Link>
+
+            <Link
+              to="/federation"
+              className="flex items-center space-x-3 px-3 py-2 rounded-lg text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              onClick={() => window.innerWidth < 768 && setSidebarOpen(false)}
+              tabIndex={0}
+            >
+              <GlobeAltIcon className="h-4 w-4" />
+              <span>Federation Map</span>
             </Link>
           </div>
 

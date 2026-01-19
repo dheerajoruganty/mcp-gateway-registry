@@ -12,6 +12,7 @@ from typing import (
     List,
 )
 from unittest.mock import (
+    AsyncMock,
     Mock,
     patch,
 )
@@ -277,11 +278,11 @@ class TestVisibilityFiltering:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value=servers_dict,
+            new=AsyncMock(return_value=servers_dict),
         ), patch.object(
             server_service,
             "is_service_enabled",
-            return_value=True,
+            new=AsyncMock(return_value=True),
         ):
             client = TestClient(app)
             response = client.get("/api/v1/federation/servers")
@@ -313,11 +314,11 @@ class TestVisibilityFiltering:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value=servers_dict,
+            new=AsyncMock(return_value=servers_dict),
         ), patch.object(
             server_service,
             "is_service_enabled",
-            return_value=True,
+            new=AsyncMock(return_value=True),
         ):
             client = TestClient(app)
             response = client.get("/api/v1/federation/servers")
@@ -352,11 +353,11 @@ class TestVisibilityFiltering:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value=servers_dict,
+            new=AsyncMock(return_value=servers_dict),
         ), patch.object(
             server_service,
             "is_service_enabled",
-            return_value=True,
+            new=AsyncMock(return_value=True),
         ):
             client = TestClient(app)
             response = client.get("/api/v1/federation/servers")
@@ -386,11 +387,11 @@ class TestVisibilityFiltering:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value=servers_dict,
+            new=AsyncMock(return_value=servers_dict),
         ), patch.object(
             server_service,
             "is_service_enabled",
-            return_value=True,
+            new=AsyncMock(return_value=True),
         ):
             client = TestClient(app)
             response = client.get("/api/v1/federation/servers")
@@ -425,11 +426,11 @@ class TestVisibilityFiltering:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value=servers_dict,
+            new=AsyncMock(return_value=servers_dict),
         ), patch.object(
             server_service,
             "is_service_enabled",
-            return_value=True,
+            new=AsyncMock(return_value=True),
         ):
             client = TestClient(app)
             response = client.get("/api/v1/federation/servers")
@@ -470,11 +471,11 @@ class TestIncrementalSync:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value=servers_dict,
+            new=AsyncMock(return_value=servers_dict),
         ), patch.object(
             server_service,
             "is_service_enabled",
-            return_value=True,
+            new=AsyncMock(return_value=True),
         ):
             client = TestClient(app)
 
@@ -515,11 +516,11 @@ class TestIncrementalSync:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value=servers_dict,
+            new=AsyncMock(return_value=servers_dict),
         ), patch.object(
             server_service,
             "is_service_enabled",
-            return_value=True,
+            new=AsyncMock(return_value=True),
         ):
             client = TestClient(app)
             response = client.get("/api/v1/federation/servers?since_generation=0")
@@ -549,11 +550,11 @@ class TestIncrementalSync:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value=servers_dict,
+            new=AsyncMock(return_value=servers_dict),
         ), patch.object(
             server_service,
             "is_service_enabled",
-            return_value=True,
+            new=AsyncMock(return_value=True),
         ):
             client = TestClient(app)
             response = client.get("/api/v1/federation/servers")
@@ -594,11 +595,11 @@ class TestPagination:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value=servers_dict,
+            new=AsyncMock(return_value=servers_dict),
         ), patch.object(
             server_service,
             "is_service_enabled",
-            return_value=True,
+            new=AsyncMock(return_value=True),
         ):
             client = TestClient(app)
 
@@ -637,7 +638,7 @@ class TestPagination:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value={},
+            new=AsyncMock(return_value={}),
         ):
             client = TestClient(app)
             # Requesting limit=2000 should be rejected by validation
@@ -664,11 +665,11 @@ class TestPagination:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value=servers_dict,
+            new=AsyncMock(return_value=servers_dict),
         ), patch.object(
             server_service,
             "is_service_enabled",
-            return_value=True,
+            new=AsyncMock(return_value=True),
         ):
             client = TestClient(app)
             response = client.get("/api/v1/federation/servers")
@@ -701,7 +702,7 @@ class TestEmptyRegistry:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value={},
+            new=AsyncMock(return_value={}),
         ):
             client = TestClient(app)
             response = client.get("/api/v1/federation/servers")
@@ -727,7 +728,7 @@ class TestEmptyRegistry:
         with patch.object(
             agent_service,
             "get_all_agents",
-            return_value=[],
+            new=AsyncMock(return_value=[]),
         ):
             client = TestClient(app)
             response = client.get("/api/v1/federation/agents")
@@ -768,7 +769,7 @@ class TestAgentsEndpoint:
         with patch.object(
             agent_service,
             "get_all_agents",
-            return_value=[mock_agent],
+            new=AsyncMock(return_value=[mock_agent]),
         ), patch.object(
             agent_service,
             "is_agent_enabled",
@@ -815,7 +816,7 @@ class TestAgentsEndpoint:
         with patch.object(
             agent_service,
             "get_all_agents",
-            return_value=[mock_agent_public, mock_agent_restricted],
+            new=AsyncMock(return_value=[mock_agent_public, mock_agent_restricted]),
         ), patch.object(
             agent_service,
             "is_agent_enabled",
@@ -1062,11 +1063,11 @@ class TestDisabledItemsFiltering:
         with patch.object(
             server_service,
             "get_all_servers",
-            return_value=servers_dict,
+            new=AsyncMock(return_value=servers_dict),
         ), patch.object(
             server_service,
             "is_service_enabled",
-            return_value=False,  # Server is disabled
+            new=AsyncMock(return_value=False),  # Server is disabled
         ):
             client = TestClient(app)
             response = client.get("/api/v1/federation/servers")
@@ -1097,7 +1098,7 @@ class TestDisabledItemsFiltering:
         with patch.object(
             agent_service,
             "get_all_agents",
-            return_value=[mock_agent],
+            new=AsyncMock(return_value=[mock_agent]),
         ), patch.object(
             agent_service,
             "is_agent_enabled",

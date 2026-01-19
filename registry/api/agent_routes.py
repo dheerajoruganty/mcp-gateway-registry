@@ -249,7 +249,7 @@ def _filter_agents_by_access(
             accessible.append(agent)
             continue
 
-        if agent.visibility == "private":
+        if agent.visibility in ("private", "internal"):
             if agent.registered_by == username:
                 accessible.append(agent)
             continue

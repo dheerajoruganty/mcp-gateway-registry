@@ -6,6 +6,7 @@ and triggering synchronization operations.
 """
 
 import logging
+import math
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
@@ -62,10 +63,124 @@ async def list_peers(
     )
 
     service = get_peer_federation_service()
-    peers = service.list_peers(enabled=enabled)
+    peers = await service.list_peers(enabled=enabled)
 
     logger.info(f"Returning {len(peers)} peer configs")
     return peers
+
+
+# NOTE: /topology must be defined BEFORE /{peer_id} to avoid route collision
+@router.get("/topology")
+async def get_federation_topology(
+    user_context: Dict = Depends(enhanced_auth),
+) -> Dict[str, Any]:
+    """
+    Get federation topology for visualization.
+
+    Returns nodes and edges representing the federation mesh suitable for
+    rendering with React Flow or similar libraries.
+
+    Args:
+        user_context: Authenticated user context
+
+    Returns:
+        Dictionary with 'nodes' and 'edges' lists for visualization
+
+    Example:
+        GET /api/v1/peers/topology
+    """
+    logger.info(
+        f"User '{user_context.get('username')}' retrieving federation topology"
+    )
+
+    service = get_peer_federation_service()
+    peers = await service.list_peers()
+
+    # Layout constants
+    center_x, center_y = 400, 300
+    radius = 200
+
+    # Build nodes list - always include "this registry"
+    nodes = [
+        {
+            "id": "this-registry",
+            "type": "registry",
+            "position": {"x": center_x, "y": center_y},
+            "data": {
+                "label": "This Registry",
+                "isLocal": True,
+                "status": "healthy",
+            },
+        }
+    ]
+
+    edges = []
+
+    # Add peer nodes in circular layout
+    num_peers = len(peers)
+    for i, peer in enumerate(peers):
+        # Calculate position on circle
+        if num_peers > 0:
+            angle = (2 * math.pi * i) / num_peers
+            x = center_x + radius * math.cos(angle)
+            y = center_y + radius * math.sin(angle)
+        else:
+            x, y = center_x + radius, center_y
+
+        # Get sync status for this peer
+        sync_status = await service.get_sync_status(peer.peer_id)
+
+        # Determine status
+        if not peer.enabled:
+            status_str = "disabled"
+        elif sync_status and sync_status.is_healthy:
+            status_str = "healthy"
+        elif sync_status and not sync_status.is_healthy:
+            status_str = "unhealthy"
+        else:
+            status_str = "unknown"
+
+        # Build node data
+        node_data = {
+            "label": peer.name,
+            "enabled": peer.enabled,
+            "status": status_str,
+            "endpoint": peer.endpoint,
+            "serversCount": sync_status.total_servers_synced if sync_status else 0,
+            "agentsCount": sync_status.total_agents_synced if sync_status else 0,
+            "lastSync": (
+                sync_status.last_successful_sync.isoformat()
+                if sync_status and sync_status.last_successful_sync
+                else None
+            ),
+        }
+
+        nodes.append({
+            "id": peer.peer_id,
+            "type": "peer",
+            "position": {"x": x, "y": y},
+            "data": node_data,
+        })
+
+        # Create edge for enabled peers
+        if peer.enabled:
+            is_healthy = sync_status.is_healthy if sync_status else False
+            edges.append({
+                "id": f"edge-{peer.peer_id}",
+                "source": peer.peer_id,
+                "target": "this-registry",
+                "animated": is_healthy,
+                "data": {
+                    "status": status_str,
+                },
+            })
+
+    logger.info(f"Returning topology with {len(nodes)} nodes and {len(edges)} edges")
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+    }
 
 
 @router.get("/{peer_id}", response_model=PeerRegistryConfig)
@@ -94,7 +209,7 @@ async def get_peer(
     service = get_peer_federation_service()
 
     try:
-        peer = service.get_peer(peer_id)
+        peer = await service.get_peer(peer_id)
         return peer
     except ValueError as e:
         logger.error(f"Peer not found: {peer_id}")
@@ -141,7 +256,7 @@ async def create_peer(
     service = get_peer_federation_service()
 
     try:
-        created_peer = service.add_peer(config)
+        created_peer = await service.add_peer(config)
         logger.info(f"Successfully created peer '{config.peer_id}'")
         return created_peer
     except ValueError as e:
@@ -196,7 +311,7 @@ async def update_peer(
     service = get_peer_federation_service()
 
     try:
-        updated_peer = service.update_peer(peer_id, updates)
+        updated_peer = await service.update_peer(peer_id, updates)
         logger.info(f"Successfully updated peer '{peer_id}'")
         return updated_peer
     except ValueError as e:
@@ -238,7 +353,7 @@ async def delete_peer(
     service = get_peer_federation_service()
 
     try:
-        service.remove_peer(peer_id)
+        await service.remove_peer(peer_id)
         logger.info(f"Successfully deleted peer '{peer_id}'")
         # Return None for 204 No Content
         return None
@@ -280,7 +395,7 @@ async def sync_all_peers(
 
     service = get_peer_federation_service()
 
-    results = service.sync_all_peers(enabled_only=enabled_only)
+    results = await service.sync_all_peers(enabled_only=enabled_only)
 
     # Count successes and failures
     successful = sum(1 for r in results.values() if r.success)
@@ -325,7 +440,7 @@ async def sync_peer(
     service = get_peer_federation_service()
 
     try:
-        result = service.sync_peer(peer_id)
+        result = await service.sync_peer(peer_id)
         logger.info(
             f"Sync completed for peer '{peer_id}': "
             f"success={result.success}, servers={result.servers_synced}, "
@@ -378,7 +493,7 @@ async def get_peer_status(
 
     service = get_peer_federation_service()
 
-    sync_status = service.get_sync_status(peer_id)
+    sync_status = await service.get_sync_status(peer_id)
 
     if not sync_status:
         logger.error(f"Sync status not found for peer: {peer_id}")
@@ -418,7 +533,7 @@ async def enable_peer(
     service = get_peer_federation_service()
 
     try:
-        updated_peer = service.update_peer(peer_id, {"enabled": True})
+        updated_peer = await service.update_peer(peer_id, {"enabled": True})
         logger.info(f"Successfully enabled peer '{peer_id}'")
         return updated_peer
     except ValueError as e:
@@ -457,7 +572,7 @@ async def disable_peer(
     service = get_peer_federation_service()
 
     try:
-        updated_peer = service.update_peer(peer_id, {"enabled": False})
+        updated_peer = await service.update_peer(peer_id, {"enabled": False})
         logger.info(f"Successfully disabled peer '{peer_id}'")
         return updated_peer
     except ValueError as e:

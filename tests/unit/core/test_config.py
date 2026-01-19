@@ -46,8 +46,11 @@ class TestSettingsInstantiation:
         assert settings.auth_server_url == "http://localhost:8888"
         assert settings.auth_server_external_url == "http://localhost:8888"
 
-    def test_settings_embeddings_default_values(self) -> None:
+    def test_settings_embeddings_default_values(self, monkeypatch, tmp_path) -> None:
         """Test embeddings-related default values."""
+        # Change to temp directory to prevent .env file loading
+        monkeypatch.chdir(tmp_path)
+
         # Act
         settings = Settings()
 
@@ -257,8 +260,11 @@ class TestSettingsEnvironmentVariables:
         assert not hasattr(settings, "unknown_variable")
         assert not hasattr(settings, "another_unknown")
 
-    def test_settings_optional_fields_none(self) -> None:
+    def test_settings_optional_fields_none(self, monkeypatch, tmp_path) -> None:
         """Test that optional fields can be None."""
+        # Change to temp directory to prevent .env file loading
+        monkeypatch.chdir(tmp_path)
+
         # Act
         settings = Settings()
 
@@ -808,8 +814,11 @@ class TestSettingsSessionCookie:
         # Assert
         assert settings.session_cookie_secure is True
 
-    def test_session_cookie_domain_none_by_default(self) -> None:
+    def test_session_cookie_domain_none_by_default(self, monkeypatch, tmp_path) -> None:
         """Test that session_cookie_domain is None by default."""
+        # Change to temp directory to prevent .env file loading
+        monkeypatch.chdir(tmp_path)
+
         # Act
         settings = Settings()
 

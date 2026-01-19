@@ -192,7 +192,7 @@ def sample_private_agent_card() -> AgentCard:
         name="private-agent",
         path="/agents/private-agent",
         url="http://localhost:9000/private-agent",
-        visibility="private",
+        visibility="internal",
         registered_by="testuser",
         is_enabled=True,
     )
@@ -382,7 +382,7 @@ class TestFilterAgentsByAccess:
         """Test private agents not visible to other users."""
         # Arrange
         private_agent = AgentCardFactory(
-            visibility="private",
+            visibility="internal",
             registered_by="differentuser",
             path="/agents/private-agent",
         )
@@ -617,7 +617,7 @@ class TestListAgents:
         """Test filtering agents by visibility."""
         # Arrange
         public_agent = AgentCardFactory(visibility="public", path="/agents/public")
-        private_agent = AgentCardFactory(visibility="private", path="/agents/private")
+        private_agent = AgentCardFactory(visibility="internal", path="/agents/private")
 
         with patch("registry.api.agent_routes.agent_service") as mock_agent_service:
 

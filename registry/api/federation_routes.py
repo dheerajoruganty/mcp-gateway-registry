@@ -1,10 +1,12 @@
 """
 Federation configuration API routes.
 
-Provides endpoints to manage federation configurations.
+Provides endpoints to manage federation configurations,
+unified topology for visualization, and sync operations.
 """
 
 import logging
+import time
 from typing import Annotated, Dict, Any, List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends, status
@@ -13,6 +15,12 @@ from ..auth.dependencies import nginx_proxied_auth
 from ..repositories.factory import get_federation_config_repository
 from ..repositories.interfaces import FederationConfigRepositoryBase
 from ..schemas.federation_schema import FederationConfig
+from ..schemas.federation_topology_schema import (
+    FederationSourceConfig,
+    FederationSyncResult,
+    UnifiedTopologyResponse,
+)
+from ..services.federation_service import get_federation_service
 
 
 logging.basicConfig(
@@ -23,6 +31,383 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# --- Unified Topology Endpoint ---
+
+
+@router.get(
+    "/federation/unified-topology",
+    tags=["federation"],
+    summary="Get unified federation topology",
+    response_model=UnifiedTopologyResponse,
+)
+async def get_unified_topology(
+    user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
+) -> UnifiedTopologyResponse:
+    """
+    Get unified federation topology including all sources.
+
+    Returns a unified view of all federation sources:
+    - Local registry (center node)
+    - Peer registries
+    - Anthropic MCP source
+    - ASOR agents source
+
+    This endpoint is used for the federation visualization UI.
+
+    Returns:
+        UnifiedTopologyResponse with nodes, edges, and metadata
+    """
+    logger.info(f"User {user_context['username']} retrieving unified federation topology")
+
+    service = get_federation_service()
+    topology = await service.get_unified_topology()
+
+    logger.info(
+        f"Returning unified topology with {len(topology.nodes)} nodes "
+        f"and {len(topology.edges)} edges"
+    )
+
+    return topology
+
+
+# --- Source-Specific Sync Endpoints ---
+
+
+@router.post(
+    "/federation/anthropic/sync",
+    tags=["federation"],
+    summary="Sync from Anthropic MCP",
+    response_model=FederationSyncResult,
+)
+async def sync_anthropic(
+    user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
+    repo: "FederationConfigRepositoryBase" = Depends(lambda: get_federation_config_repository())
+) -> FederationSyncResult:
+    """
+    Trigger manual sync from Anthropic MCP registry.
+
+    Syncs servers from the Anthropic MCP registry based on the
+    current federation configuration.
+
+    Returns:
+        FederationSyncResult with sync statistics
+    """
+    logger.info(f"User {user_context['username']} triggering Anthropic MCP sync")
+
+    start_time = time.time()
+
+    # Get federation config
+    config = await repo.get_config("default")
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Federation config 'default' not found"
+        )
+
+    if not config.anthropic.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Anthropic federation is not enabled"
+        )
+
+    try:
+        # Import and use the sync logic
+        from ..services.federation.anthropic_client import AnthropicFederationClient
+        from ..services.server_service import server_service
+        from datetime import datetime, timezone
+
+        anthropic_client = AnthropicFederationClient(
+            endpoint=config.anthropic.endpoint
+        )
+
+        servers = anthropic_client.fetch_all_servers(
+            config.anthropic.servers
+        )
+
+        servers_synced = 0
+        for server_data in servers:
+            try:
+                server_path = server_data.get("path")
+                if not server_path:
+                    continue
+
+                # Add federation metadata
+                server_data["sync_metadata"] = {
+                    "source": "anthropic",
+                    "synced_at": datetime.now(timezone.utc).isoformat(),
+                    "is_federated": True,
+                }
+
+                # Check if server already exists
+                existing_server = await server_service.get_server_info(server_path)
+                if existing_server:
+                    success = await server_service.update_server(server_path, server_data)
+                else:
+                    success = await server_service.register_server(server_data)
+                    if success:
+                        await server_service.toggle_service(server_path, True)
+
+                if success:
+                    servers_synced += 1
+
+            except Exception as e:
+                logger.error(f"Failed to sync Anthropic server: {e}")
+
+        duration = time.time() - start_time
+
+        logger.info(f"Anthropic sync completed: {servers_synced} servers in {duration:.2f}s")
+
+        return FederationSyncResult(
+            success=True,
+            source="anthropic",
+            servers_synced=servers_synced,
+            agents_synced=0,
+            duration_seconds=duration,
+        )
+
+    except Exception as e:
+        duration = time.time() - start_time
+        logger.error(f"Anthropic sync failed: {e}", exc_info=True)
+        return FederationSyncResult(
+            success=False,
+            source="anthropic",
+            servers_synced=0,
+            agents_synced=0,
+            duration_seconds=duration,
+            error_message=str(e),
+        )
+
+
+@router.post(
+    "/federation/asor/sync",
+    tags=["federation"],
+    summary="Sync from ASOR",
+    response_model=FederationSyncResult,
+)
+async def sync_asor(
+    user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
+    repo: "FederationConfigRepositoryBase" = Depends(lambda: get_federation_config_repository())
+) -> FederationSyncResult:
+    """
+    Trigger manual sync from ASOR agents registry.
+
+    Syncs agents from ASOR based on the current federation configuration.
+
+    Returns:
+        FederationSyncResult with sync statistics
+    """
+    logger.info(f"User {user_context['username']} triggering ASOR sync")
+
+    start_time = time.time()
+
+    # Get federation config
+    config = await repo.get_config("default")
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Federation config 'default' not found"
+        )
+
+    if not config.asor.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ASOR federation is not enabled"
+        )
+
+    try:
+        # Import and use the sync logic
+        from ..services.federation.asor_client import AsorFederationClient
+        from ..services.agent_service import agent_service
+        from ..schemas.agent_models import AgentCard
+        from datetime import datetime, timezone
+
+        tenant_url = (
+            config.asor.endpoint.split("/api")[0]
+            if "/api" in config.asor.endpoint
+            else config.asor.endpoint
+        )
+
+        asor_client = AsorFederationClient(
+            endpoint=config.asor.endpoint,
+            auth_env_var=config.asor.auth_env_var,
+            tenant_url=tenant_url
+        )
+
+        agents = asor_client.fetch_all_agents(config.asor.agents)
+
+        agents_synced = 0
+        for agent_data in agents:
+            try:
+                agent_name = agent_data.get("name", "Unknown ASOR Agent")
+                agent_path = f"/{agent_name.lower().replace('_', '-')}"
+
+                # Extract skills
+                skills_data = agent_data.get("skills", [])
+                skills = []
+                for skill in skills_data:
+                    skills.append({
+                        "name": skill.get("name", ""),
+                        "description": skill.get("description", ""),
+                        "id": skill.get("id", "")
+                    })
+
+                agent_card = AgentCard(
+                    protocol_version="1.0",
+                    name=agent_name,
+                    path=agent_path,
+                    url=agent_data.get("url", ""),
+                    description=agent_data.get("description", f"ASOR agent: {agent_name}"),
+                    version=agent_data.get("version", "1.0.0"),
+                    provider="ASOR",
+                    author="ASOR",
+                    license="Unknown",
+                    skills=skills,
+                    tags=["asor", "federated", "workday"],
+                    visibility="public",
+                    registered_by="asor-federation",
+                    registered_at=datetime.now(timezone.utc),
+                    sync_metadata={
+                        "source": "asor",
+                        "synced_at": datetime.now(timezone.utc).isoformat(),
+                        "is_federated": True,
+                    }
+                )
+
+                # Check if agent already exists
+                existing_agent = await agent_service.get_agent_info(agent_path)
+                if not existing_agent:
+                    await agent_service.register_agent(agent_card)
+                    agents_synced += 1
+                    logger.info(f"Registered ASOR agent: {agent_name}")
+
+            except Exception as e:
+                logger.error(f"Failed to sync ASOR agent: {e}")
+
+        duration = time.time() - start_time
+
+        logger.info(f"ASOR sync completed: {agents_synced} agents in {duration:.2f}s")
+
+        return FederationSyncResult(
+            success=True,
+            source="asor",
+            servers_synced=0,
+            agents_synced=agents_synced,
+            duration_seconds=duration,
+        )
+
+    except Exception as e:
+        duration = time.time() - start_time
+        logger.error(f"ASOR sync failed: {e}", exc_info=True)
+        return FederationSyncResult(
+            success=False,
+            source="asor",
+            servers_synced=0,
+            agents_synced=0,
+            duration_seconds=duration,
+            error_message=str(e),
+        )
+
+
+@router.put(
+    "/federation/anthropic/config",
+    tags=["federation"],
+    summary="Update Anthropic federation config",
+)
+async def update_anthropic_config(
+    updates: FederationSourceConfig,
+    user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
+    repo: "FederationConfigRepositoryBase" = Depends(lambda: get_federation_config_repository())
+) -> Dict[str, Any]:
+    """
+    Update Anthropic federation configuration.
+
+    Allows updating:
+    - enabled: Enable or disable Anthropic federation
+    - endpoint: Anthropic MCP registry endpoint URL
+    - sync_on_startup: Whether to sync on startup
+
+    Returns:
+        Updated configuration
+    """
+    logger.info(f"User {user_context['username']} updating Anthropic config: {updates}")
+
+    config = await repo.get_config("default")
+    if not config:
+        # Create default config if not exists
+        config = FederationConfig()
+
+    # Apply updates to Anthropic config
+    if updates.enabled is not None:
+        config.anthropic.enabled = updates.enabled
+    if updates.endpoint is not None:
+        config.anthropic.endpoint = updates.endpoint
+    if updates.sync_on_startup is not None:
+        config.anthropic.sync_on_startup = updates.sync_on_startup
+
+    # Save updated config
+    saved_config = await repo.save_config(config, "default")
+
+    logger.info(f"Anthropic config updated: enabled={config.anthropic.enabled}")
+
+    return {
+        "message": "Anthropic configuration updated successfully",
+        "config": saved_config.anthropic.model_dump()
+    }
+
+
+@router.put(
+    "/federation/asor/config",
+    tags=["federation"],
+    summary="Update ASOR federation config",
+)
+async def update_asor_config(
+    updates: FederationSourceConfig,
+    user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
+    repo: "FederationConfigRepositoryBase" = Depends(lambda: get_federation_config_repository())
+) -> Dict[str, Any]:
+    """
+    Update ASOR federation configuration.
+
+    Allows updating:
+    - enabled: Enable or disable ASOR federation
+    - endpoint: ASOR API endpoint URL
+    - sync_on_startup: Whether to sync on startup
+    - auth_env_var: Environment variable name for auth token
+
+    Returns:
+        Updated configuration
+    """
+    logger.info(f"User {user_context['username']} updating ASOR config: {updates}")
+
+    config = await repo.get_config("default")
+    if not config:
+        # Create default config if not exists
+        config = FederationConfig()
+
+    # Apply updates to ASOR config
+    if updates.enabled is not None:
+        config.asor.enabled = updates.enabled
+    if updates.endpoint is not None:
+        config.asor.endpoint = updates.endpoint
+    if updates.sync_on_startup is not None:
+        config.asor.sync_on_startup = updates.sync_on_startup
+    if updates.auth_env_var is not None:
+        config.asor.auth_env_var = updates.auth_env_var
+
+    # Save updated config
+    saved_config = await repo.save_config(config, "default")
+
+    logger.info(f"ASOR config updated: enabled={config.asor.enabled}")
+
+    return {
+        "message": "ASOR configuration updated successfully",
+        "config": saved_config.asor.model_dump()
+    }
+
+
+# --- Repository Dependency ---
 
 
 def _get_federation_repo() -> FederationConfigRepositoryBase:

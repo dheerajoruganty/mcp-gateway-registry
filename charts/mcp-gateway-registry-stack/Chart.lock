@@ -1,0 +1,15 @@
+dependencies:
+- name: keycloak
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 25.2.0
+- name: auth-server
+  repository: file://../auth-server
+  version: 0.1.0
+- name: registry
+  repository: file://../registry
+  version: 0.1.0
+- name: keycloak-configure
+  repository: file://../keycloak-configure
+  version: 0.1.0
+digest: sha256:87e0026abb81d2d983dd0d366c2b74cbc7c7f0e41024b5061ed526a92d809c4b
+generated: "2025-12-31T17:47:08.087935026Z"

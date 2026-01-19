@@ -333,15 +333,14 @@ async def export_servers(
     )
 
     # Get all servers (enabled and disabled) - returns Dict[str, Dict[str, Any]]
-    all_servers_dict = server_service.get_all_servers()
+    all_servers_dict = await server_service.get_all_servers()
 
     # Convert to list and filter out disabled servers - never sync disabled servers
     # Each server is a dict with 'path' key
-    enabled_servers = [
-        server_data
-        for path, server_data in all_servers_dict.items()
-        if server_service.is_service_enabled(path)
-    ]
+    enabled_servers = []
+    for path, server_data in all_servers_dict.items():
+        if await server_service.is_service_enabled(path):
+            enabled_servers.append(server_data)
 
     # Extract peer groups from JWT for visibility filtering
     peer_groups = user_context.get("groups", [])
@@ -436,7 +435,7 @@ async def export_agents(
     )
 
     # Get all agents (enabled and disabled)
-    all_agents = agent_service.get_all_agents()
+    all_agents = await agent_service.get_all_agents()
 
     # Filter out disabled agents - never sync disabled agents
     enabled_agents = [a for a in all_agents if agent_service.is_agent_enabled(a.path)]

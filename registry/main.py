@@ -27,6 +27,8 @@ from registry.api.registry_routes import router as registry_router
 from registry.api.agent_routes import router as agent_router
 from registry.api.management_routes import router as management_router
 from registry.api.federation_routes import router as federation_router
+from registry.api.federation_export_routes import router as federation_export_router
+from registry.api.peer_management_routes import router as peer_management_router
 from registry.health.routes import router as health_router
 
 # Import auth dependencies

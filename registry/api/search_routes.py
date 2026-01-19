@@ -31,7 +31,7 @@ class MatchingToolResult(BaseModel):
 
     tool_name: str
     description: Optional[str] = None
-    relevance_score: float = Field(0.0, ge=0.0)
+    relevance_score: float = Field(0.0, ge=0.0, le=1.0)
     match_context: Optional[str] = None
 
 
@@ -132,7 +132,7 @@ async def _user_can_access_agent(agent_path: str, user_context: dict) -> bool:
     if agent_card.visibility == "public":
         return True
 
-    if agent_card.visibility == "private":
+    if agent_card.visibility in ("private", "internal"):
         return agent_card.registered_by == user_context.get("username")
 
     if agent_card.visibility == "group-restricted":

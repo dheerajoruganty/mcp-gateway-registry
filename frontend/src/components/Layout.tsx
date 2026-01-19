@@ -1,15 +1,16 @@
 import React, { useState, useEffect, Fragment } from 'react';
 import { Menu, Transition } from '@headlessui/react';
 import { Link } from 'react-router-dom';
-import { 
-  Bars3Icon, 
-  UserIcon, 
+import {
+  Bars3Icon,
+  UserIcon,
   ChevronDownIcon,
   ArrowRightOnRectangleIcon,
   KeyIcon,
   Cog6ToothIcon,
   SunIcon,
-  MoonIcon
+  MoonIcon,
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 import Sidebar from './Sidebar';
 import { useServerStats } from '../hooks/useServerStats';
@@ -77,6 +78,23 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   </span>
                 </Link>
               </div>
+
+              {/* Navigation Links */}
+              <nav className="hidden md:flex items-center ml-8 space-x-1">
+                <Link
+                  to="/"
+                  className="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  to="/federation"
+                  className="flex items-center px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <GlobeAltIcon className="h-4 w-4 mr-1.5" />
+                  Federation
+                </Link>
+              </nav>
             </div>
 
             {/* Right side */}

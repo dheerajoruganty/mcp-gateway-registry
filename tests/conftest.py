@@ -262,6 +262,8 @@ def mock_settings(test_settings: Settings, monkeypatch):
         Test settings instance
     """
     monkeypatch.setattr("registry.core.config.settings", test_settings)
+    # Also patch settings in modules that import it at module level
+    monkeypatch.setattr("registry.search.service.settings", test_settings)
     logger.debug("Patched global settings with test settings")
     return test_settings
 
