@@ -778,7 +778,7 @@ The following major features span multiple milestones and represent significant 
 - **[#129 - Virtual MCP Server Support](https://github.com/agentic-community/mcp-gateway-registry/issues/129)** 🚧 **IN PROGRESS** (Jan 2026 Week 3)
   Dynamic tool aggregation and intelligent routing using Lua/JavaScript scripting. Enables logical grouping of tools from multiple backend servers.
 
-- **[#232 - A2A Curated Registry Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/232)** 🚧 **IN PROGRESS** (Dec 2025 Week 4)
+- **[#232 - A2A Curated Registry Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/232)** ✅ **COMPLETED**
   Enable agent-to-agent discovery and tool invocation through curated registry patterns.
 
 - **[#260 - Federation Between MCP Registry Instances](https://github.com/agentic-community/mcp-gateway-registry/issues/260)** 📅 **PLANNED** (Jan 2026 Week 4)
@@ -787,7 +787,7 @@ The following major features span multiple milestones and represent significant 
 - **[#295 - Multi-Level Tool Usage Rate Limiting](https://github.com/agentic-community/mcp-gateway-registry/issues/295)** 📅 **PLANNED** (Jan 2026 Week 3)
   Comprehensive rate limiting architecture with detailed implementation guide for tool usage control.
 
-- **[#297 - Unified UI Registration Flow](https://github.com/agentic-community/mcp-gateway-registry/issues/297)** 🚧 **IN PROGRESS** (Jan 2026 Week 1)
+- **[#297 - Unified UI Registration Flow](https://github.com/agentic-community/mcp-gateway-registry/issues/297)** ✅ **COMPLETED**
   Streamlined registration experience for both MCP servers and A2A agents through a unified interface.
 
 ---
@@ -796,6 +796,12 @@ The following major features span multiple milestones and represent significant 
 
 - **[#316 - Entra ID IAM APIs](https://github.com/agentic-community/mcp-gateway-registry/issues/316)** ✅ **COMPLETED**
   Full IAM support for Microsoft Entra ID with harmonized API for user/group management. Includes M2M service accounts, self-signed JWT tokens, and fine-grained access control through scopes. [Authentication Design](docs/design/authentication-design.md) | [Scopes Management](docs/scopes-mgmt.md)
+
+- **[#297 - Unified UI Registration Flow](https://github.com/agentic-community/mcp-gateway-registry/issues/297)** ✅ **COMPLETED**
+  Streamlined registration experience for both MCP servers and A2A agents through a unified interface.
+
+- **[#232 - A2A Curated Registry Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/232)** ✅ **COMPLETED**
+  Agent-to-agent discovery and tool invocation through curated registry patterns.
 
 - **[#329 - Update llms.txt](https://github.com/agentic-community/mcp-gateway-registry/issues/329)** ✅ **COMPLETED** (v1.0.9)
   Updated AI assistant reference documentation with recent architecture changes.
