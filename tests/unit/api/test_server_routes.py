@@ -1176,3 +1176,182 @@ class TestHelperFunctions:
             assert response.status_code == 201
             call_args = mock_server_service.register_server.call_args[0][0]
             assert call_args["tags"] == ["tag1", "tag2", "tag3"]
+
+
+# =============================================================================
+# SERVERS API ROUTES TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.api
+@pytest.mark.servers
+class TestServersAPIRoutes:
+    """Tests for the /servers/* API routes - simplified tests for not-found cases."""
+
+    def test_toggle_service_api_not_found(
+        self,
+        test_client_admin,
+        mock_server_service,
+    ):
+        """Test toggle for non-existent service."""
+        mock_server_service.get_server_info.return_value = None
+
+        response = test_client_admin.post(
+            "/api/servers/toggle",
+            data={
+                "path": "/nonexistent",
+                "new_state": "true",
+            }
+        )
+
+        assert response.status_code == 404
+
+    def test_remove_service_api_not_found(
+        self,
+        test_client_admin,
+        mock_server_service,
+    ):
+        """Test removal of non-existent service."""
+        mock_server_service.get_server_info.return_value = None
+
+        response = test_client_admin.post(
+            "/api/servers/remove",
+            data={"path": "/nonexistent"}
+        )
+
+        assert response.status_code == 404
+
+
+# =============================================================================
+# SERVER GROUPS API TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.api
+@pytest.mark.servers
+class TestServerGroupsAPI:
+    """Tests for the /servers/groups/* API routes - simplified tests."""
+
+    def test_get_group_api_not_found(
+        self,
+        test_client_admin,
+    ):
+        """Test getting non-existent group."""
+        with patch("registry.services.scope_service.get_group") as mock_get:
+            mock_get.return_value = None
+
+            response = test_client_admin.get("/api/servers/groups/nonexistent")
+
+        assert response.status_code == 404
+
+    def test_add_server_to_groups_api_success(
+        self,
+        test_client_admin,
+        mock_server_service,
+        sample_server_info,
+    ):
+        """Test adding server to groups via API."""
+        mock_server_service.get_server_info.return_value = sample_server_info
+
+        with patch("registry.services.scope_service.add_server_to_groups") as mock_add:
+            mock_add.return_value = True
+
+            response = test_client_admin.post(
+                "/api/servers/groups/add",
+                data={
+                    "server_name": "/test-server",
+                    "group_names": "group1,group2"
+                }
+            )
+
+        assert response.status_code == 200
+
+    def test_remove_server_from_groups_api_success(
+        self,
+        test_client_admin,
+        mock_server_service,
+        sample_server_info,
+    ):
+        """Test removing server from groups via API."""
+        mock_server_service.get_server_info.return_value = sample_server_info
+
+        with patch("registry.services.scope_service.remove_server_from_groups") as mock_remove:
+            mock_remove.return_value = True
+
+            response = test_client_admin.post(
+                "/api/servers/groups/remove",
+                data={
+                    "server_name": "/test-server",
+                    "group_names": "group1"
+                }
+            )
+
+        assert response.status_code == 200
+
+
+# =============================================================================
+# SERVER RATING API TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.api
+@pytest.mark.servers
+class TestServerRatingAPI:
+    """Tests for server rating API endpoints - simplified tests."""
+
+    def test_get_server_rating_success(
+        self,
+        test_client_admin,
+        mock_server_service,
+        sample_server_info,
+    ):
+        """Test getting server rating."""
+        server_with_rating = sample_server_info.copy()
+        server_with_rating["num_stars"] = 4.5
+        server_with_rating["rating_details"] = [{"user": "admin", "rating": 5}]
+        mock_server_service.get_server_info.return_value = server_with_rating
+
+        response = test_client_admin.get("/api/servers/test-server/rating")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["num_stars"] == 4.5
+
+    def test_get_server_rating_not_found(
+        self,
+        test_client_admin,
+        mock_server_service,
+    ):
+        """Test getting rating for non-existent server."""
+        mock_server_service.get_server_info.return_value = None
+
+        response = test_client_admin.get("/api/servers/nonexistent/rating")
+
+        assert response.status_code == 404
+
+
+# =============================================================================
+# SERVER SECURITY SCAN API TESTS
+# =============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.api
+@pytest.mark.servers
+class TestServerSecurityScanAPI:
+    """Tests for server security scan API endpoints - simplified tests."""
+
+    def test_rescan_server_not_found(
+        self,
+        test_client_admin,
+        mock_server_service,
+    ):
+        """Test rescan for non-existent server."""
+        mock_server_service.get_server_info.return_value = None
+
+        response = test_client_admin.post("/api/servers/nonexistent/rescan")
+
+        assert response.status_code == 404

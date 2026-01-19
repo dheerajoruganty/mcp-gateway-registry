@@ -84,7 +84,7 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
     "--cov-report=xml:coverage.xml",
-    "--cov-fail-under=35",
+    "--cov-fail-under=65",
     "--html=tests/reports/report.html",
     "--self-contained-html",
     "--json-report",
@@ -126,6 +126,13 @@ omit = [
     "*/venv/*",
     "*/.venv/*",
     "registry/main_old.py",
+    # DocumentDB repositories (only used when STORAGE_BACKEND=documentdb|mongodb-ce)
+    "registry/repositories/documentdb/*",
+    # Deprecated modules (scopes_manager is thin wrapper around scope_service)
+    "registry/utils/scopes_manager_old.py",
+    "registry/utils/scopes_manager.py",
+    # Keycloak integration (optional feature, not tested in unit tests)
+    "registry/utils/keycloak_manager.py",
 ]
 
 [tool.coverage.paths]

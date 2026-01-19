@@ -1,1 +1,1 @@
-"""Health monitoring unit tests."""
+"""Unit tests for health module."""
