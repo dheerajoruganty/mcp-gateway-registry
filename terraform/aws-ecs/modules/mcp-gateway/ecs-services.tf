@@ -702,7 +702,6 @@ module "ecs_service_registry" {
 
   tags = local.common_tags
 
-  depends_on = [module.ecs_service_auth]
 }
 
 
@@ -837,7 +836,6 @@ module "ecs_service_currenttime" {
 
   tags = local.common_tags
 
-  depends_on = [module.ecs_service_registry]
 }
 
 
@@ -990,7 +988,6 @@ module "ecs_service_mcpgw" {
 
   tags = local.common_tags
 
-  depends_on = [module.ecs_service_registry]
 }
 
 
@@ -1112,7 +1109,6 @@ module "ecs_service_realserverfaketools" {
 
   tags = local.common_tags
 
-  depends_on = [module.ecs_service_registry]
 }
 
 
@@ -1234,7 +1230,6 @@ module "ecs_service_flight_booking_agent" {
 
   tags = local.common_tags
 
-  depends_on = [module.ecs_service_registry]
 }
 
 
@@ -1356,5 +1351,4 @@ module "ecs_service_travel_assistant_agent" {
 
   tags = local.common_tags
 
-  depends_on = [module.ecs_service_registry]
 }
