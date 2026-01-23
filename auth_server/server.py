@@ -499,12 +499,16 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down auth server")
 
 
+# Get ROOT_PATH for path-based routing
+ROOT_PATH = os.environ.get("ROOT_PATH", "").rstrip("/")
+
 # Create FastAPI app
 app = FastAPI(
     title="Simplified Auth Server",
     description="Authentication server for validating JWT tokens against Amazon Cognito with header-based configuration",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    root_path=ROOT_PATH
 )
 
 
@@ -1722,11 +1726,14 @@ async def oauth2_login(provider: str, request: Request, redirect_uri: str = None
         scheme = "https" if cloudfront_proto == "https" or forwarded_proto == "https" or request.url.scheme == "https" else "http"
         logger.info(f"OAuth2 login - host: {host}, x-cloudfront-forwarded-proto: {cloudfront_proto}, x-forwarded-proto: {forwarded_proto}, scheme: {scheme}")
         
+        # Get ROOT_PATH for path-based routing (e.g., /auth)
+        root_path = os.environ.get("ROOT_PATH", "").rstrip("/")
+        
         # Special case for localhost to include port
         if "localhost" in host and ":" not in host:
-            auth_server_url = f"{scheme}://localhost:8888"
+            auth_server_url = f"{scheme}://localhost:8888{root_path}"
         else:
-            auth_server_url = f"{scheme}://{host}"
+            auth_server_url = f"{scheme}://{host}{root_path}"
         
         callback_uri = f"{auth_server_url}/oauth2/callback/{provider}"
         logger.info(f"OAuth2 callback URI (from request host): {callback_uri}")
@@ -1825,10 +1832,11 @@ async def oauth2_callback(
             else:
                 host = request.headers.get("host", "localhost:8888")
                 scheme = "https" if request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https" else "http"
+                root_path = os.environ.get("ROOT_PATH", "").rstrip("/")
                 if "localhost" in host and ":" not in host:
-                    auth_server_url = f"{scheme}://localhost:8888"
+                    auth_server_url = f"{scheme}://localhost:8888{root_path}"
                 else:
-                    auth_server_url = f"{scheme}://{host}"
+                    auth_server_url = f"{scheme}://{host}{root_path}"
                 logger.warning(f"Fallback: Using dynamic URL for token exchange: {auth_server_url}")
             
         token_data = await exchange_code_for_token(provider, code, provider_config, auth_server_url)
@@ -2007,7 +2015,8 @@ async def oauth2_callback(
 async def exchange_code_for_token(provider: str, code: str, provider_config: dict, auth_server_url: str = None) -> dict:
     """Exchange authorization code for access token"""
     if auth_server_url is None:
-        auth_server_url = os.environ.get('AUTH_SERVER_URL', 'http://localhost:8888')
+        root_path = os.environ.get("ROOT_PATH", "").rstrip("/")
+        auth_server_url = os.environ.get('AUTH_SERVER_URL', 'http://localhost:8888').rstrip('/') + root_path
         
     async with httpx.AsyncClient() as client:
         token_data = {

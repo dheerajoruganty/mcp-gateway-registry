@@ -52,6 +52,56 @@ The `values.yaml` file needs to be updated for your setup, specifically:
   `subdomain.example.com`, `DOMAIN` should be replaced with `subdomain.example.com`
 - `secretKey`: the registry and auth-server both have a placeholder for `secretKey`, this should be updated to the same
   random, secure key that is used in both locations
+- `routingMode`: choose between `subdomain` (default) or `path` based routing (see Routing Modes section below)
+
+### Routing Modes
+
+The stack supports two routing modes for accessing services:
+
+#### Subdomain-Based Routing (Default)
+
+Services are accessed via subdomains:
+- `keycloak.{domain}` - Keycloak authentication server
+- `auth-server.{domain}` - MCP Gateway auth server
+- `mcpregistry.{domain}` - MCP server registry
+
+**Configuration:**
+```yaml
+global:
+  domain: "yourdomain.com"
+  ingress:
+    routingMode: subdomain
+```
+
+**DNS Requirements:** Configure A/CNAME records for each subdomain pointing to your ingress load balancer.
+
+#### Path-Based Routing
+
+Services are accessed via paths on a single domain:
+- `{domain}/keycloak` - Keycloak authentication server (default, configurable)
+- `{domain}/auth-server` - MCP Gateway auth server (default, configurable)
+- `{domain}/registry` - MCP server registry (default, configurable)
+- `{domain}/` - MCP server registry (root path)
+
+**Configuration:**
+```yaml
+global:
+  domain: "yourdomain.com"
+  ingress:
+    routingMode: path
+    paths:
+      authServer: /auth-server    # Customize as needed (e.g., /api/auth)
+      registry: /registry          # Customize as needed (e.g., /api)
+      keycloak: /keycloak         # Customize as needed (e.g., /auth/keycloak)
+```
+
+**Important:** If you customize the Keycloak path, update the helm variable:
+```yaml
+keycloak:
+  httpRelativePath: /keycloak/
+```
+
+**DNS Requirements:** Configure a single A/CNAME record for your domain pointing to your ingress load balancer.
 
 ## Install
 
@@ -77,8 +127,13 @@ This will deploy the necessary resources for a Kubernetes deployment of the MCP 
 
 ## Use
 
-Navigate to https://mcpregistry.DOMAIN to log in. The username/password are displayed in the output of the
-`keycloak-configure job`
+Navigate to the registry based on your routing mode:
+
+**Subdomain mode:** https://mcpregistry.DOMAIN
+
+**Path mode:** https://DOMAIN/registry or https://DOMAIN/
+
+The username/password are displayed in the output of the `keycloak-configure job`
 
 ```bash
 kubectl get pods -l job-name=setup-keycloak -n MYNAMESPACE     

@@ -10,6 +10,15 @@ global:
   ingress:
     className: alb
     tls: true
+    # Routing mode: "subdomain" or "path"
+    # - subdomain: auth-server.domain.com, mcpregistry.domain.com, keycloak.domain.com
+    # - path: domain.com/auth-server, domain.com/registry, domain.com/keycloak
+    routingMode: subdomain
+    # Path configuration (only used when routingMode: path)
+    paths:
+      authServer: /auth-server
+      registry: /registry
+      keycloak: /keycloak # make sure to update keycloak.httpRelativePath (/keycloak/)
     annotations:
       alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
       alb.ingress.kubernetes.io/scheme: internet-facing
@@ -42,6 +51,12 @@ keycloak:
     image:
       repository: bitnamilegacy/postgresql
 
+  # HTTP relative path for path-based routing
+  # IMPORTANT: This must match global.ingress.paths.keycloak when routingMode is "path"
+  # For subdomain routing, set to "/"
+  # IMPORTANT: This must have a trailing "/"
+  httpRelativePath: /
+
   extraEnvVars:
     - name: KC_PROXY
       value: edge
@@ -61,8 +76,12 @@ keycloak:
           - |
             (
               echo "PostStart: Waiting for Keycloak to be ready..."
+              # Determine the base path - check if KC_HTTP_RELATIVE_PATH is set
+              BASE_PATH="${KC_HTTP_RELATIVE_PATH:-}"
+              BASE_URL="http://localhost:8080${BASE_PATH}"
+              echo "Using base URL: $BASE_URL"
               for i in {1..120}; do
-                if curl -sf http://localhost:8080/realms/$KC_SPI_ADMIN_REALM > /dev/null 2>&1; then
+                if curl -sf ${BASE_URL}/realms/$KC_SPI_ADMIN_REALM > /dev/null 2>&1; then
                   echo "Keycloak ready after $i attempts"
                   break
                 fi
@@ -72,7 +91,7 @@ keycloak:
               echo "Configuring $KC_SPI_ADMIN_REALM realm..."
               /opt/bitnami/keycloak/bin/kcadm.sh config credentials \
                 --config /tmp/kcadm.config \
-                --server http://localhost:8080 \
+                --server ${BASE_URL} \
                 --realm $KC_SPI_ADMIN_REALM \
                 --user $KC_BOOTSTRAP_ADMIN_USERNAME \
                 --password $(cat $KC_BOOTSTRAP_ADMIN_PASSWORD_FILE)

@@ -161,9 +161,11 @@ const Login: React.FC = () => {
   };
 
   const handleOAuthLogin = (provider: string) => {
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const currentOrigin = window.location.origin;
-    const redirectUri = encodeURIComponent(currentOrigin + '/');
+    // Get the base path from the <base> tag or default to '/'
+    const baseElement = document.querySelector('base');
+    const basePath = baseElement?.getAttribute('href') || '/';
+    const redirectUri = encodeURIComponent(currentOrigin + basePath);
 
     // Use the auth server URL from config, fallback to localhost if not loaded yet
     const authUrl = authServerUrl || 'http://localhost:8888';

@@ -47,4 +47,10 @@ ingress:
   hostname: ""
   annotations: { }
   tls: false
+  # Routing mode: "subdomain" or "path"
+  # - subdomain: auth-server.domain.com
+  # - path: domain.com/auth-server (configurable via path setting)
+  routingMode: subdomain
+  # Path prefix when using path-based routing (default: /auth-server)
+  path: /auth-server
 

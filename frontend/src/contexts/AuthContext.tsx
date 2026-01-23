@@ -1,6 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
 
+// Get base URL from <base> tag for path-based routing (e.g., /registry)
+const getBaseURL = () => {
+  const baseTag = document.querySelector('base');
+  if (baseTag && baseTag.href) {
+    const url = new URL(baseTag.href);
+    return url.pathname.replace(/\/$/, '');
+  }
+  return '';
+};
+
 // Configure axios to include credentials (cookies) with all requests
 axios.defaults.withCredentials = true;
 
@@ -50,6 +60,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Set axios baseURL from <base> tag when component mounts
+    axios.defaults.baseURL = getBaseURL();
     checkAuth();
   }, []);
 

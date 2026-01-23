@@ -139,31 +139,94 @@ helm install mcp-stack ./charts/mcp-gateway-registry-stack \
 
 ### Domain Configuration
 
-The stack chart uses `global.domain` to automatically configure all subdomains:
+The stack chart uses `global.domain` to automatically configure all service endpoints. You can choose between two routing modes:
 
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ROUTING MODES                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  SUBDOMAIN MODE (Default)          PATH MODE                │
+│  ─────────────────────             ─────────                │
+│                                                              │
+│  ✓ keycloak.domain.com             ✓ domain.com/keycloak   │
+│  ✓ auth-server.domain.com          ✓ domain.com/auth-server│
+│  ✓ mcpregistry.domain.com          ✓ domain.com/registry   │
+│                                     ✓ domain.com/           │
+│                                                              │
+│  DNS: Multiple records              DNS: Single record      │
+│  Cert: Wildcard or multiple         Cert: Single            │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Subdomain-Based Routing (Default)
+
+Services are accessed via subdomains:
 - `keycloak.{domain}` - Keycloak authentication server
 - `auth-server.{domain}` - MCP Gateway auth server
 - `mcpregistry.{domain}` - MCP server registry
 
+**Configuration:**
+```yaml
+global:
+  domain: "yourdomain.com"
+  ingress:
+    routingMode: subdomain
+```
+
+#### Path-Based Routing
+
+Services are accessed via paths on a single domain:
+- `{domain}/keycloak` - Keycloak authentication server
+- `{domain}/auth-server` - MCP Gateway auth server
+- `{domain}/registry` - MCP server registry
+
+**Note:** All paths are configurable. You can customize them to match your URL structure (e.g., `/api/auth`, `/api/registry`).
+
+**Configuration:**
+```yaml
+global:
+  domain: "yourdomain.com"
+  ingress:
+    routingMode: path
+    paths:
+      authServer: /auth-server    # Customize as needed
+      registry: /registry          # Customize as needed
+      keycloak: /keycloak         # Customize as needed
+```
+
+**Important:** If you change the Keycloak path, you must also update the `keycloak.httpRelativePath` environment variable:
+```yaml
+keycloak:
+  httpRelativePath: /keycloak/
+```
+
 **How it works:**
 
 1. Set `global.domain` in the stack values file
-2. All subchart templates reference `{{ .Values.global.domain }}` to build URLs and hostnames
-3. Change the domain once and all services update automatically
+2. Choose `routingMode: subdomain` or `routingMode: path`
+3. All subchart templates reference these values to build URLs and hostnames
+4. Change the domain or routing mode once and all services update automatically
 
-**To change the domain:**
+**To change the domain or routing mode:**
 
 ```bash
 # Edit the values file
 vim charts/mcp-gateway-registry-stack/values.yaml
 # Change: global.domain: "your-new-domain.com"
+# Change: global.ingress.routingMode: "path"
 
 # Or override via command line
 helm upgrade mcp-stack ./charts/mcp-gateway-registry-stack \
-  --set global.domain=your-new-domain.com
+  --set global.domain=your-new-domain.com \
+  --set global.ingress.routingMode=path
 ```
 
-Make sure your DNS is configured to point these subdomains to your Kubernetes ingress.
+**DNS Configuration:**
+
+- **Subdomain mode:** Configure DNS A/CNAME records for each subdomain pointing to your ingress
+- **Path mode:** Configure a single DNS A/CNAME record for your domain pointing to your ingress
 
 ## Deployment Options: Kubernetes vs AWS ECS
 
