@@ -407,86 +407,37 @@ There are 3 options for setting up the MCP Gateway & Registry:
 
 ### Option A: Pre-built Images (Instant Setup)
 
-Get running in under 2 minutes with pre-built containers:
+Get running with pre-built Docker containers in minutes. This is the recommended approach for most users.
 
-**Step 1: Clone and setup**
 ```bash
+# Clone and configure
 git clone https://github.com/agentic-community/mcp-gateway-registry.git
 cd mcp-gateway-registry
 cp .env.example .env
-```
 
-**Step 2: Download embeddings model**
-Download the required sentence-transformers model to the shared models directory using the [HuggingFace CLI](https://huggingface.co/docs/huggingface_hub/main/en/guides/cli) (`pip install -U huggingface_hub`):
-```bash
-hf download sentence-transformers/all-MiniLM-L6-v2 --local-dir ${HOME}/mcp-gateway/models/all-MiniLM-L6-v2
-```
+# Edit .env with your passwords (KEYCLOAK_ADMIN_PASSWORD, etc.)
+nano .env
 
-**Step 3: Configure environment**
-Complete: **[Initial Environment Configuration](docs/complete-setup-guide.md#initial-environment-configuration)** - Configure domains, passwords, and authentication
-```bash
+# Deploy with pre-built images
 export DOCKERHUB_ORG=mcpgateway
-```
-
-**Step 4: Deploy with pre-built images**
-Our service can be deployed with two platforms for pre-built images: Docker and Podman. 
-
-**With Docker (default):**
-```bash
 ./build_and_run.sh --prebuilt
+
+# Access the Registry UI
+open http://localhost:7860  # macOS
+# xdg-open http://localhost:7860  # Linux
 ```
 
-**With Podman (rootless, macOS (but NOT Apple Silicon) friendly):**
-```bash
-./build_and_run.sh --prebuilt --podman
+**[Complete Quick Start Guide](docs/quickstart.md)** - Full step-by-step instructions including:
+- Prerequisites installation (Docker, Python, UV)
+- Environment configuration
+- MongoDB and Keycloak initialization
+- User and service account setup
+- Server and agent registration
+- Testing the gateway functionality
 
-# If running on macOS Apple Silicon, remove the --prebuilt flag (more details in Podman option below) 
-./build_and_run.sh --podman # For Apple Silicon 
-```
+**Benefits:** No build time | No Node.js required | No frontend compilation | Consistent tested images
 
-> **Port Differences:**
-> - **Docker**: Services run on privileged ports (`http://localhost`, `https://localhost`)
-> - **Podman**: Services run on non-privileged ports (`http://localhost:8080`, `https://localhost:8443`)
-> - All internal service ports remain the same (Registry: 7860, Auth: 8888, etc.)
-
-For detailed information about all Docker images used with `--prebuilt`, see [Pre-built Images Documentation](docs/prebuilt-images.md).
-
-**Step 5: Initialize Keycloak**
-Complete: **[Initialize Keycloak Configuration](docs/complete-setup-guide.md#initialize-keycloak-configuration)** - Set up identity provider and security policies
-
-**Step 5.5: Set up users and service accounts**
-Run the bootstrap script to create default users and M2M service accounts:
-```bash
-./cli/bootstrap_user_and_m2m_setup.sh
-```
-
-This script:
-- Creates 3 Keycloak groups: `registry-users-lob1`, `registry-users-lob2`, `registry-admins`
-- Creates 6 users for testing and management:
-  - **LOB1**: `lob1-bot` (M2M service account) and `lob1-user` (human user)
-  - **LOB2**: `lob2-bot` (M2M service account) and `lob2-user` (human user)
-  - **Admin**: `admin-bot` (M2M service account) and `admin-user` (human user)
-- Generates and saves OAuth credentials to `.oauth-tokens/` directory
-
-All user passwords default to the value set in your `.env` file (`INITIAL_USER_PASSWORD`).
-
-**Step 6: Access the registry**
-```bash
-open http://localhost:7860
-```
-
-**Step 7: Create your first agent**
-Complete: **[Create Your First AI Agent Account](docs/complete-setup-guide.md#create-your-first-ai-agent-account)** - Create agent credentials for testing
-
-**Step 8: Restart auth server to apply new credentials**
-```bash
-docker-compose down auth-server && docker-compose rm -f auth-server && docker-compose up -d auth-server
-```
-
-**Step 9: Test the setup**
-Complete: **[Testing with mcp_client.py and agent.py](docs/complete-setup-guide.md#test-with-python-mcp-client)** - Validate your setup works correctly
-
-**Benefits:** No build time • No Node.js required • No frontend compilation • Consistent tested images
+---
 
 ### Option B: Podman (Rootless Container Deployment)
 
@@ -505,7 +456,7 @@ brew install podman-desktop
 # OR download from: https://podman-desktop.io/
 ```
 
-Inside Podman Desktop, go to Preferences > Podman Machine and create a new machine with at least 4 CPUs and 8GB RAM. Alternatively, see more detailed [Podman installation guide] (docs/installation.md#podman-installation) for instructions on setting this up on CLI. 
+Inside Podman Desktop, go to Preferences > Podman Machine and create a new machine with at least 4 CPUs and 8GB RAM. Alternatively, see more detailed [Podman installation guide](docs/installation.md#podman-installation) for instructions on setting this up on CLI.
 
 ```bash
 # Initialize Podman machine
@@ -533,10 +484,12 @@ cp .env.example .env
 ./build_and_run.sh --prebuilt --podman
 
 # Access registry at non-privileged ports
+# On macOS:
 open http://localhost:8080
+# On Linux: xdg-open http://localhost:8080
 ```
 
-> Note: **Apple Silicon (M1/M2/M3)?** Don't use `--prebuilt` with Podman on ARM64. This will cause a "proxy already running" error. See [Podman on Apple Silicon Guide](docs/podman-apple-silicon.md). 
+> Note: **Apple Silicon (M1/M2/M3)?** Don't use `--prebuilt` with Podman on ARM64. This will cause a "proxy already running" error. See [Podman on Apple Silicon Guide](docs/podman-apple-silicon.md).
 
 ```bash
 # To run on Apple Silicon Macs:

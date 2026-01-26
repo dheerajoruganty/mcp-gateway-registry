@@ -406,12 +406,19 @@ def _create_client(
 
         logger.debug(f"Loading token from file: {args.token_file}")
 
-        # Try to parse as JSON first (token files from generate-agent-token.sh)
+        # Try to parse as JSON first (token files from generate-agent-token.sh or UI)
         try:
             with open(token_path, 'r') as f:
                 token_data = json.load(f)
-            # Extract access_token from JSON structure
+            # Extract access_token - handle multiple JSON formats:
+            # Format 1: {"access_token": "..."} (from generate-agent-token.sh)
+            # Format 2: {"tokens": {"access_token": "..."}, ...} (from UI "Get JWT Token")
+            # Format 3: {"token_data": {"access_token": "..."}, ...} (alternative UI format)
             token = token_data.get('access_token')
+            if not token and 'tokens' in token_data:
+                token = token_data['tokens'].get('access_token')
+            if not token and 'token_data' in token_data:
+                token = token_data['token_data'].get('access_token')
             if not token:
                 raise RuntimeError(f"No 'access_token' field found in token file: {args.token_file}")
         except json.JSONDecodeError:

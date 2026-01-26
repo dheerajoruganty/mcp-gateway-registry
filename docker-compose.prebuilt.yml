@@ -247,20 +247,6 @@ services:
       - "8002:8002"
     restart: unless-stopped
 
-  # Atlassian MCP Server - using mirrored pre-built image
-  atlassian-server:
-    image: ${DOCKERHUB_ORG:-mcpgateway}/atlassian:${ATLASSIAN_VERSION:-latest}
-    environment:
-      - ATLASSIAN_OAUTH_ENABLE=true
-      - MCP_VERY_VERBOSE=true
-      - MCP_LOGGING_STDOUT=true
-    ports:
-      - "8005:8005"
-    volumes:
-      - $HOME/.mcp-atlassian:/home/app/.mcp-atlassian
-    command: --transport streamable-http --port 8005
-    restart: unless-stopped
-
   # SQLite container for metrics database - using mirrored pre-built image
   metrics-db:
     image: ${DOCKERHUB_ORG:-mcpgateway}/alpine:${ALPINE_VERSION:-latest}
@@ -371,24 +357,53 @@ services:
       retries: 3
       start_period: 60s
 
+  # MongoDB keyfile initialization (generates keyfile for replica set authentication)
+  # This runs once before MongoDB starts to create the keyfile with correct permissions
+  mongodb-keyfile-init:
+    image: alpine:latest
+    container_name: mcp-mongodb-keyfile-init
+    volumes:
+      - mongodb-keyfile:/keyfile
+    command: >
+      sh -c "
+      if [ ! -f /keyfile/replica.key ]; then
+        echo 'Generating MongoDB keyfile...';
+        apk add --no-cache openssl;
+        openssl rand -base64 756 > /keyfile/replica.key;
+        chmod 400 /keyfile/replica.key;
+        chown 999:999 /keyfile/replica.key;
+        echo 'Keyfile generated successfully';
+      else
+        echo 'Keyfile already exists, skipping generation';
+      fi
+      "
+    restart: "no"
+
   # MongoDB Community Edition 8.2 (alternative to DocumentDB for local development)
   # Vector search is implemented in application code (see search_repository.py)
-  # Running without authentication for local development simplicity
+  # Running with authentication enabled for security
   mongodb:
     image: ${DOCKERHUB_ORG:-mcpgateway}/mongo:${MONGODB_VERSION:-latest}
     container_name: mcp-mongodb
-    command: mongod --replSet rs0 --bind_ip 127.0.0.1,mongodb
+    command: mongod --replSet rs0 --bind_ip 127.0.0.1,mongodb --auth --keyFile /keyfile/replica.key
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${DOCUMENTDB_USERNAME:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${DOCUMENTDB_PASSWORD:-admin}
     ports:
       - "27017:27017"
     volumes:
       - mongodb-data:/data/db
       - mongodb-config:/data/configdb
+      - mongodb-keyfile:/keyfile:ro
+    depends_on:
+      mongodb-keyfile-init:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 60s 
+      test: ["CMD", "mongosh", "-u", "${DOCUMENTDB_USERNAME:-admin}", "-p", "${DOCUMENTDB_PASSWORD:-admin}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      interval: 60s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 30s
     restart: unless-stopped
 
   # MongoDB initialization (creates replica set, indexes, and loads admin scope)
@@ -408,6 +423,9 @@ services:
     volumes:
       - ./scripts/init-mongodb-ce.py:/app/scripts/init-mongodb-ce.py:ro
       - ./scripts/registry-admins.json:/app/scripts/registry-admins.json:ro
+      - ./scripts/mcp-registry-admin.json:/app/scripts/mcp-registry-admin.json:ro
+      - ./scripts/mcp-servers-unrestricted-read.json:/app/scripts/mcp-servers-unrestricted-read.json:ro
+      - ./scripts/mcp-servers-unrestricted-execute.json:/app/scripts/mcp-servers-unrestricted-execute.json:ro
     command: >
       sh -c "
       pip install --quiet motor pymongo &&
@@ -423,3 +441,4 @@ volumes:
   grafana-data:
   mongodb-data:
   mongodb-config:
+  mongodb-keyfile:

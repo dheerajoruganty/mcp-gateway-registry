@@ -48,6 +48,9 @@ services:
     volumes:
       - ./scripts/init-mongodb-ce.py:/app/scripts/init-mongodb-ce.py:ro
       - ./scripts/registry-admins.json:/app/scripts/registry-admins.json:ro
+      - ./scripts/mcp-registry-admin.json:/app/scripts/mcp-registry-admin.json:ro
+      - ./scripts/mcp-servers-unrestricted-read.json:/app/scripts/mcp-servers-unrestricted-read.json:ro
+      - ./scripts/mcp-servers-unrestricted-execute.json:/app/scripts/mcp-servers-unrestricted-execute.json:ro
     command: >
       sh -c "
       pip install --quiet motor pymongo &&
@@ -254,8 +257,10 @@ services:
   # Current Time MCP Server
   currenttime-server:
     build:
-      context: servers/currenttime
-      dockerfile: ../../docker/Dockerfile.mcp-server
+      context: .
+      dockerfile: docker/Dockerfile.mcp-server-light
+      args:
+        SERVER_DIR: servers/currenttime
     environment:
       - PORT=8000
       - MCP_TRANSPORT=streamable-http
@@ -266,8 +271,10 @@ services:
   # Financial Info MCP Server
   fininfo-server:
     build:
-      context: servers/fininfo
-      dockerfile: ../../docker/Dockerfile.mcp-server
+      context: .
+      dockerfile: docker/Dockerfile.mcp-server-light
+      args:
+        SERVER_DIR: servers/fininfo
     environment:
       - PORT=8001
       - SECRET_KEY=${SECRET_KEY}
@@ -302,8 +309,10 @@ services:
   # Real Server Fake Tools MCP Server
   realserverfaketools-server:
     build:
-      context: servers/realserverfaketools
-      dockerfile: ../../docker/Dockerfile.mcp-server
+      context: .
+      dockerfile: docker/Dockerfile.mcp-server-light
+      args:
+        SERVER_DIR: servers/realserverfaketools
     environment:
       - PORT=8002
     ports:
