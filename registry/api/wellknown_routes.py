@@ -70,8 +70,8 @@ def _format_server_discovery(server_info: dict, request: Request) -> dict:
     server_name = server_info.get("server_name", server_path)
     description = server_info.get("description", "MCP Server")
 
-    # Generate dynamic URL based on request host
-    server_url = _get_server_url(server_path, request)
+    # Generate dynamic URL based on request host and server config
+    server_url = _get_server_url(server_path, request, server_info)
 
     # Get transport type from config
     transport_type = _get_transport_type(server_info)
@@ -97,8 +97,17 @@ def _format_server_discovery(server_info: dict, request: Request) -> dict:
     }
 
 
-def _get_server_url(server_path: str, request: Request) -> str:
-    """Generate full URL for MCP server based on request host"""
+def _get_server_url(server_path: str, request: Request, server_info: dict = None) -> str:
+    """Generate full URL for MCP server based on request host and server config.
+
+    Priority:
+    1. If server_info has mcp_endpoint, use it as the full URL
+    2. Otherwise, construct URL from request host + server_path + /mcp
+    """
+    # Check if server has explicit mcp_endpoint configured
+    if server_info and server_info.get("mcp_endpoint"):
+        return server_info.get("mcp_endpoint")
+
     # Get host from request headers
     host = request.headers.get("host", "localhost:7860")
 
@@ -108,7 +117,7 @@ def _get_server_url(server_path: str, request: Request) -> str:
     # Clean up server path (remove leading and trailing slashes)
     clean_path = server_path.strip('/')
 
-    # Return formatted URL
+    # Return formatted URL with default /mcp suffix
     return f"{proto}://{host}/{clean_path}/mcp"
 
 

@@ -228,13 +228,39 @@ async def _get_tools_streamable_http(base_url: str, server_info: dict = None) ->
     """Get tools using streamable-http transport"""
     # Build headers for the server
     headers = _build_headers_for_server(server_info)
-    
+
+    # Check if server_info has explicit mcp_endpoint
+    explicit_endpoint = server_info.get("mcp_endpoint") if server_info else None
+
+    # If explicit endpoint is provided, use it directly (single attempt)
+    if explicit_endpoint:
+        mcp_url = explicit_endpoint
+        logger.info(f"MCP Client: Using explicit mcp_endpoint: {mcp_url}")
+
+        # Handle servers imported from anthropic by adding required query parameter
+        if server_info and 'tags' in server_info and 'anthropic-registry' in server_info.get('tags', []):
+            if '?' not in mcp_url:
+                mcp_url += '?instance_id=default'
+            elif 'instance_id=' not in mcp_url:
+                mcp_url += '&instance_id=default'
+
+        try:
+            async with streamablehttp_client(url=mcp_url, headers=headers) as (read, write, get_session_id):
+                async with ClientSession(read, write) as session:
+                    await asyncio.wait_for(session.initialize(), timeout=10.0)
+                    tools_response = await asyncio.wait_for(session.list_tools(), timeout=15.0)
+                    result = _extract_tool_details(tools_response)
+                    return result
+        except Exception as e:
+            logger.error(f"MCP Check Error: Streamable-HTTP connection failed to {mcp_url}: {e}")
+            return None
+
     # If URL already has MCP endpoint, use it directly
     if base_url.endswith('/mcp') or '/mcp/' in base_url:
         mcp_url = base_url
         # Don't add trailing slash - some servers like Cloudflare reject it
 
-        # Handle streamable-http and sse servers imported from anthropinc by adding required query parameter
+        # Handle streamable-http and sse servers imported from anthropic by adding required query parameter
         if server_info and 'tags' in server_info and 'anthropic-registry' in server_info.get('tags', []):
             if '?' not in mcp_url:
                 mcp_url += '?instance_id=default'
@@ -242,14 +268,14 @@ async def _get_tools_streamable_http(base_url: str, server_info: dict = None) ->
                 mcp_url += '&instance_id=default'
         else:
             logger.info(f"DEBUG: Not a Strata server, URL unchanged: {mcp_url}")
-        
+
         logger.info(f"DEBUG: About to connect to: {mcp_url}")
         try:
             async with streamablehttp_client(url=mcp_url, headers=headers) as (read, write, get_session_id):
                 async with ClientSession(read, write) as session:
                     await asyncio.wait_for(session.initialize(), timeout=10.0)
                     tools_response = await asyncio.wait_for(session.list_tools(), timeout=15.0)
-                    
+
                     result = _extract_tool_details(tools_response)
                     return result
         except Exception as e:
@@ -262,7 +288,7 @@ async def _get_tools_streamable_http(base_url: str, server_info: dict = None) ->
             base_url.rstrip('/') + "/mcp/",
             base_url.rstrip('/') + "/"
         ]
-        
+
         for mcp_url in endpoints_to_try:
             try:
                 logger.info(f"MCP Client: Trying streamable-http endpoint: {mcp_url}")
@@ -270,10 +296,10 @@ async def _get_tools_streamable_http(base_url: str, server_info: dict = None) ->
                     async with ClientSession(read, write) as session:
                         await asyncio.wait_for(session.initialize(), timeout=10.0)
                         tools_response = await asyncio.wait_for(session.list_tools(), timeout=15.0)
-                        
+
                         logger.info(f"MCP Client: Successfully connected to {mcp_url}")
                         return _extract_tool_details(tools_response)
-                        
+
             except asyncio.TimeoutError:
                 logger.error(f"MCP Check Error: Timeout during streamable-http session with {mcp_url}.")
                 if mcp_url == endpoints_to_try[0]:
@@ -284,18 +310,24 @@ async def _get_tools_streamable_http(base_url: str, server_info: dict = None) ->
                 if mcp_url == endpoints_to_try[0]:
                     continue
                 return None
-    
+
     return None
 
 
 async def _get_tools_sse(base_url: str, server_info: dict = None) -> List[dict] | None:
     """Get tools using SSE transport (legacy method with patches)"""
-    # If URL already has SSE endpoint, use it directly
-    if base_url.endswith('/sse') or '/sse/' in base_url:
+    # Check if server_info has explicit sse_endpoint
+    explicit_endpoint = server_info.get("sse_endpoint") if server_info else None
+
+    # Resolve SSE endpoint URL
+    if explicit_endpoint:
+        sse_url = explicit_endpoint
+        logger.info(f"MCP Client: Using explicit sse_endpoint: {sse_url}")
+    elif base_url.endswith('/sse') or '/sse/' in base_url:
         sse_url = base_url
     else:
         sse_url = base_url.rstrip('/') + "/sse"
-    
+
     secure_prefix = "s" if sse_url.startswith("https://") else ""
     mcp_server_url = f"http{secure_prefix}://{sse_url[len(f'http{secure_prefix}://'):]}"
     

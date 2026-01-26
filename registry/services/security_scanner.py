@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..core.config import settings
+from ..core.endpoint_utils import get_endpoint_url
 from ..schemas.security import SecurityScanResult, SecurityScanConfig
 from ..repositories.factory import get_security_scan_repository
 
@@ -169,16 +170,20 @@ class SecurityScannerService:
         api_key: Optional[str] = None,
         headers: Optional[str] = None,
         timeout: Optional[int] = None,
+        mcp_endpoint: Optional[str] = None,
     ) -> SecurityScanResult:
         """
         Scan an MCP server for security vulnerabilities.
 
         Args:
-            server_url: URL of the MCP server to scan
+            server_url: URL of the MCP server to scan (proxy_pass_url)
+            server_path: Optional path identifier for the server
             analyzers: Comma-separated list of analyzers to use (overrides config)
             api_key: OpenAI API key for LLM-based analysis (overrides config)
             headers: JSON string of headers to include in requests
             timeout: Scan timeout in seconds (overrides config)
+            mcp_endpoint: Optional explicit MCP endpoint URL. If set, used directly
+                instead of appending /mcp to server_url.
 
         Returns:
             SecurityScanResult containing scan results
@@ -199,9 +204,13 @@ class SecurityScannerService:
         if timeout is None:
             timeout = config.scan_timeout_seconds
 
-        # Ensure server URL has /mcp endpoint if not already present
-        if not server_url.endswith("/mcp"):
-            server_url = f"{server_url}/mcp"
+        # Resolve endpoint URL using centralized utility
+        # Priority: explicit mcp_endpoint > URL detection > append /mcp
+        server_url = get_endpoint_url(
+            proxy_pass_url=server_url,
+            transport_type="streamable-http",
+            mcp_endpoint=mcp_endpoint,
+        )
 
         logger.info(
             f"Starting security scan for {server_url} with analyzers: {analyzers}"

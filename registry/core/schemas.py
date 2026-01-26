@@ -18,8 +18,14 @@ class ServerInfo(BaseModel):
     is_enabled: bool = False
     transport: Optional[str] = Field(default="auto", description="Preferred transport: sse, streamable-http, or auto")
     supported_transports: List[str] = Field(default_factory=lambda: ["streamable-http"], description="List of supported transports")
-    mcp_endpoint: Optional[str] = Field(default=None, description="Custom /mcp endpoint path")
-    sse_endpoint: Optional[str] = Field(default=None, description="Custom /sse endpoint path")
+    mcp_endpoint: Optional[str] = Field(
+        default=None,
+        description="Full URL for the MCP streamable-http endpoint. If set, used directly for health checks and client connections instead of appending /mcp to proxy_pass_url. Example: 'https://server.com/custom-path'"
+    )
+    sse_endpoint: Optional[str] = Field(
+        default=None,
+        description="Full URL for the SSE endpoint. If set, used directly for health checks and client connections instead of appending /sse to proxy_pass_url. Example: 'https://server.com/events'"
+    )
 
 
 class ToolDescription(BaseModel):
@@ -69,8 +75,14 @@ class ServiceRegistrationRequest(BaseModel):
     license: str = "N/A"
     transport: Optional[str] = Field(default="auto", description="Preferred transport: sse, streamable-http, or auto")
     supported_transports: str = Field(default="streamable-http", description="Comma-separated list of supported transports")
-    mcp_endpoint: Optional[str] = Field(default=None, description="Custom /mcp endpoint path")
-    sse_endpoint: Optional[str] = Field(default=None, description="Custom /sse endpoint path")
+    mcp_endpoint: Optional[str] = Field(
+        default=None,
+        description="Full URL for the MCP streamable-http endpoint. If set, used directly for health checks and client connections instead of appending /mcp to proxy_pass_url. Example: 'https://server.com/custom-path'"
+    )
+    sse_endpoint: Optional[str] = Field(
+        default=None,
+        description="Full URL for the SSE endpoint. If set, used directly for health checks and client connections instead of appending /sse to proxy_pass_url. Example: 'https://server.com/events'"
+    )
 
 
 class OAuth2Provider(BaseModel):
