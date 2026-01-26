@@ -26,6 +26,7 @@ interface Server {
   license?: string;
   num_stars?: number;
   is_python?: boolean;
+  mcp_endpoint?: string;
 }
 
 interface Agent {
@@ -127,7 +128,8 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
     license: 'N/A',
     num_tools: 0,
     num_stars: 0,
-    is_python: false
+    is_python: false,
+    mcp_endpoint: ''
   });
   const [editLoading, setEditLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -429,7 +431,8 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
         license: serverDetails.license || 'N/A',
         num_tools: serverDetails.num_tools || 0,
         num_stars: serverDetails.num_stars || 0,
-        is_python: serverDetails.is_python || false
+        is_python: serverDetails.is_python || false,
+        mcp_endpoint: serverDetails.mcp_endpoint || ''
       });
     } catch (error) {
       console.error('Failed to fetch server details:', error);
@@ -444,7 +447,8 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
         license: 'N/A',
         num_tools: server.num_tools || 0,
         num_stars: 0,
-        is_python: false
+        is_python: false,
+        mcp_endpoint: server.mcp_endpoint || ''
       });
     }
   }, []);
@@ -492,6 +496,9 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
       formData.append('num_tools', editForm.num_tools.toString());
       formData.append('num_stars', editForm.num_stars.toString());
       formData.append('is_python', editForm.is_python.toString());
+      if (editForm.mcp_endpoint) {
+        formData.append('mcp_endpoint', editForm.mcp_endpoint);
+      }
 
       // Use the correct edit endpoint with the server path
       await axios.post(`/api/edit${editingServer.path}`, formData, {
@@ -1364,6 +1371,19 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                 <label htmlFor="is_python" className="ml-2 block text-sm text-gray-700 dark:text-gray-200">
                   Python-based server
                 </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                  MCP Endpoint (optional)
+                </label>
+                <input
+                  type="url"
+                  value={editForm.mcp_endpoint}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, mcp_endpoint: e.target.value }))}
+                  className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-purple-500 focus:border-purple-500"
+                  placeholder="Custom MCP endpoint URL (overrides default)"
+                />
               </div>
 
               <div>

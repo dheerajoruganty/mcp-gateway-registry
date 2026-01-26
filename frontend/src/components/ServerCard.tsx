@@ -31,6 +31,8 @@ export interface Server {
   rating_details?: Array<{ user: string; rating: number }>;
   status?: 'healthy' | 'healthy-auth-expired' | 'unhealthy' | 'unknown';
   num_tools?: number;
+  proxy_pass_url?: string;
+  mcp_endpoint?: string;
 }
 
 interface ServerCardProps {

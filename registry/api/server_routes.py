@@ -235,6 +235,7 @@ async def read_root(
                     "license": server_info.get("license", "N/A"),
                     "health_status": normalized_status,
                     "last_checked_iso": health_data["last_checked_iso"],
+                    "mcp_endpoint": server_info.get("mcp_endpoint"),
                 }
             )
 
@@ -341,6 +342,7 @@ async def get_servers_json(
                     "license": server_info.get("license", "N/A"),
                     "health_status": normalized_status,
                     "last_checked_iso": health_data["last_checked_iso"],
+                    "mcp_endpoint": server_info.get("mcp_endpoint"),
                 }
             )
 
@@ -4042,9 +4044,10 @@ async def get_servers_json(
                     "num_stars": server_info.get("num_stars", 0),
                     "is_python": server_info.get("is_python", False),
                     "license": server_info.get("license", "N/A"),
-                    "health_status": health_data["status"],  
-                    "last_checked_iso": health_data["last_checked_iso"]
+                    "health_status": health_data["status"],
+                    "last_checked_iso": health_data["last_checked_iso"],
+                    "mcp_endpoint": server_info.get("mcp_endpoint"),
                 }
             )
-    
+
     return {"servers": service_data}

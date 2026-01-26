@@ -28,7 +28,9 @@ const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
 
     // Clean up server path - remove trailing slashes and ensure single leading slash
     const cleanPath = server.path.replace(/\/+$/, '').replace(/^\/+/, '/');
-    const url = `${baseUrl}${cleanPath}/mcp`;
+
+    // Use custom mcp_endpoint if available, otherwise construct default URL
+    const url = server.mcp_endpoint || `${baseUrl}${cleanPath}/mcp`;
 
     switch (selectedIDE) {
       case 'vscode':
@@ -156,12 +158,22 @@ const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
           </div>
 
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
-            <h4 className="font-medium text-amber-900 dark:text-amber-100 mb-2">🔐 Authentication Required</h4>
+            <h4 className="font-medium text-amber-900 dark:text-amber-100 mb-2">Authentication Required</h4>
             <p className="text-sm text-amber-800 dark:text-amber-200">
               This configuration requires gateway authentication tokens. The tokens authenticate your AI assistant with
               the MCP Gateway, not the individual server. Visit the authentication documentation for setup instructions.
             </p>
           </div>
+
+          {server.mcp_endpoint && (
+            <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+              <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">Custom Endpoint Configured</h4>
+              <p className="text-sm text-purple-800 dark:text-purple-200">
+                This server uses a custom MCP endpoint:{' '}
+                <code className="bg-purple-100 dark:bg-purple-800 px-1 rounded break-all">{server.mcp_endpoint}</code>
+              </p>
+            </div>
+          )}
 
           <div className="bg-gray-50 dark:bg-gray-900 border dark:border-gray-700 rounded-lg p-4">
             <h4 className="font-medium text-gray-900 dark:text-white mb-3">Select your IDE/Tool:</h4>
