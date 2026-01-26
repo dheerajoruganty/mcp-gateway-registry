@@ -506,7 +506,9 @@ def cmd_register(args: argparse.Namespace) -> int:
             headers=config.get("headers"),
             tool_list_json=config.get("tool_list_json"),
             tags=config.get("tags"),
-            overwrite=args.overwrite
+            overwrite=args.overwrite,
+            mcp_endpoint=config.get("mcp_endpoint"),
+            sse_endpoint=config.get("sse_endpoint"),
         )
 
         client = _create_client(args)
