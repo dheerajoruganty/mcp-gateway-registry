@@ -66,6 +66,14 @@ class InternalServiceRegistration(BaseModel):
     tool_list_json: Optional[str] = Field(None, description="Tool list as JSON string")
     tags: Optional[List[str]] = Field(None, description="Categorization tags")
     overwrite: Optional[bool] = Field(False, description="Overwrite if exists")
+    mcp_endpoint: Optional[str] = Field(
+        None,
+        description="Full URL for the MCP streamable-http endpoint (overrides proxy_pass_url + /mcp)"
+    )
+    sse_endpoint: Optional[str] = Field(
+        None,
+        description="Full URL for the SSE endpoint (overrides proxy_pass_url + /sse)"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
