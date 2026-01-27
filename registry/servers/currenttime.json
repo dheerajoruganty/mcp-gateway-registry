@@ -4,11 +4,20 @@
   "path": "/currenttime/",
   "proxy_pass_url": "http://currenttime-server:8000/",
   "auth_type": "none",
-  "tags": [],
+  "tags": ["time", "utility", "api"],
   "num_tools": 1,
   "num_stars": 0,
   "is_python": true,
   "license": "MIT-0",
+  "metadata": {
+    "team": "platform-services",
+    "owner": "alice@example.com",
+    "cost_center": "CC-1001",
+    "compliance": ["SOC2"],
+    "deployment_region": "us-east-1",
+    "jira_project": "PLAT-123",
+    "environment": "production"
+  },
   "tool_list": [
     {
       "name": "current_time_by_timezone",

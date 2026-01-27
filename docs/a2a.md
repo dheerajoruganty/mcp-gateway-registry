@@ -144,9 +144,50 @@ See [A2A Agent Management](a2a-agent-management.md) for complete CLI guide.
   "security": ["bearer"],
   "tags": ["code-review", "qa"],
   "visibility": "public",
-  "trust_level": "verified"
+  "trust_level": "verified",
+  "metadata": {
+    "team": "qa-platform",
+    "owner": "alice@example.com",
+    "cost_center": "engineering",
+    "deployment_region": "us-east-1"
+  }
 }
 ```
+
+### Custom Metadata
+
+Agents support optional custom metadata for organization, compliance, and integration purposes. All metadata is fully searchable via semantic search.
+
+**Common Use Cases:**
+
+```json
+{
+  "metadata": {
+    "team": "data-science",
+    "owner": "bob@example.com",
+    "compliance_level": "HIPAA",
+    "cost_center": "analytics-dept",
+    "deployment_region": "us-east-1",
+    "environment": "production",
+    "version": "3.2.1",
+    "jira_ticket": "AI-456"
+  }
+}
+```
+
+**Search by Metadata:**
+- `"team:data-science agents"` - Find agents by team
+- `"HIPAA compliant agents"` - Find by compliance level
+- `"alice@example.com owned"` - Find by owner
+- `"us-east-1 deployed"` - Find by region
+
+**Key Features:**
+- Flexible JSON schema (any serializable data)
+- Fully searchable via semantic search
+- Optional field (backward compatible)
+- Type-safe validation
+
+See [A2A Agent Management Guide](a2a-agent-management.md#custom-metadata) for detailed examples.
 
 ## Testing A2A Features
 

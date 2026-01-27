@@ -343,6 +343,7 @@ async def get_servers_json(
                     "health_status": normalized_status,
                     "last_checked_iso": health_data["last_checked_iso"],
                     "mcp_endpoint": server_info.get("mcp_endpoint"),
+                    "metadata": server_info.get("metadata", {}),
                 }
             )
 
@@ -475,6 +476,7 @@ async def register_service(
     license_str: Annotated[str, Form(alias="license")] = "N/A",
     mcp_endpoint: Annotated[str | None, Form()] = None,
     sse_endpoint: Annotated[str | None, Form()] = None,
+    metadata: Annotated[str | None, Form()] = None,
     user_context: Annotated[dict, Depends(enhanced_auth)] = None,
 ):
     """Register a new service (requires register_service UI permission)."""
@@ -524,6 +526,17 @@ async def register_service(
         server_entry["mcp_endpoint"] = mcp_endpoint
     if sse_endpoint:
         server_entry["sse_endpoint"] = sse_endpoint
+
+    # Add metadata if provided (expects JSON string)
+    if metadata:
+        try:
+            import json
+            server_entry["metadata"] = json.loads(metadata)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON in metadata field",
+            )
 
     # Register the server
     success = await server_service.register_server(server_entry)
@@ -1404,6 +1417,8 @@ async def edit_server_submit(
     num_stars: Annotated[int, Form()] = 0,
     is_python: Annotated[bool | None, Form()] = False,
     license_str: Annotated[str, Form(alias="license")] = "N/A",
+    mcp_endpoint: Annotated[str | None, Form()] = None,
+    metadata: Annotated[str | None, Form()] = None,
 ):
     """Handle server edit form submission (requires modify_service UI permission)."""
     from ..search.service import faiss_service
@@ -1461,6 +1476,21 @@ async def edit_server_submit(
         "license": license_str,
         "tool_list": [],  # Keep existing or initialize
     }
+
+    # Add optional mcp_endpoint if provided
+    if mcp_endpoint:
+        updated_server_entry["mcp_endpoint"] = mcp_endpoint
+
+    # Parse and add metadata if provided
+    if metadata:
+        try:
+            import json
+            updated_server_entry["metadata"] = json.loads(metadata)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON in metadata field",
+            )
 
     # Update server
     success = await server_service.update_server(service_path, updated_server_entry)
@@ -2673,6 +2703,7 @@ async def register_service_api(
     tool_list_json: Annotated[str | None, Form()] = None,
     mcp_endpoint: Annotated[str | None, Form()] = None,
     sse_endpoint: Annotated[str | None, Form()] = None,
+    metadata: Annotated[str | None, Form()] = None,
 ):
     """
     Register a service via JWT Bearer Token authentication (External API).
@@ -2798,6 +2829,18 @@ async def register_service_api(
         server_entry["mcp_endpoint"] = mcp_endpoint
     if sse_endpoint:
         server_entry["sse_endpoint"] = sse_endpoint
+    if metadata:
+        try:
+            server_entry["metadata"] = json.loads(metadata) if isinstance(metadata, str) else metadata
+        except json.JSONDecodeError:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "Invalid metadata",
+                    "reason": "metadata must be valid JSON",
+                    "detail": "Provide metadata as a JSON string",
+                },
+            )
 
     # Check if server exists and handle overwrite logic
     existing_server = await server_service.get_server_info(path)
@@ -4047,6 +4090,7 @@ async def get_servers_json(
                     "health_status": health_data["status"],
                     "last_checked_iso": health_data["last_checked_iso"],
                     "mcp_endpoint": server_info.get("mcp_endpoint"),
+                    "metadata": server_info.get("metadata", {}),
                 }
             )
 

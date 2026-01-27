@@ -174,7 +174,7 @@ class FaissService:
             logger.error(f"Error saving FAISS data: {e}", exc_info=True)
             
     def _get_text_for_embedding(self, server_info: Dict[str, Any]) -> str:
-        """Prepare text string from server info (including tools) for embedding."""
+        """Prepare text string from server info (including tools and metadata) for embedding."""
         name = server_info.get("server_name", "")
         description = server_info.get("description", "")
         tags = server_info.get("tags", [])
@@ -190,15 +190,33 @@ class FaissService:
             tool_snippets.append(snippet.strip())
 
         tools_section = "\n".join(tool_snippets)
-        return (
-            f"Name: {name}\n"
-            f"Description: {description}\n"
-            f"Tags: {tag_string}\n"
-            f"Tools:\n{tools_section}"
-        ).strip()
+
+        metadata = server_info.get("metadata", {})
+        metadata_snippets = []
+        if metadata:
+            for key, value in metadata.items():
+                if isinstance(value, (dict, list)):
+                    value_str = str(value)
+                else:
+                    value_str = str(value)
+                metadata_snippets.append(f"{key}: {value_str}")
+
+        metadata_section = "\n".join(metadata_snippets) if metadata_snippets else ""
+
+        text_parts = [
+            f"Name: {name}",
+            f"Description: {description}",
+            f"Tags: {tag_string}",
+            f"Tools:\n{tools_section}",
+        ]
+
+        if metadata_section:
+            text_parts.append(f"Metadata:\n{metadata_section}")
+
+        return "\n".join(text_parts).strip()
 
     def _get_text_for_agent(self, agent_card: AgentCard) -> str:
-        """Prepare text string from agent card for embedding."""
+        """Prepare text string from agent card (including metadata) for embedding."""
         name = agent_card.name
         description = agent_card.description
 
@@ -225,6 +243,19 @@ class FaissService:
 
         if tag_string:
             text_parts.append(f"Tags: {tag_string}")
+
+        if agent_card.metadata:
+            metadata_snippets = []
+            for key, value in agent_card.metadata.items():
+                if isinstance(value, (dict, list)):
+                    value_str = str(value)
+                else:
+                    value_str = str(value)
+                metadata_snippets.append(f"{key}: {value_str}")
+
+            if metadata_snippets:
+                metadata_section = "\n".join(metadata_snippets)
+                text_parts.append(f"Metadata:\n{metadata_section}")
 
         return "\n".join(text_parts)
 

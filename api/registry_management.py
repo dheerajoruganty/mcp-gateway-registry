@@ -509,6 +509,7 @@ def cmd_register(args: argparse.Namespace) -> int:
             overwrite=args.overwrite,
             mcp_endpoint=config.get("mcp_endpoint"),
             sse_endpoint=config.get("sse_endpoint"),
+            metadata=config.get("metadata", {}),
         )
 
         client = _create_client(args)
@@ -541,16 +542,21 @@ def cmd_list(args: argparse.Namespace) -> int:
     """
     try:
         client = _create_client(args)
+
+        # Print raw JSON if requested - fetch directly from API to get all fields
+        if hasattr(args, 'json') and args.json:
+            import json
+            raw_response = client._make_request(
+                method="GET",
+                endpoint="/api/servers"
+            )
+            print(json.dumps(raw_response.json(), indent=2, default=str))
+            return 0
+
         response = client.list_services()
 
         if not response.servers:
             logger.info("No servers registered")
-            return 0
-
-        # Print raw JSON if requested
-        if hasattr(args, 'json') and args.json:
-            import json
-            print(json.dumps(response.model_dump(), indent=2, default=str))
             return 0
 
         logger.info(f"Found {len(response.servers)} registered servers:\n")

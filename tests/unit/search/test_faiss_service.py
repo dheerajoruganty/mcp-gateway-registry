@@ -260,6 +260,96 @@ class TestTextPreparation:
         assert "skilled-agent" in text
         assert "Skills:" in text
 
+    def test_get_text_for_embedding_includes_metadata(self, faiss_service):
+        """Test _get_text_for_embedding includes metadata in embedding text."""
+        server_info = {
+            "server_name": "test-server",
+            "description": "Test server with metadata",
+            "tags": ["test"],
+            "tool_list": [],
+            "metadata": {
+                "team": "data-platform",
+                "owner": "alice@example.com",
+                "compliance_level": "PCI-DSS",
+            }
+        }
+
+        text = faiss_service._get_text_for_embedding(server_info)
+
+        assert "test-server" in text
+        assert "Metadata:" in text
+        assert "team: data-platform" in text
+        assert "owner: alice@example.com" in text
+        assert "compliance_level: PCI-DSS" in text
+
+    def test_get_text_for_embedding_without_metadata(self, faiss_service):
+        """Test _get_text_for_embedding works without metadata field."""
+        server_info = {
+            "server_name": "test-server",
+            "description": "Test server without metadata",
+            "tags": ["test"],
+            "tool_list": []
+        }
+
+        text = faiss_service._get_text_for_embedding(server_info)
+
+        assert "test-server" in text
+        assert "Metadata:" not in text
+
+    def test_get_text_for_embedding_with_nested_metadata(self, faiss_service):
+        """Test _get_text_for_embedding handles nested metadata structures."""
+        server_info = {
+            "server_name": "test-server",
+            "description": "Test server",
+            "tags": [],
+            "tool_list": [],
+            "metadata": {
+                "compliance": {
+                    "level": "PCI-DSS",
+                    "audited": True
+                },
+                "tags": ["production", "critical"]
+            }
+        }
+
+        text = faiss_service._get_text_for_embedding(server_info)
+
+        assert "Metadata:" in text
+        assert "compliance:" in text
+        assert "tags:" in text
+
+    def test_get_text_for_agent_includes_metadata(self, faiss_service):
+        """Test _get_text_for_agent includes metadata in embedding text."""
+        agent = AgentCardFactory(
+            name="test-agent",
+            description="Test agent with metadata",
+            metadata={
+                "team": "ai-platform",
+                "owner": "bob@example.com",
+                "version": "2.1.0"
+            }
+        )
+
+        text = faiss_service._get_text_for_agent(agent)
+
+        assert "test-agent" in text
+        assert "Metadata:" in text
+        assert "team: ai-platform" in text
+        assert "owner: bob@example.com" in text
+        assert "version: 2.1.0" in text
+
+    def test_get_text_for_agent_without_metadata(self, faiss_service):
+        """Test _get_text_for_agent works without metadata."""
+        agent = AgentCardFactory(
+            name="test-agent",
+            description="Test agent without metadata"
+        )
+
+        text = faiss_service._get_text_for_agent(agent)
+
+        assert "test-agent" in text
+        assert "Metadata:" not in text
+
 
 # =============================================================================
 # EMBEDDING AND NORMALIZATION TESTS

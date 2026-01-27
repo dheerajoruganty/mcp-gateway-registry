@@ -72,6 +72,9 @@ interface ServerFormData {
   author: string;
   homepage: string;
   repository_url: string;
+  mcp_endpoint: string;
+  sse_endpoint: string;
+  metadata: string;
 }
 
 
@@ -111,6 +114,9 @@ const initialServerForm: ServerFormData = {
   author: '',
   homepage: '',
   repository_url: '',
+  mcp_endpoint: '',
+  sse_endpoint: '',
+  metadata: '',
 };
 
 
@@ -265,6 +271,9 @@ const RegisterPage: React.FC = () => {
             author: parsed.author || prev.author,
             homepage: parsed.homepage || prev.homepage,
             repository_url: parsed.repository_url || parsed.repositoryUrl || prev.repository_url,
+            mcp_endpoint: parsed.mcp_endpoint || parsed.mcpEndpoint || prev.mcp_endpoint,
+            sse_endpoint: parsed.sse_endpoint || parsed.sseEndpoint || prev.sse_endpoint,
+            metadata: parsed.metadata ? JSON.stringify(parsed.metadata, null, 2) : prev.metadata,
           }));
         } else {
           setAgentForm(prev => ({
@@ -313,6 +322,15 @@ const RegisterPage: React.FC = () => {
       formData.append('num_tools', serverForm.num_tools.toString());
       formData.append('license', serverForm.license);
       formData.append('is_python', serverForm.is_python.toString());
+      if (serverForm.mcp_endpoint) {
+        formData.append('mcp_endpoint', serverForm.mcp_endpoint);
+      }
+      if (serverForm.sse_endpoint) {
+        formData.append('sse_endpoint', serverForm.sse_endpoint);
+      }
+      if (serverForm.metadata) {
+        formData.append('metadata', serverForm.metadata);
+      }
 
       await axios.post('/api/register', formData, {
         headers: {
@@ -557,6 +575,50 @@ const RegisterPage: React.FC = () => {
             onChange={(e) => setServerForm(prev => ({ ...prev, repository_url: e.target.value }))}
             placeholder="https://github.com/username/repo"
           />
+        </div>
+
+        {/* Advanced Settings */}
+        <div className="md:col-span-2 mt-4">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4 flex items-center">
+            <span className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded text-xs mr-2">Advanced</span>
+            Custom Endpoints & Metadata
+          </h3>
+        </div>
+
+        <div>
+          <label className={labelClass}>MCP Endpoint (optional)</label>
+          <input
+            type="url"
+            className={inputClass}
+            value={serverForm.mcp_endpoint}
+            onChange={(e) => setServerForm(prev => ({ ...prev, mcp_endpoint: e.target.value }))}
+            placeholder="http://server.com/custom-mcp-path"
+          />
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Override default /mcp endpoint path</p>
+        </div>
+
+        <div>
+          <label className={labelClass}>SSE Endpoint (optional)</label>
+          <input
+            type="url"
+            className={inputClass}
+            value={serverForm.sse_endpoint}
+            onChange={(e) => setServerForm(prev => ({ ...prev, sse_endpoint: e.target.value }))}
+            placeholder="http://server.com/custom-sse-path"
+          />
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Override default /sse endpoint path</p>
+        </div>
+
+        <div className="md:col-span-2">
+          <label className={labelClass}>Metadata (optional, JSON)</label>
+          <textarea
+            className={inputClass}
+            rows={3}
+            value={serverForm.metadata}
+            onChange={(e) => setServerForm(prev => ({ ...prev, metadata: e.target.value }))}
+            placeholder='{"team": "platform", "owner": "alice@example.com", "cost_center": "CC-1001"}'
+          />
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Custom key-value pairs for organization, compliance, or integration purposes</p>
         </div>
       </div>
 

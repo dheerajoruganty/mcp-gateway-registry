@@ -99,6 +99,18 @@ Registers a new MCP service with the gateway.
 - `num_stars` (optional): Star rating for the service
 - `is_python` (optional): Whether the service is Python-based
 - `license` (optional): License information
+- `metadata` (optional): JSON object with custom metadata for organization, compliance, and integration tracking. Fully searchable via semantic search.
+
+**Metadata Examples:**
+```json
+{
+  "team": "data-platform",
+  "owner": "alice@example.com",
+  "compliance_level": "PCI-DSS",
+  "cost_center": "engineering",
+  "deployment_region": "us-east-1"
+}
+```
 
 **Response:**
 - Success: JSON response with status code 201

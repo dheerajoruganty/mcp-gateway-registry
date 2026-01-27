@@ -1433,6 +1433,10 @@
             if (jsonData.sse_endpoint) {
                 formData.append('sse_endpoint', jsonData.sse_endpoint);
             }
+            // Custom metadata field (optional) - send as JSON string
+            if (jsonData.metadata && Object.keys(jsonData.metadata).length > 0) {
+                formData.append('metadata', JSON.stringify(jsonData.metadata));
+            }
 
             handleRegistrationSubmit(formData);
         }
@@ -2453,6 +2457,11 @@
                         <input type="checkbox" id="reg-is-python" name="is_python" value="true"> <!-- Value 'true' is important for FastAPI -->
                         <label for="reg-is-python" style="display: inline; font-weight: normal;">Is Python based?</label>
                     </div>
+                    <div class="form-group">
+                        <label for="reg-metadata">Metadata (optional, JSON object)</label>
+                        <textarea id="reg-metadata" name="metadata" class="form-input" rows="4" placeholder='{"team": "platform", "owner": "alice@example.com", "cost_center": "CC-1001"}'></textarea>
+                        <small style="color: #666;">Custom key-value pairs for organization, compliance, or integration purposes</small>
+                    </div>
                     <button type="submit" class="edit-button">Register Server</button>
                 </form>
             </div>
@@ -2475,7 +2484,7 @@
                 <form id="paste-json-form">
                     <div class="form-group">
                         <label for="json-paste-area">Paste JSON content here</label>
-                        <textarea id="json-paste-area" class="form-input" rows="12" required placeholder='''{
+                        <textarea id="json-paste-area" class="form-input" rows="15" required placeholder='''{
     "server_name": "My Awesome Service",
     "path": "/my-awesome-service",
     "proxy_pass_url": "http://localhost:8080",
@@ -2485,9 +2494,14 @@
     "is_python": true,
     "license": "MIT",
     "mcp_endpoint": "http://localhost:8080/custom-path",
-    "sse_endpoint": "http://localhost:8080/events"
+    "sse_endpoint": "http://localhost:8080/events",
+    "metadata": {
+        "team": "platform",
+        "owner": "alice@example.com",
+        "cost_center": "CC-1001"
+    }
 }'''></textarea>
-                        <small style="color: #666;">Note: mcp_endpoint and sse_endpoint are optional. Use them only if your server uses custom endpoint paths instead of /mcp or /sse.</small>
+                        <small style="color: #666;">Note: mcp_endpoint, sse_endpoint, and metadata are optional.</small>
                     </div>
                     <button type="submit" class="edit-button">Paste and Register</button>
                 </form>

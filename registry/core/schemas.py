@@ -26,6 +26,10 @@ class ServerInfo(BaseModel):
         default=None,
         description="Full URL for the SSE endpoint. If set, used directly for health checks and client connections instead of appending /sse to proxy_pass_url. Example: 'https://server.com/events'"
     )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional custom metadata for organization, compliance, or integration purposes",
+    )
 
 
 class ToolDescription(BaseModel):
@@ -82,6 +86,10 @@ class ServiceRegistrationRequest(BaseModel):
     sse_endpoint: Optional[str] = Field(
         default=None,
         description="Full URL for the SSE endpoint. If set, used directly for health checks and client connections instead of appending /sse to proxy_pass_url. Example: 'https://server.com/events'"
+    )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional custom metadata for organization, compliance, or integration purposes",
     )
 
 

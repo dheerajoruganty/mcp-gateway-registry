@@ -134,6 +134,95 @@ cp cli/examples/code_reviewer_agent.json cli/examples/my_agent.json
 uv run python cli/agent_mgmt.py register cli/examples/my_agent.json
 ```
 
+### Custom Metadata
+
+Agents support optional custom metadata for organization, compliance, and integration tracking. All metadata is fully searchable via semantic search.
+
+#### Example Agent with Metadata
+```json
+{
+  "name": "Data Analysis Agent",
+  "path": "/data-analysis",
+  "description": "Advanced data analysis agent",
+  "url": "https://example.com/agents/data-analysis",
+  "version": "3.2.1",
+  "protocol_version": "1.0",
+  "visibility": "public",
+  "trust_level": "verified",
+  "tags": ["analytics", "data-science"],
+  "metadata": {
+    "team": "data-science",
+    "owner": "bob@example.com",
+    "cost_center": "analytics-dept",
+    "version": "3.2.1",
+    "deployment_region": "us-east-1",
+    "jira_ticket": "DATA-456"
+  }
+}
+```
+
+#### Metadata Use Cases
+
+**Organization & Team:**
+```json
+{
+  "team": "data-science",
+  "owner": "bob@example.com",
+  "department": "analytics"
+}
+```
+
+**Compliance & Governance:**
+```json
+{
+  "compliance_level": "HIPAA",
+  "data_classification": "phi",
+  "audit_logging": true
+}
+```
+
+**Cost & Project Tracking:**
+```json
+{
+  "cost_center": "analytics-dept",
+  "project_code": "AI-2024-Q1"
+}
+```
+
+**Deployment & Integration:**
+```json
+{
+  "deployment_region": "us-east-1",
+  "environment": "production",
+  "version": "3.2.1",
+  "jira_ticket": "DATA-456"
+}
+```
+
+#### Search by Metadata
+
+Once registered, agents with metadata are searchable:
+
+```bash
+# Find agents by team
+uv run python cli/agent_mgmt.py search "team:data-science"
+
+# Find agents by owner
+uv run python cli/agent_mgmt.py search "bob@example.com owned agents"
+
+# Find agents by cost center
+uv run python cli/agent_mgmt.py search "cost center analytics"
+
+# Find agents in specific region
+uv run python cli/agent_mgmt.py search "us-east-1 deployed agents"
+```
+
+**Key Features:**
+- **Flexible Schema:** Any JSON-serializable data
+- **Fully Searchable:** Included in semantic search
+- **Optional:** Works with or without metadata
+- **Type-Safe:** Pydantic validation
+
 ## Verification
 
 ### Check Token Has Correct Groups

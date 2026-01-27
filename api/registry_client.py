@@ -74,6 +74,10 @@ class InternalServiceRegistration(BaseModel):
         None,
         description="Full URL for the SSE endpoint (overrides proxy_pass_url + /sse)"
     )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Additional custom metadata for organization, compliance, or integration purposes"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -883,6 +887,10 @@ class RegistryClient:
         # Convert tags list to comma-separated string for form encoding
         if "tags" in data and isinstance(data["tags"], list):
             data["tags"] = ",".join(data["tags"])
+
+        # Convert metadata dict to JSON string for form encoding
+        if "metadata" in data and isinstance(data["metadata"], dict):
+            data["metadata"] = json.dumps(data["metadata"])
 
         response = self._make_request(
             method="POST",

@@ -27,6 +27,7 @@ interface Server {
   num_stars?: number;
   is_python?: boolean;
   mcp_endpoint?: string;
+  metadata?: Record<string, unknown>;
 }
 
 interface Agent {
@@ -129,7 +130,8 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
     num_tools: 0,
     num_stars: 0,
     is_python: false,
-    mcp_endpoint: ''
+    mcp_endpoint: '',
+    metadata: ''
   });
   const [editLoading, setEditLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -432,7 +434,8 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
         num_tools: serverDetails.num_tools || 0,
         num_stars: serverDetails.num_stars || 0,
         is_python: serverDetails.is_python || false,
-        mcp_endpoint: serverDetails.mcp_endpoint || ''
+        mcp_endpoint: serverDetails.mcp_endpoint || '',
+        metadata: serverDetails.metadata ? JSON.stringify(serverDetails.metadata, null, 2) : ''
       });
     } catch (error) {
       console.error('Failed to fetch server details:', error);
@@ -448,7 +451,8 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
         num_tools: server.num_tools || 0,
         num_stars: 0,
         is_python: false,
-        mcp_endpoint: server.mcp_endpoint || ''
+        mcp_endpoint: server.mcp_endpoint || '',
+        metadata: server.metadata ? JSON.stringify(server.metadata, null, 2) : ''
       });
     }
   }, []);
@@ -498,6 +502,9 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
       formData.append('is_python', editForm.is_python.toString());
       if (editForm.mcp_endpoint) {
         formData.append('mcp_endpoint', editForm.mcp_endpoint);
+      }
+      if (editForm.metadata) {
+        formData.append('metadata', editForm.metadata);
       }
 
       // Use the correct edit endpoint with the server path
@@ -1383,6 +1390,19 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                   onChange={(e) => setEditForm(prev => ({ ...prev, mcp_endpoint: e.target.value }))}
                   className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-purple-500 focus:border-purple-500"
                   placeholder="Custom MCP endpoint URL (overrides default)"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                  Custom Metadata (JSON, optional)
+                </label>
+                <textarea
+                  value={editForm.metadata}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, metadata: e.target.value }))}
+                  rows={4}
+                  className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-purple-500 focus:border-purple-500 font-mono text-sm"
+                  placeholder='{"team": "platform", "owner": "alice@example.com"}'
                 />
               </div>
 

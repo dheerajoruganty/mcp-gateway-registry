@@ -164,11 +164,61 @@ response = client.add_server(
     num_tools=5,
     num_stars=4,
     is_python=True,
-    license="MIT"
+    license="MIT",
+    metadata={
+        "team": "data-platform",
+        "owner": "alice@example.com",
+        "compliance_level": "PCI-DSS",
+        "cost_center": "engineering",
+        "deployment_region": "us-east-1"
+    }
 )
 
 print(f"Server added: {response['name']}")
 ```
+
+#### Custom Metadata
+
+Servers support optional custom metadata for organization, compliance, and integration tracking. All metadata is fully searchable via semantic search.
+
+**Example with Metadata:**
+```python
+# Add server with custom metadata
+response = client.add_server(
+    server_name="Payment Processor",
+    path="/payment-processor",
+    proxy_pass_url="http://payment:8080/",
+    description="Payment processing service",
+    tags=["finance", "payments"],
+    metadata={
+        "team": "finance-platform",
+        "owner": "bob@example.com",
+        "compliance_level": "PCI-DSS",
+        "data_classification": "confidential",
+        "cost_center": "finance-ops",
+        "deployment_region": "us-east-1",
+        "environment": "production",
+        "jira_ticket": "FIN-789"
+    }
+)
+```
+
+**Search by Metadata:**
+```python
+# Servers with metadata are searchable via semantic search API
+# Example queries:
+# - "team:finance-platform servers"
+# - "PCI-DSS compliant services"
+# - "bob@example.com owned servers"
+# - "us-east-1 deployed services"
+```
+
+**Metadata Use Cases:**
+- **Organization:** team, owner, department
+- **Compliance:** compliance_level, data_classification, audit_logging
+- **Cost Tracking:** cost_center, project_code, budget_allocation
+- **Deployment:** deployment_region, environment, version
+- **Integration:** jira_ticket, service_now_id, monitoring_url
 
 #### What Happens During Registration
 
