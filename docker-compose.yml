@@ -15,9 +15,9 @@ services:
   # Vector search is implemented in application code (see search_repository.py)
   # Running without authentication for local development simplicity
   mongodb:
-    image: mongo:8.2
+    image: dhi.io/mongodb:8-debian13-dev
     container_name: mcp-mongodb
-    command: mongod --replSet rs0 --bind_ip 127.0.0.1,mongodb
+    command: ["--replSet", "rs0", "--bind_ip", "127.0.0.1,mongodb"]
     ports:
       - "27017:27017"
     volumes:
@@ -334,15 +334,16 @@ services:
 
   # Prometheus for metrics collection
   prometheus:
-    image: prom/prometheus:latest
+    image: dhi.io/prometheus:3.9
+    user: "nonroot"
     ports:
       - "9090:9090"
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
+      - prometheus-data:/var/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.path=/var/prometheus'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--storage.tsdb.retention.time=200h'
@@ -351,7 +352,8 @@ services:
 
   # Grafana for metrics visualization
   grafana:
-    image: grafana/grafana:latest
+    image: dhi.io/grafana:12
+    user: "grafana"
     ports:
       - "3000:3000"
     environment:
@@ -367,7 +369,7 @@ services:
 
   # PostgreSQL database for Keycloak
   keycloak-db:
-    image: postgres:16-alpine
+    image: dhi.io/postgres:16-alpine3.22
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak

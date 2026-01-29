@@ -98,17 +98,17 @@ TOKEN_CONTENT=$(cat "$TOKEN_FILE")
 # Detect token format and extract access_token
 # Format 1: JSON with access_token field (from generate_creds.sh)
 # Format 2: Raw JWT token (from get-m2m-token.sh)
+# Format 3: JSON with nested tokens.access_token field (from UI sidebar token generation)
 if echo "$TOKEN_CONTENT" | grep -q "^eyJ"; then
     # Format 2: Raw JWT token (starts with eyJ which is base64 for '{"')
     ACCESS_TOKEN="$TOKEN_CONTENT"
 else
-    # Format 1: JSON format - extract the access_token field
     if command -v jq &> /dev/null; then
-        # Use jq if available
-        ACCESS_TOKEN=$(echo "$TOKEN_CONTENT" | jq -r '.access_token // empty')
+        # Use jq if available - try flat access_token first, then nested tokens.access_token
+        ACCESS_TOKEN=$(echo "$TOKEN_CONTENT" | jq -r '.access_token // .tokens.access_token // empty')
     else
         # Fallback to grep/sed if jq is not available
-        ACCESS_TOKEN=$(echo "$TOKEN_CONTENT" | grep -o '"access_token":"[^"]*"' | sed 's/"access_token":"\([^"]*\)"/\1/')
+        ACCESS_TOKEN=$(echo "$TOKEN_CONTENT" | grep -o '"access_token":"[^"]*"' | head -1 | sed 's/"access_token":"\([^"]*\)"/\1/')
     fi
 fi
 
@@ -119,6 +119,7 @@ if [ -z "$ACCESS_TOKEN" ]; then
     echo "Supported formats:"
     echo "  1. JSON format: {\"access_token\": \"...\"}"
     echo "  2. Raw JWT token: eyJ..."
+    echo "  3. Nested JSON: {\"tokens\": {\"access_token\": \"...\"}}"
     echo ""
     echo "To regenerate tokens:"
     echo "  cd credentials-provider && ./generate_creds.sh && cd .."
