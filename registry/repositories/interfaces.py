@@ -53,6 +53,24 @@ class ServerRepositoryBase(ABC):
         pass
 
     @abstractmethod
+    async def delete_with_versions(
+        self,
+        path: str,
+    ) -> int:
+        """Delete a server and all its version documents.
+
+        Deletes the active document at `path` and any version documents
+        with IDs matching `{path}:{version}`.
+
+        Args:
+            path: Server base path (e.g., "/context7")
+
+        Returns:
+            Number of documents deleted (0 if none found)
+        """
+        pass
+
+    @abstractmethod
     async def get_state(
         self,
         path: str,

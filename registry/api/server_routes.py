@@ -328,6 +328,31 @@ async def get_servers_json(
             else:
                 normalized_status = raw_status
 
+            # Build versions list if this server has other versions
+            versions = []
+            current_version = server_info.get("version", "v1.0.0")
+            current_status = server_info.get("status", "stable")
+
+            # Add current (active) version first
+            versions.append({
+                "version": current_version,
+                "proxy_pass_url": server_info.get("proxy_pass_url", ""),
+                "status": current_status,
+                "is_default": True,
+            })
+
+            # Add other versions if they exist
+            other_version_ids = server_info.get("other_version_ids", [])
+            for version_id in other_version_ids:
+                version_info = await server_service.get_server_info(version_id)
+                if version_info:
+                    versions.append({
+                        "version": version_info.get("version", "unknown"),
+                        "proxy_pass_url": version_info.get("proxy_pass_url", ""),
+                        "status": version_info.get("status", "stable"),
+                        "is_default": False,
+                    })
+
             service_data.append(
                 {
                     "display_name": server_name,
@@ -344,6 +369,12 @@ async def get_servers_json(
                     "last_checked_iso": health_data["last_checked_iso"],
                     "mcp_endpoint": server_info.get("mcp_endpoint"),
                     "metadata": server_info.get("metadata", {}),
+                    "version": current_version,
+                    "versions": versions if len(versions) > 1 else None,
+                    "default_version": current_version,
+                    "mcp_server_version": server_info.get("mcp_server_version"),
+                    "mcp_server_version_previous": server_info.get("mcp_server_version_previous"),
+                    "mcp_server_version_updated_at": server_info.get("mcp_server_version_updated_at"),
                 }
             )
 
@@ -538,17 +569,35 @@ async def register_service(
                 detail="Invalid JSON in metadata field",
             )
 
-    # Register the server
-    success = await server_service.register_server(server_entry)
+    # Register the server (or new version if path exists with different version)
+    result = await server_service.register_server(server_entry)
 
-    if not success:
+    if not result["success"]:
+        # Check if it's a version conflict (same path, same version)
         return JSONResponse(
-            status_code=400,
+            status_code=409,
             content={
-                "error": f"Service with path '{path}' already exists or failed to save"
+                "error": result["message"],
             },
         )
 
+    # Handle new version registration vs new server
+    if result.get("is_new_version"):
+        logger.info(
+            f"New version registered: '{name}' version '{server_entry.get('version')}' "
+            f"at path '{path}' by user '{user_context['username']}'"
+        )
+        return JSONResponse(
+            status_code=201,
+            content={
+                "message": result["message"],
+                "service": server_entry,
+                "is_new_version": True,
+                "existing_version": result.get("existing_version"),
+            },
+        )
+
+    # New server - proceed with full setup
     # Add to FAISS index with current enabled state
     is_enabled = await server_service.is_service_enabled(path)
     await faiss_service.add_or_update_service(path, server_entry, is_enabled)
@@ -792,8 +841,11 @@ async def internal_register_service(
             f"INTERNAL REGISTER: Overwriting existing server at path {path}"
         )  # TODO: replace with debug
         success = await server_service.update_server(path, server_entry)
+        is_new_version = False
     else:
-        success = await server_service.register_server(server_entry)
+        result = await server_service.register_server(server_entry)
+        success = result["success"]
+        is_new_version = result.get("is_new_version", False)
 
     if not success:
         logger.warning(
@@ -803,7 +855,7 @@ async def internal_register_service(
             status_code=409,  # Conflict status code for existing resource
             content={
                 "error": "Service registration failed",
-                "reason": f"Failed to register service at path '{path}'",
+                "reason": result.get("message", f"Failed to register service at path '{path}'"),
                 "suggestion": "Check server logs for detailed error information",
             },
         )
@@ -1580,6 +1632,36 @@ async def get_server_details(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have access to this server",
             )
+
+    # Build versions list if this server has version routing enabled
+    versions = []
+    current_version = server_info.get("version", "v1.0.0")
+    current_status = server_info.get("status", "stable")
+
+    # Add current (active) version first
+    versions.append({
+        "version": current_version,
+        "proxy_pass_url": server_info.get("proxy_pass_url", ""),
+        "status": current_status,
+        "is_default": True,
+    })
+
+    # Add other versions if they exist
+    other_version_ids = server_info.get("other_version_ids", [])
+    for version_id in other_version_ids:
+        version_info = await server_service.get_server_info(version_id)
+        if version_info:
+            versions.append({
+                "version": version_info.get("version", "unknown"),
+                "proxy_pass_url": version_info.get("proxy_pass_url", ""),
+                "status": version_info.get("status", "stable"),
+                "is_default": False,
+            })
+
+    # Add versions to response if there are multiple versions
+    if len(versions) > 1 or server_info.get("version_group"):
+        server_info["versions"] = versions
+        server_info["default_version"] = current_version
 
     return server_info
 
@@ -2704,6 +2786,8 @@ async def register_service_api(
     mcp_endpoint: Annotated[str | None, Form()] = None,
     sse_endpoint: Annotated[str | None, Form()] = None,
     metadata: Annotated[str | None, Form()] = None,
+    version: Annotated[str | None, Form()] = None,
+    status: Annotated[str | None, Form()] = None,
 ):
     """
     Register a service via JWT Bearer Token authentication (External API).
@@ -2733,12 +2817,14 @@ async def register_service_api(
     - `tool_list_json` (optional): JSON array of tool definitions
     - `mcp_endpoint` (optional): Full URL for custom MCP endpoint (overrides /mcp suffix)
     - `sse_endpoint` (optional): Full URL for custom SSE endpoint (overrides /sse suffix)
+    - `version` (optional): Server version (e.g., v1.0.0, v2.0.0)
+    - `status` (optional): Version status (stable, beta, deprecated)
 
     **Response:**
     - `201 Created`: Service registered successfully
     - `400 Bad Request`: Invalid input data
     - `401 Unauthorized`: Missing or invalid JWT token
-    - `409 Conflict`: Service already exists (unless overwrite=true)
+    - `409 Conflict`: Service already exists with same version (different version auto-creates new version)
     - `500 Internal Server Error`: Server error
 
     **Example:**
@@ -2829,6 +2915,10 @@ async def register_service_api(
         server_entry["mcp_endpoint"] = mcp_endpoint
     if sse_endpoint:
         server_entry["sse_endpoint"] = sse_endpoint
+    if version:
+        server_entry["version"] = version
+    if status:
+        server_entry["status"] = status
     if metadata:
         try:
             server_entry["metadata"] = json.loads(metadata) if isinstance(metadata, str) else metadata
@@ -2842,20 +2932,27 @@ async def register_service_api(
                 },
             )
 
-    # Check if server exists and handle overwrite logic
+    # Check if server exists and handle overwrite/version logic
     existing_server = await server_service.get_server_info(path)
+
+    # If server exists with a different version, register_server will auto-create new version
+    # Only reject if overwrite=False AND it's the same version (or no version specified)
     if existing_server and not overwrite:
-        logger.warning(
-            f"SERVERS REGISTER: Server exists and overwrite=False for path {path}"
-        )
-        return JSONResponse(
-            status_code=409,
-            content={
-                "error": "Service registration failed",
-                "reason": f"A service with path '{path}' already exists",
-                "detail": "Use overwrite=true to replace existing service",
-            },
-        )
+        existing_version = existing_server.get("version", "v1.0.0")
+        new_version = version
+        # If versions are different, let register_server handle it as a new version
+        if not new_version or new_version == existing_version:
+            logger.warning(
+                f"SERVERS REGISTER: Server exists with same version and overwrite=False for path {path}"
+            )
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "error": "Service registration failed",
+                    "reason": f"A service with path '{path}' already exists with version {existing_version}",
+                    "detail": "Use overwrite=true to replace, or specify a different version",
+                },
+            )
 
     try:
         # Register service (use update_server if overwriting, otherwise register_server)
@@ -2864,8 +2961,11 @@ async def register_service_api(
                 f"Overwriting existing server at path {path} by user {user_context.get('username')}"
             )
             success = await server_service.update_server(path, server_entry)
+            is_new_version = False
         else:
-            success = await server_service.register_server(server_entry)
+            result = await server_service.register_server(server_entry)
+            success = result["success"]
+            is_new_version = result.get("is_new_version", False)
 
         if not success:
             logger.error(f"Service registration failed for {path}")
@@ -2873,14 +2973,19 @@ async def register_service_api(
                 status_code=409,
                 content={
                     "error": "Service registration failed",
-                    "reason": f"Failed to register service at path '{path}'",
+                    "reason": result.get("message", f"Failed to register service at path '{path}'"),
                     "detail": "Check server logs for more information",
                 },
             )
 
-        logger.info(
-            f"Service registered successfully via API: {path} by user {user_context.get('username')}"
-        )
+        if is_new_version:
+            logger.info(
+                f"New version registered for {path} by user {user_context.get('username')}"
+            )
+        else:
+            logger.info(
+                f"Service registered successfully via API: {path} by user {user_context.get('username')}"
+            )
 
         # Security scanning if enabled
         await _perform_security_scan_on_registration(
@@ -3763,6 +3868,12 @@ async def rate_server(
         path = "/" + path
 
     server_info = await server_service.get_server_info(path)
+    # Try with trailing slash if not found (path normalization)
+    if not server_info and not path.endswith("/"):
+        path_with_slash = path + "/"
+        server_info = await server_service.get_server_info(path_with_slash)
+        if server_info:
+            path = path_with_slash
     if not server_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -3813,6 +3924,12 @@ async def get_server_rating(
         path = "/" + path
 
     server_info = await server_service.get_server_info(path)
+    # Try with trailing slash if not found (path normalization)
+    if not server_info and not path.endswith("/"):
+        path_with_slash = path + "/"
+        server_info = await server_service.get_server_info(path_with_slash)
+        if server_info:
+            path = path_with_slash
     if not server_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -4021,77 +4138,121 @@ async def get_service_tools_api(
     # Call the existing get_service_tools function
     return await get_service_tools(service_path=service_path, user_context=user_context)
 
-@router.get("/servers")
-async def get_servers_json(
-    request: Request,
-    query: str | None = None,
+
+# ============================================================================
+# Server Version Management Endpoints
+# ============================================================================
+
+class SetDefaultVersion(BaseModel):
+    """Request model for setting default version."""
+    version: str
+
+
+@router.delete("/servers/{service_path:path}/versions/{version}")
+async def remove_server_version(
+    service_path: str,
+    version: str,
     user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
 ):
-    """Get servers data as JSON for React frontend and external API (supports both session cookies and Bearer tokens)."""
-    # CRITICAL DIAGNOSTIC: Log that we reached this endpoint
-    logger.info(f"[GET_SERVERS_ENTRY] GET /api/servers called from {request.client.host if request.client else 'unknown'}")
-    logger.info(f"[GET_SERVERS_ENTRY] Request headers: {dict(request.headers)}")
+    """
+    Remove a version from a server.
 
-    # CRITICAL DIAGNOSTIC: Log user_context received by endpoint
-    logger.info(f"[GET_SERVERS_DEBUG] Received user_context: {user_context}")
-    logger.info(f"[GET_SERVERS_DEBUG] user_context type: {type(user_context)}")
-    if user_context:
-        logger.info(f"[GET_SERVERS_DEBUG] Username: {user_context.get('username', 'NOT PRESENT')}")
-        logger.info(f"[GET_SERVERS_DEBUG] Scopes: {user_context.get('scopes', 'NOT PRESENT')}")
-        logger.info(f"[GET_SERVERS_DEBUG] Auth method: {user_context.get('auth_method', 'NOT PRESENT')}")
-        logger.info(f"[GET_SERVERS_DEBUG] Accessible services: {user_context.get('accessible_services', 'NOT PRESENT')}")
+    Args:
+        service_path: Server path (URL encoded)
+        version: Version to remove
 
-    service_data = []
-    search_query = query.lower() if query else ""
+    Returns:
+        Success message
+    """
+    decoded_path = "/" + service_path if not service_path.startswith("/") else service_path
 
-    # Get servers based on user permissions (same logic as root route)
-    if user_context['is_admin']:
-        all_servers = await server_service.get_all_servers()
-    else:
-        all_servers = await server_service.get_all_servers_with_permissions(user_context['accessible_servers'])
-    
-    sorted_server_paths = sorted(
-        all_servers.keys(), 
-        key=lambda p: all_servers[p]["server_name"]
-    )
-    
-    # Filter services based on UI permissions (same logic as root route)
-    accessible_services = user_context.get('accessible_services', [])
+    try:
+        result = await server_service.remove_server_version(
+            path=decoded_path,
+            version=version
+        )
 
-    for path in sorted_server_paths:
-        server_info = all_servers[path]
-        server_name = server_info["server_name"]
-        # Extract technical name from path (remove leading and trailing slashes)
-        technical_name = path.strip('/')
-
-        # Check if user can list this service using technical name
-        if 'all' not in accessible_services and technical_name not in accessible_services:
-            continue
-        
-        # Include description and tags in search
-        searchable_text = f"{server_name.lower()} {server_info.get('description', '').lower()} {' '.join(server_info.get('tags', []))}"
-        if not search_query or search_query in searchable_text:
-            # Get real health status from health service
-            from ..health.service import health_service
-            health_data = health_service._get_service_health_data(path, server_info)
-            
-            service_data.append(
-                {
-                    "display_name": server_name,
-                    "path": path,
-                    "description": server_info.get("description", ""),
-                    "proxy_pass_url": server_info.get("proxy_pass_url", ""),
-                    "is_enabled": await server_service.is_service_enabled(path),
-                    "tags": server_info.get("tags", []),
-                    "num_tools": server_info.get("num_tools", 0),
-                    "num_stars": server_info.get("num_stars", 0),
-                    "is_python": server_info.get("is_python", False),
-                    "license": server_info.get("license", "N/A"),
-                    "health_status": health_data["status"],
-                    "last_checked_iso": health_data["last_checked_iso"],
-                    "mcp_endpoint": server_info.get("mcp_endpoint"),
-                    "metadata": server_info.get("metadata", {}),
-                }
+        if result:
+            return {
+                "status": "success",
+                "message": f"Version {version} removed from {decoded_path}"
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to remove version"
             )
 
-    return {"servers": service_data}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.put("/servers/{service_path:path}/versions/default")
+async def set_default_version(
+    service_path: str,
+    version_data: SetDefaultVersion,
+    user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
+):
+    """
+    Set the default (latest) version for a server.
+
+    Args:
+        service_path: Server path (URL encoded)
+        version_data: Contains version to set as default
+
+    Returns:
+        Success message
+    """
+    decoded_path = "/" + service_path if not service_path.startswith("/") else service_path
+
+    try:
+        result = await server_service.set_default_version(
+            path=decoded_path,
+            version=version_data.version
+        )
+
+        if result:
+            return {
+                "status": "success",
+                "message": f"Default version set to {version_data.version} for {decoded_path}"
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to set default version"
+            )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get("/servers/{service_path:path}/versions")
+async def get_server_versions(
+    service_path: str,
+    user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
+):
+    """
+    Get all versions for a server.
+
+    Args:
+        service_path: Server path (URL encoded)
+
+    Returns:
+        Version information
+    """
+    decoded_path = "/" + service_path if not service_path.startswith("/") else service_path
+
+    try:
+        return await server_service.get_server_versions(decoded_path)
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )

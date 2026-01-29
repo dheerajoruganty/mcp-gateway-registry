@@ -17,6 +17,18 @@ import {
 import ServerConfigModal from './ServerConfigModal';
 import SecurityScanModal from './SecurityScanModal';
 import StarRatingWidget from './StarRatingWidget';
+import VersionBadge from './VersionBadge';
+import VersionSelectorModal from './VersionSelectorModal';
+
+interface ServerVersion {
+  version: string;
+  proxy_pass_url: string;
+  status: string;
+  is_default: boolean;
+  released?: string;
+  sunset_date?: string;
+  description?: string;
+}
 
 export interface Server {
   name: string;
@@ -33,6 +45,14 @@ export interface Server {
   num_tools?: number;
   proxy_pass_url?: string;
   mcp_endpoint?: string;
+  // Version routing fields
+  version?: string;  // Current active version
+  versions?: ServerVersion[];
+  default_version?: string;
+  // MCP server info from initialize response
+  mcp_server_version?: string;
+  mcp_server_version_previous?: string;
+  mcp_server_version_updated_at?: string;
 }
 
 interface ServerCardProps {
@@ -103,6 +123,7 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
   const [showSecurityScan, setShowSecurityScan] = useState(false);
   const [securityScanResult, setSecurityScanResult] = useState<any>(null);
   const [loadingSecurityScan, setLoadingSecurityScan] = useState(false);
+  const [showVersionSelector, setShowVersionSelector] = useState(false);
 
   // Fetch security scan status on mount to show correct icon color
   useEffect(() => {
@@ -239,6 +260,43 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
     setSecurityScanResult(response.data);
   }, [server.path, authToken]);
 
+  const handleRefreshServerData = useCallback(async () => {
+    try {
+      const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+      const response = await axios.get(
+        `/api/server_details${server.path}`,
+        headers ? { headers } : undefined
+      );
+
+      if (onServerUpdate && response.data) {
+        const serverData = response.data;
+        const updates: Partial<Server> = {
+          name: serverData.server_name,
+          description: serverData.description,
+          enabled: serverData.is_enabled,
+          tags: serverData.tags,
+          status: serverData.health_status === 'healthy' ? 'healthy' :
+                  serverData.health_status === 'healthy-auth-expired' ? 'healthy-auth-expired' :
+                  serverData.health_status === 'unhealthy' ? 'unhealthy' : 'unknown',
+          last_checked_time: serverData.last_checked_iso,
+          num_tools: serverData.num_tools,
+          num_stars: serverData.num_stars,
+          proxy_pass_url: serverData.proxy_pass_url,
+          mcp_endpoint: serverData.mcp_endpoint,
+          version: serverData.version,
+          versions: serverData.versions,
+          default_version: serverData.default_version,
+          mcp_server_version: serverData.mcp_server_version,
+          mcp_server_version_previous: serverData.mcp_server_version_previous,
+          mcp_server_version_updated_at: serverData.mcp_server_version_updated_at,
+        };
+        onServerUpdate(server.path, updates);
+      }
+    } catch (error) {
+      console.error('Failed to refresh server data:', error);
+    }
+  }, [server.path, authToken, onServerUpdate]);
+
   const getSecurityIconState = () => {
     // Gray: no scan result yet
     if (!securityScanResult) {
@@ -368,7 +426,7 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
 
         {/* Stats */}
         <div className="px-5 pb-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <StarRatingWidget
               resourceType="servers"
               path={server.path}
@@ -409,6 +467,33 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
                     <div className="text-xs">Tools</div>
                   </div>
                 </div>
+              )}
+            </div>
+            {/* Version display - user routing version and/or MCP server version */}
+            <div className="flex flex-col items-end gap-1">
+              {server.versions && server.versions.length > 1 && (
+                <VersionBadge
+                  versions={server.versions}
+                  defaultVersion={server.default_version || server.version}
+                  onClick={() => setShowVersionSelector(true)}
+                />
+              )}
+              {server.mcp_server_version && (
+                <span
+                  className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-gray-50 text-gray-600 dark:bg-gray-800 dark:text-gray-400 rounded"
+                  title={
+                    server.mcp_server_version_previous
+                      ? `MCP Server Version: ${server.mcp_server_version} (previously ${server.mcp_server_version_previous})`
+                      : `MCP Server Version: ${server.mcp_server_version}`
+                  }
+                >
+                  <span className="text-gray-400 dark:text-gray-500 mr-1">srv</span>
+                  {server.mcp_server_version}
+                  {server.mcp_server_version_updated_at &&
+                    (Date.now() - new Date(server.mcp_server_version_updated_at).getTime()) < 24 * 60 * 60 * 1000 && (
+                    <span className="ml-1 h-1.5 w-1.5 rounded-full bg-green-500 inline-block" title="Recently updated" />
+                  )}
+                </span>
               )}
             </div>
           </div>
@@ -567,6 +652,32 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
         onRescan={canModify ? handleRescan : undefined}
         canRescan={canModify}
         onShowToast={onShowToast}
+      />
+
+      <VersionSelectorModal
+        isOpen={showVersionSelector}
+        onClose={() => setShowVersionSelector(false)}
+        serverName={server.name}
+        serverPath={server.path}
+        versions={server.versions || []}
+        defaultVersion={server.default_version || null}
+        onVersionChange={(newDefaultVersion) => {
+          if (onServerUpdate) {
+            // Update both default_version and versions array to reflect the change
+            const updatedVersions = server.versions?.map(v => ({
+              ...v,
+              is_default: v.version === newDefaultVersion
+            }));
+            onServerUpdate(server.path, {
+              default_version: newDefaultVersion,
+              versions: updatedVersions
+            });
+          }
+        }}
+        onRefreshServer={handleRefreshServerData}
+        onShowToast={onShowToast}
+        authToken={authToken}
+        canModify={canModify}
       />
 
     </>

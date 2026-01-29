@@ -59,6 +59,8 @@ class InternalServiceRegistration(BaseModel):
     name: Optional[str] = Field(None, description="Service name")
     description: Optional[str] = Field(None, description="Service description")
     proxy_pass_url: Optional[str] = Field(None, description="Proxy pass URL")
+    version: Optional[str] = Field(None, description="Server version (e.g., v1.0.0, v2.0.0)")
+    status: Optional[str] = Field(None, description="Version status (stable, beta, deprecated)")
     auth_provider: Optional[str] = Field(None, description="Authentication provider")
     auth_type: Optional[str] = Field(None, description="Authentication type")
     supported_transports: Optional[List[str]] = Field(None, description="Supported transports")
@@ -824,12 +826,14 @@ class RegistryClient:
         logger.debug(f"{method} {url}")
 
         # Determine content type based on endpoint
-        # Agent, Management, Search, Federation, and group import endpoints use JSON, server registration uses form data
+        # Agent, Management, Search, Federation, version, and group import endpoints use JSON
+        # Server registration uses form data
         if (endpoint.startswith("/api/agents") or
             endpoint.startswith("/api/management") or
             endpoint.startswith("/api/search") or
             endpoint.startswith("/api/federation") or
-            endpoint == "/api/servers/groups/import"):
+            endpoint == "/api/servers/groups/import" or
+            "/versions" in endpoint):
             # Send as JSON for agent, management, search, federation, and import endpoints
             response = requests.request(
                 method=method,
@@ -1910,6 +1914,99 @@ class RegistryClient:
         result = AnthropicServerResponse(**response.json())
         logger.info(f"Retrieved server details for {server_name} v{version}")
         return result
+
+
+    # Local Server Version Management Methods
+
+
+    def remove_server_version(
+        self,
+        path: str,
+        version: str
+    ) -> dict:
+        """
+        Remove a version from a server.
+
+        Args:
+            path: Server path (e.g., "/context7")
+            version: Version to remove
+
+        Returns:
+            Response dict with status and message
+
+        Raises:
+            requests.HTTPError: If server not found or cannot remove default
+        """
+        logger.info(f"Removing version {version} from server {path}")
+
+        encoded_path = quote(path.lstrip('/'), safe='')
+        encoded_version = quote(version, safe='')
+
+        response = self._make_request(
+            method="DELETE",
+            endpoint=f"/api/servers/{encoded_path}/versions/{encoded_version}"
+        )
+
+        return response.json()
+
+
+    def set_default_version(
+        self,
+        path: str,
+        version: str
+    ) -> dict:
+        """
+        Set the default (latest) version for a server.
+
+        Args:
+            path: Server path (e.g., "/context7")
+            version: Version to set as default
+
+        Returns:
+            Response dict with status and message
+
+        Raises:
+            requests.HTTPError: If server or version not found
+        """
+        logger.info(f"Setting default version to {version} for server {path}")
+
+        encoded_path = quote(path.lstrip('/'), safe='')
+
+        response = self._make_request(
+            method="PUT",
+            endpoint=f"/api/servers/{encoded_path}/versions/default",
+            data={"version": version}
+        )
+
+        return response.json()
+
+
+    def get_server_versions(
+        self,
+        path: str
+    ) -> dict:
+        """
+        Get all versions for a server.
+
+        Args:
+            path: Server path (e.g., "/context7")
+
+        Returns:
+            Dict with path, default_version, and versions list
+
+        Raises:
+            requests.HTTPError: If server not found
+        """
+        logger.info(f"Getting versions for server {path}")
+
+        encoded_path = quote(path.lstrip('/'), safe='')
+
+        response = self._make_request(
+            method="GET",
+            endpoint=f"/api/servers/{encoded_path}/versions"
+        )
+
+        return response.json()
 
 
     # Management API Methods (IAM/User Management)

@@ -298,6 +298,7 @@ def mock_server_repository():
     mock.get.return_value = None
     mock.save.return_value = None
     mock.delete.return_value = None
+    mock.delete_with_versions.return_value = 0
     mock.create.return_value = True
     mock.update.return_value = True
     mock.get_state.return_value = False

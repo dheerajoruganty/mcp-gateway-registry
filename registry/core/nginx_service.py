@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import httpx
+import re
 from pathlib import Path
 from typing import Dict, Any, Optional
 from urllib.parse import urlparse
@@ -310,8 +311,12 @@ class NginxConfigService:
                 keycloak_host = 'keycloak'
                 keycloak_port = '8080'
 
+            # Generate version map for multi-version servers
+            version_map = await self._generate_version_map(servers)
+
             # Replace placeholders in template
-            config_content = template_content.replace("{{LOCATION_BLOCKS}}", "\n".join(location_blocks))
+            config_content = template_content.replace("{{VERSION_MAP}}", version_map)
+            config_content = config_content.replace("{{LOCATION_BLOCKS}}", "\n".join(location_blocks))
             config_content = config_content.replace("{{ADDITIONAL_SERVER_NAMES}}", additional_server_names)
             config_content = config_content.replace("{{ANTHROPIC_API_VERSION}}", api_version)
             config_content = config_content.replace("{{KEYCLOAK_SCHEME}}", keycloak_scheme)
@@ -360,6 +365,103 @@ class NginxConfigService:
             return False
 
 
+    async def _generate_version_map(
+        self,
+        servers: Dict[str, Dict[str, Any]]
+    ) -> str:
+        """
+        Generate nginx map directive for version routing.
+
+        Args:
+            servers: Dictionary of server path -> server info
+
+        Returns:
+            Nginx map block as string, or empty string if no multi-version servers
+        """
+        from ..services.server_service import server_service
+
+        map_entries = []
+
+        for path, server_info in servers.items():
+            # Check if this server has other versions via other_version_ids
+            other_version_ids = server_info.get("other_version_ids", [])
+
+            if not other_version_ids:
+                # Single-version server - no map entry needed
+                continue
+
+            # Build versions list from active server and other versions
+            versions = []
+
+            # Add the current (active) version
+            current_version = server_info.get("version", "v1.0.0")
+            current_proxy_url = server_info.get("proxy_pass_url", "")
+            if current_proxy_url:
+                versions.append({
+                    "version": current_version,
+                    "proxy_pass_url": current_proxy_url,
+                    "is_default": True,
+                })
+
+            # Add other versions by fetching their info
+            for version_id in other_version_ids:
+                version_info = await server_service.get_server_info(version_id)
+                if version_info:
+                    versions.append({
+                        "version": version_info.get("version", "unknown"),
+                        "proxy_pass_url": version_info.get("proxy_pass_url", ""),
+                        "is_default": False,
+                    })
+
+            if len(versions) <= 1:
+                # Only one version found, skip
+                continue
+
+            # Default backend is the active version's URL
+            default_backend = current_proxy_url
+
+            if not default_backend:
+                logger.warning(f"No default backend found for {path}, skipping version map")
+                continue
+
+            # Escape path for nginx regex
+            # Handle paths like /context7, /currenttime/, /ai.smithery-xxx
+            escaped_path = re.escape(path.rstrip('/'))
+
+            # Add map entries for this server
+            # Entry for no header (empty string after colon)
+            map_entries.append(
+                f'    "~^{escaped_path}(/.*)?:$"            "{default_backend}";'
+            )
+            # Entry for explicit "latest"
+            map_entries.append(
+                f'    "~^{escaped_path}(/.*)?:latest$"      "{default_backend}";'
+            )
+
+            # Entry for each version
+            for v in versions:
+                version_str = v.get("version", "")
+                backend_url = v.get("proxy_pass_url", "")
+                if version_str and backend_url:
+                    map_entries.append(
+                        f'    "~^{escaped_path}(/.*)?:{re.escape(version_str)}$"  "{backend_url}";'
+                    )
+
+            logger.info(f"Generated version map entries for {path} with {len(versions)} versions")
+
+        if not map_entries:
+            return ""  # No multi-version servers configured
+
+        return f'''# Version routing map (auto-generated)
+# Routes requests based on X-MCP-Server-Version header
+map "$uri:$http_x_mcp_server_version" $versioned_backend {{
+    default "";
+
+{chr(10).join(map_entries)}
+}}
+
+'''
+
     def _generate_transport_location_blocks(self, path: str, server_info: Dict[str, Any]) -> list:
         """Generate nginx location blocks for different transport types."""
         blocks = []
@@ -395,20 +497,42 @@ class NginxConfigService:
         # Create a single location block for this server
         # The proxy_pass URL is used exactly as provided in the server configuration
         logger.info(f"Server {path}: Using proxy_pass URL as configured: {proxy_url}")
-        
-        block = self._create_location_block(path, proxy_url, transport_type)
+
+        block = self._create_location_block(path, proxy_url, transport_type, server_info)
         blocks.append(block)
         
         return blocks
 
 
-    def _create_location_block(self, path: str, proxy_pass_url: str, transport_type: str) -> str:
-        """Create a single nginx location block with transport-specific configuration."""
-        
+    def _create_location_block(
+        self,
+        path: str,
+        proxy_pass_url: str,
+        transport_type: str,
+        server_info: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Create a single nginx location block with transport-specific configuration.
+
+        Args:
+            path: Server location path
+            proxy_pass_url: Default backend URL
+            transport_type: Transport type (streamable-http, sse, direct)
+            server_info: Full server info dict (for version support)
+
+        Returns:
+            Nginx location block as string
+        """
+        # Check if this server has multiple versions
+        # The MongoDB document stores linked version IDs in "other_version_ids"
+        has_versions = False
+        if server_info:
+            other_version_ids = server_info.get("other_version_ids", [])
+            has_versions = len(other_version_ids) > 0
+
         # Extract hostname from proxy_pass_url for external services
         parsed_url = urlparse(proxy_pass_url)
         upstream_host = parsed_url.netloc
-        
+
         # Determine whether to use upstream hostname or preserve original host
         # For external services (https), use the upstream hostname
         # For internal services (http without dots in hostname), preserve original host
@@ -421,6 +545,31 @@ class NginxConfigService:
             host_header = '$host'
             logger.info(f"Using original host for Host header: $host")
         
+        # Generate proxy_pass directive based on version routing
+        if has_versions:
+            # Multi-version server: use map variable with fallback
+            proxy_directive = f'''
+        # Version routing - use header-based backend selection
+        # If X-MCP-Server-Version header matches a version, use that backend
+        # Otherwise, use the default backend
+        set $backend_url "{proxy_pass_url}";
+        if ($versioned_backend != "") {{
+            set $backend_url $versioned_backend;
+        }}
+
+        # Proxy to selected backend
+        proxy_pass $backend_url;'''
+            version_headers = '''
+
+        # Add version info to response
+        add_header X-MCP-Version-Routing "enabled" always;'''
+        else:
+            # Single-version server: direct proxy_pass (existing behavior)
+            proxy_directive = f'''
+        # Proxy to MCP server
+        proxy_pass {proxy_pass_url};'''
+            version_headers = ""
+
         # Common proxy settings
         common_settings = f"""
         # Use IPv4 resolver (disable IPv6)
@@ -429,7 +578,7 @@ class NginxConfigService:
 
         # Authenticate request - pass entire request to auth server
         auth_request /validate;
-        
+
         # Capture auth server response headers for forwarding
         auth_request_set $auth_user $upstream_http_x_user;
         auth_request_set $auth_username $upstream_http_x_username;
@@ -438,19 +587,17 @@ class NginxConfigService:
         auth_request_set $auth_method $upstream_http_x_auth_method;
         auth_request_set $auth_server_name $upstream_http_x_server_name;
         auth_request_set $auth_tool_name $upstream_http_x_tool_name;
-        
-        # Proxy to MCP server
-        proxy_pass {proxy_pass_url};
+{proxy_directive}
         proxy_http_version 1.1;
         proxy_ssl_server_name on;
         proxy_set_header Host {host_header};
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        
+
         # Add original URL for auth server scope validation
         proxy_set_header X-Original-URL $scheme://$host$request_uri;
-        
+
         # Pass through the original authentication headers
         proxy_set_header Authorization $http_authorization;
         proxy_set_header X-Authorization $http_x_authorization;
@@ -458,7 +605,7 @@ class NginxConfigService:
         proxy_set_header X-Client-Id $http_x_client_id;
         proxy_set_header X-Region $http_x_region;
 
-        
+
         # Forward auth server response headers to backend
         proxy_set_header X-User $auth_user;
         proxy_set_header X-Username $auth_username;
@@ -467,13 +614,13 @@ class NginxConfigService:
         proxy_set_header X-Auth-Method $auth_method;
         proxy_set_header X-Server-Name $auth_server_name;
         proxy_set_header X-Tool-Name $auth_tool_name;
-        
+
         # Pass all original client headers
         proxy_pass_request_headers on;
-        
+
         # Handle auth errors
         error_page 401 = @auth_error;
-        error_page 403 = @forbidden_error;"""
+        error_page 403 = @forbidden_error;{version_headers}"""
         
         # Transport-specific settings
         if transport_type == "sse":

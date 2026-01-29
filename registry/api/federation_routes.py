@@ -539,9 +539,10 @@ async def sync_federation(
 
                     # Register server
                     # server_data already includes the "path" field
-                    success = await server_service.register_server(server_data)
+                    result = await server_service.register_server(server_data)
+                    success = result["success"]
 
-                    if not success:
+                    if not success and not result.get("is_new_version"):
                         logger.warning(f"Server already exists or failed to register: {server_path}")
                         # Try updating instead
                         success = await server_service.update_server(server_path, server_data)

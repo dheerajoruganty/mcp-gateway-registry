@@ -900,21 +900,76 @@ class HealthMonitoringService:
             # Get server info to pass transport configuration
             server_info = await server_service.get_server_info(service_path)
             logger.info(f"Fetching tools from {proxy_pass_url} for {service_path}")
-            tool_list = await mcp_client_service.get_tools_from_server_with_server_info(proxy_pass_url, server_info)
-            logger.info(f"Tool fetch result for {service_path}: {len(tool_list) if tool_list else 'None'} tools")
-            
+
+            # Use the new connection result function to get both tools and server info
+            connection_result = await mcp_client_service.get_mcp_connection_result(
+                proxy_pass_url,
+                server_info
+            )
+
+            tool_list = connection_result.get("tools") if connection_result else None
+            mcp_server_info = connection_result.get("server_info") if connection_result else None
+
+            logger.info(
+                f"Tool fetch result for {service_path}: "
+                f"{len(tool_list) if tool_list else 'None'} tools"
+            )
+
             if tool_list is not None:
                 new_tool_count = len(tool_list)
                 current_server_info = await server_service.get_server_info(service_path)
                 if current_server_info:
                     current_tool_count = current_server_info.get("num_tools", 0)
-                    
+
                     # Update if count changed OR if we have no tool details yet
                     current_tool_list = current_server_info.get("tool_list", [])
-                    if current_tool_count != new_tool_count or not current_tool_list:
+
+                    # Check if MCP server version changed
+                    current_mcp_version = current_server_info.get("mcp_server_version")
+                    new_mcp_version = mcp_server_info.get("version") if mcp_server_info else None
+
+                    # Log warning if version changed
+                    if (
+                        current_mcp_version
+                        and new_mcp_version
+                        and current_mcp_version != new_mcp_version
+                    ):
+                        logger.warning(
+                            f"MCP server version change detected for {service_path}: "
+                            f"{current_mcp_version} -> {new_mcp_version}"
+                        )
+
+                    needs_update = (
+                        current_tool_count != new_tool_count
+                        or not current_tool_list
+                        or current_mcp_version != new_mcp_version
+                    )
+
+                    if needs_update:
                         updated_server_info = current_server_info.copy()
                         updated_server_info["tool_list"] = tool_list
                         updated_server_info["num_tools"] = new_tool_count
+
+                        # Store MCP server info if available
+                        if mcp_server_info:
+                            if mcp_server_info.get("version"):
+                                new_ver = mcp_server_info["version"]
+                                # Track previous version and change timestamp
+                                if (
+                                    current_mcp_version
+                                    and current_mcp_version != new_ver
+                                ):
+                                    updated_server_info["mcp_server_version_previous"] = current_mcp_version
+                                    updated_server_info["mcp_server_version_updated_at"] = (
+                                        datetime.now(timezone.utc).isoformat()
+                                    )
+                                updated_server_info["mcp_server_version"] = new_ver
+                                logger.info(
+                                    f"Storing MCP server version for {service_path}: "
+                                    f"{new_ver}"
+                                )
+                            if mcp_server_info.get("name"):
+                                updated_server_info["mcp_server_name"] = mcp_server_info["name"]
 
                         await server_service.update_server(service_path, updated_server_info)
 

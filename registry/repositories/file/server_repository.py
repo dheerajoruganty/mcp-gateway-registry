@@ -233,6 +233,54 @@ class FileServerRepository(ServerRepositoryBase):
             logger.error(f"Failed to remove server at '{path}': {e}", exc_info=True)
             return False
 
+    async def delete_with_versions(
+        self,
+        path: str,
+    ) -> int:
+        """Delete a server and all its version documents.
+
+        Deletes the active document at `path` and any version documents
+        with keys matching `{path}:{version}`.
+
+        Args:
+            path: Server base path (e.g., "/context7")
+
+        Returns:
+            Number of documents deleted (0 if none found)
+        """
+        deleted_count = 0
+
+        # Find all keys that match: exact path or path:version pattern
+        version_prefix = f"{path}:"
+        keys_to_delete = []
+        for key in list(self._servers.keys()):
+            if key == path or key.startswith(version_prefix):
+                keys_to_delete.append(key)
+
+        for key in keys_to_delete:
+            # Remove the server file from disk
+            filename = self._path_to_filename(key)
+            file_path = settings.servers_dir / filename
+            if file_path.exists():
+                file_path.unlink()
+                logger.info("Removed server file: %s", file_path)
+
+            # Remove from in-memory dicts
+            del self._servers[key]
+            if key in self._state:
+                del self._state[key]
+            deleted_count += 1
+
+        if deleted_count > 0:
+            await self._save_state()
+            logger.info(
+                "delete_with_versions: removed %d document(s) for path '%s'",
+                deleted_count,
+                path,
+            )
+
+        return deleted_count
+
     async def get_state(
         self,
         path: str,

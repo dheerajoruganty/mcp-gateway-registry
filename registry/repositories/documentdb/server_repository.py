@@ -172,6 +172,56 @@ class DocumentDBServerRepository(ServerRepositoryBase):
             return False
 
 
+    async def delete_with_versions(
+        self,
+        path: str,
+    ) -> int:
+        """Delete a server and all its version documents.
+
+        Deletes the active document at `path` and any inactive version
+        documents with IDs matching `{path}:{version}`.
+
+        Args:
+            path: Server base path (e.g., "/context7")
+
+        Returns:
+            Number of documents deleted (0 if none found)
+        """
+        logger.debug(
+            f"DocumentDB DELETE: Deleting server at '{path}' and all version documents "
+            f"from collection '{self._collection_name}'"
+        )
+        collection = await self._get_collection()
+
+        try:
+            # Match the active document (exact path) and version documents (path:version)
+            filter_query = {
+                "$or": [
+                    {"_id": path},
+                    {"_id": {"$regex": f"^{path}:"}},
+                ]
+            }
+
+            result = await collection.delete_many(filter_query)
+            deleted_count = result.deleted_count
+
+            if deleted_count == 0:
+                logger.error(f"No documents found for server at '{path}'")
+            else:
+                logger.info(
+                    f"DocumentDB DELETE: Deleted {deleted_count} document(s) "
+                    f"for server at '{path}' (active + version documents)"
+                )
+
+            return deleted_count
+        except Exception as e:
+            logger.error(
+                f"Failed to delete server and versions from DocumentDB: {e}",
+                exc_info=True,
+            )
+            return 0
+
+
     async def get_state(
         self,
         path: str,

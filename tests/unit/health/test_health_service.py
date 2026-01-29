@@ -583,8 +583,11 @@ async def test_health_service_update_tools_background(health_service, mock_serve
     mock_server_info_copy["num_tools"] = 0
 
     with patch("registry.core.mcp_client.mcp_client_service") as mock_mcp:
-        mock_mcp.get_tools_from_server_with_server_info = AsyncMock(
-            return_value=[{"name": "test_tool", "description": "Test"}]
+        mock_mcp.get_mcp_connection_result = AsyncMock(
+            return_value={
+                "tools": [{"name": "test_tool", "description": "Test"}],
+                "server_info": {"name": "test-server", "version": "1.0.0"},
+            }
         )
 
         with patch("registry.services.server_service.server_service") as mock_server_service:

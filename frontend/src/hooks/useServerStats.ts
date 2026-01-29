@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
+interface ServerVersion {
+  version: string;
+  proxy_pass_url: string;
+  status: string;
+  is_default: boolean;
+}
+
 interface Server {
   name: string;
   path: string;
@@ -14,6 +21,13 @@ interface Server {
   status?: 'healthy' | 'healthy-auth-expired' | 'unhealthy' | 'unknown';
   num_tools?: number;
   type: 'server' | 'agent';
+  proxy_pass_url?: string;
+  version?: string;
+  versions?: ServerVersion[];
+  default_version?: string;
+  mcp_server_version?: string;
+  mcp_server_version_previous?: string;
+  mcp_server_version_updated_at?: string;
 }
 
 interface ServerStats {
@@ -111,6 +125,13 @@ export const useServerStats = (): UseServerStatsReturn => {
           status: mapHealthStatus(serverInfo.health_status || 'unknown'),
           num_tools: serverInfo.num_tools || 0,
           type: 'server' as const,
+          proxy_pass_url: serverInfo.proxy_pass_url || '',
+          version: serverInfo.version,
+          versions: serverInfo.versions,
+          default_version: serverInfo.default_version,
+          mcp_server_version: serverInfo.mcp_server_version,
+          mcp_server_version_previous: serverInfo.mcp_server_version_previous,
+          mcp_server_version_updated_at: serverInfo.mcp_server_version_updated_at,
         };
         
         // Debug log the transformed server

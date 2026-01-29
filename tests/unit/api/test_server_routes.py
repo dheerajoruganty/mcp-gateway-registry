@@ -134,7 +134,12 @@ def mock_server_service():
     mock_service.get_server_info = AsyncMock(return_value=None)
     mock_service.is_service_enabled = AsyncMock(return_value=True)
     mock_service.toggle_service = AsyncMock(return_value=True)
-    mock_service.register_server = AsyncMock(return_value=True)
+    # register_server now returns a dict with success, message, is_new_version
+    mock_service.register_server = AsyncMock(return_value={
+        "success": True,
+        "message": "Server registered successfully",
+        "is_new_version": False
+    })
     mock_service.update_server = AsyncMock(return_value=True)
     mock_service.remove_server = AsyncMock(return_value=True)
     mock_service.get_enabled_services = AsyncMock(return_value=[])
@@ -710,8 +715,12 @@ class TestRegisterService:
         mock_health_service
     ):
         """Test successful service registration."""
-        # Arrange
-        mock_server_service.register_server.return_value = True
+        # Arrange - register_server returns a dict now
+        mock_server_service.register_server.return_value = {
+            "success": True,
+            "message": "Server registered successfully",
+            "is_new_version": False
+        }
 
         with patch("registry.auth.dependencies.user_has_ui_permission_for_service", return_value=True):
             # Act
@@ -767,9 +776,13 @@ class TestRegisterService:
         test_client_admin,
         mock_server_service
     ):
-        """Test registration fails when path already exists."""
-        # Arrange
-        mock_server_service.register_server.return_value = False
+        """Test registration fails when path already exists with same version."""
+        # Arrange - register_server returns a dict now
+        mock_server_service.register_server.return_value = {
+            "success": False,
+            "message": "Server already exists at path /existing-server with the same version",
+            "is_new_version": False
+        }
 
         with patch("registry.auth.dependencies.user_has_ui_permission_for_service", return_value=True):
             # Act
@@ -783,8 +796,8 @@ class TestRegisterService:
                 }
             )
 
-            # Assert
-            assert response.status_code == 400
+            # Assert - returns 409 Conflict now
+            assert response.status_code == 409
             assert "already exists" in response.json()["error"].lower()
 
     def test_register_service_normalizes_path(
@@ -793,8 +806,12 @@ class TestRegisterService:
         mock_server_service
     ):
         """Test that service path is normalized to start with /."""
-        # Arrange
-        mock_server_service.register_server.return_value = True
+        # Arrange - register_server returns a dict now
+        mock_server_service.register_server.return_value = {
+            "success": True,
+            "message": "Server registered successfully",
+            "is_new_version": False
+        }
 
         with patch("registry.auth.dependencies.user_has_ui_permission_for_service", return_value=True):
             # Act
@@ -835,8 +852,12 @@ class TestInternalRegister:
         mock_health_service
     ):
         """Test successful internal registration with valid Basic Auth."""
-        # Arrange
-        mock_server_service.register_server.return_value = True
+        # Arrange - register_server returns a dict now
+        mock_server_service.register_server.return_value = {
+            "success": True,
+            "message": "Server registered successfully",
+            "is_new_version": False
+        }
         credentials = base64.b64encode(b"admin:testpass").decode("utf-8")
 
         with patch.dict("os.environ", {"ADMIN_USER": "admin", "ADMIN_PASSWORD": "testpass"}), \
@@ -997,8 +1018,12 @@ class TestInternalRegister:
         mock_nginx_service
     ):
         """Test that internal registration auto-enables the service."""
-        # Arrange
-        mock_server_service.register_server.return_value = True
+        # Arrange - register_server returns a dict now
+        mock_server_service.register_server.return_value = {
+            "success": True,
+            "message": "Server registered successfully",
+            "is_new_version": False
+        }
         mock_server_service.toggle_service.return_value = True
         mock_server_service.is_service_enabled.return_value = True
         credentials = base64.b64encode(b"admin:testpass").decode("utf-8")
@@ -1156,8 +1181,12 @@ class TestHelperFunctions:
         mock_server_service
     ):
         """Test that tags are properly parsed from comma-separated string."""
-        # Arrange
-        mock_server_service.register_server.return_value = True
+        # Arrange - register_server returns a dict now
+        mock_server_service.register_server.return_value = {
+            "success": True,
+            "message": "Server registered successfully",
+            "is_new_version": False
+        }
 
         with patch("registry.auth.dependencies.user_has_ui_permission_for_service", return_value=True):
             # Act
