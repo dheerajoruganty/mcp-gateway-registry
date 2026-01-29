@@ -173,7 +173,7 @@ resource "aws_iam_role_policy" "rds_proxy_policy" {
 resource "aws_secretsmanager_secret" "keycloak_db_secret" {
   name                    = "keycloak/database"
   description             = "Keycloak database credentials"
-  recovery_window_in_days = 7
+  recovery_window_in_days = 0
 
   tags = local.common_tags
 }

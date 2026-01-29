@@ -144,7 +144,7 @@ resource "aws_kms_alias" "documentdb" {
 resource "aws_secretsmanager_secret" "documentdb_credentials" {
   name                    = "${var.name}/documentdb/credentials"
   description             = "DocumentDB Cluster admin credentials"
-  recovery_window_in_days = 7
+  recovery_window_in_days = 0
 
   tags = merge(
     local.common_tags,
