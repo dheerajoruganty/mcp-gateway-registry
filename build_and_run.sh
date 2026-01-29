@@ -17,7 +17,9 @@ handle_error() {
 # Parse command line arguments
 USE_PREBUILT=false
 USE_PODMAN=false
+USE_DHI=false
 DOCKER_COMPOSE_FILE="docker-compose.yml"
+DHI_COMPOSE_FILE="docker-compose.dhi.yml"
 PODMAN_COMPOSE_FILE="docker-compose.podman.yml"
 
 while [[ $# -gt 0 ]]; do
@@ -31,12 +33,17 @@ while [[ $# -gt 0 ]]; do
       USE_PODMAN=true
       shift
       ;;
+    --dhi)
+      USE_DHI=true
+      shift
+      ;;
     --help)
-      echo "Usage: $0 [--prebuilt] [--podman] [--help]"
+      echo "Usage: $0 [--prebuilt] [--podman] [--dhi] [--help]"
       echo ""
       echo "Options:"
       echo "  --prebuilt    Use pre-built container images (faster startup)"
       echo "  --podman      Use Podman instead of Docker (rootless-friendly)"
+      echo "  --dhi         Use Docker Hardened Images (DHI) from dhi.io"
       echo "  --help        Show this help message"
       echo ""
       echo "Examples:"
@@ -44,6 +51,7 @@ while [[ $# -gt 0 ]]; do
       echo "  $0 --prebuilt          # Use pre-built images from registry with Docker"
       echo "  $0 --podman            # Build containers locally with Podman"
       echo "  $0 --prebuilt --podman # Use pre-built images with Podman"
+      echo "  $0 --dhi              # Use Docker Hardened Images for infra containers"
       echo ""
       echo "Benefits of --prebuilt:"
       echo "  - Instant deployment (no build time)"
@@ -56,6 +64,12 @@ while [[ $# -gt 0 ]]; do
       echo "  - Compatible with macOS Podman Desktop"
       echo "  - Uses non-privileged ports (8080 for HTTP, 8443 for HTTPS)"
       echo "  - No Docker daemon required"
+      echo ""
+      echo "Benefits of --dhi:"
+      echo "  - Security-hardened container images from dhi.io"
+      echo "  - Reduced attack surface for infrastructure containers"
+      echo "  - Non-root execution enforced (MongoDB, Prometheus, Grafana, PostgreSQL)"
+      echo "  - Requires: docker login dhi.io (before first use)"
       exit 0
       ;;
     *)
@@ -113,6 +127,17 @@ else
         log "  - Podman: https://podman.io/getting-started/installation"
         exit 1
     fi
+fi
+
+# Append DHI override file if --dhi flag is set
+if [ "$USE_DHI" = true ]; then
+    if [ ! -f "$DHI_COMPOSE_FILE" ]; then
+        log "ERROR: DHI compose file not found: $DHI_COMPOSE_FILE"
+        exit 1
+    fi
+    COMPOSE_FILES="$COMPOSE_FILES -f $DHI_COMPOSE_FILE"
+    log "Using Docker Hardened Images (DHI) from dhi.io"
+    log "Ensure you have authenticated: docker login dhi.io"
 fi
 
 if [ "$USE_PREBUILT" = true ]; then
