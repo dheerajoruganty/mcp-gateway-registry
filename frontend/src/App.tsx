@@ -10,11 +10,21 @@ import Login from './pages/Login';
 import OAuthCallback from './pages/OAuthCallback';
 import ProtectedRoute from './components/ProtectedRoute';
 
+// Get basename from <base> tag for path-based routing (e.g., /registry)
+const getBasename = () => {
+  const baseTag = document.querySelector('base');
+  if (baseTag && baseTag.href) {
+    const url = new URL(baseTag.href);
+    return url.pathname.replace(/\/$/, '') || '/';
+  }
+  return '/';
+};
+
 function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <Router>
+        <Router basename={getBasename()}>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/auth/callback" element={<OAuthCallback />} />

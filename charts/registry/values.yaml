@@ -39,3 +39,9 @@ ingress:
   hostname: ""
   annotations: {}
   tls: false
+  # Routing mode: "subdomain" or "path"
+  # - subdomain: mcpregistry.domain.com
+  # - path: domain.com/registry (configurable via path setting)
+  routingMode: subdomain
+  # Path prefix when using path-based routing (default: /registry)
+  path: /registry

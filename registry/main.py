@@ -8,13 +8,14 @@ domain routers while handling core app configuration.
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
-from typing import Annotated, Dict, Any
+from typing import Annotated, Dict, Any, Optional
 from pathlib import Path
 
 from fastapi import FastAPI, Cookie, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
@@ -249,6 +250,7 @@ app = FastAPI(
     description="A registry and management system for Model Context Protocol (MCP) servers",
     version=__version__,
     lifespan=lifespan,
+    root_path=os.environ.get("ROOT_PATH", ""),  # Support path-based routing with ALB
     swagger_ui_parameters={
         "persistAuthorization": True,
     },
@@ -397,8 +399,43 @@ async def get_version():
 # Serve React static files
 FRONTEND_BUILD_PATH = Path(__file__).parent.parent / "frontend" / "build"
 
+# Cache the modified index.html content for path-based routing
+# Read once at startup instead of on every request
+_CACHED_INDEX_HTML: Optional[str] = None
+_ROOT_PATH: str = os.environ.get("ROOT_PATH", "")
+
+def _build_cached_index_html() -> Optional[str]:
+    """Read index.html and inject <base> tag if ROOT_PATH is set.
+    
+    Returns:
+        Modified HTML string if ROOT_PATH is set, None otherwise.
+    """
+    if not _ROOT_PATH:
+        return None
+    
+    index_path = FRONTEND_BUILD_PATH / "index.html"
+    if not index_path.exists():
+        return None
+    
+    with open(index_path, "r") as f:
+        html_content = f.read()
+    
+    # Inject <base> tag if not already present
+    if "<base" not in html_content:
+        base_href = _ROOT_PATH if _ROOT_PATH.endswith("/") else f"{_ROOT_PATH}/"
+        base_tag = f'<base href="{base_href}">'
+        html_content = html_content.replace("<head>", f"<head>\n    {base_tag}")
+    
+    return html_content
+
 if FRONTEND_BUILD_PATH.exists():
-    # Serve static assets
+    # Build the cached HTML at import time
+    _CACHED_INDEX_HTML = _build_cached_index_html()
+    # Mount static files - path depends on ROOT_PATH
+    # When ROOT_PATH is set, FastAPI automatically handles the prefix for routes,
+    # but we need to explicitly mount static files at the root level
+    # The <base> tag in HTML will make browsers request /registry/static/*
+    # which FastAPI will handle correctly with root_path
     app.mount("/static", StaticFiles(directory=FRONTEND_BUILD_PATH / "static"), name="static")
     
     # Serve React app for all other routes (SPA)
@@ -408,11 +445,18 @@ if FRONTEND_BUILD_PATH.exists():
         # Import here to avoid circular dependency
         from registry.constants import REGISTRY_CONSTANTS
 
-        # Don't serve React for API routes, Anthropic registry API, health checks, and well-known discovery endpoints
+        # Don't serve React for API routes, Anthropic registry API, health checks, well-known discovery endpoints, and static files
         anthropic_api_prefix = f"{REGISTRY_CONSTANTS.ANTHROPIC_API_VERSION}/"
-        if full_path.startswith("api/") or full_path.startswith(anthropic_api_prefix) or full_path.startswith("health") or full_path.startswith(".well-known/"):
+        if (full_path.startswith("api/") or 
+            full_path.startswith(anthropic_api_prefix) or 
+            full_path.startswith("health") or 
+            full_path.startswith(".well-known/") or
+            full_path.startswith("static/")):  # Let static files mount handle these
             raise HTTPException(status_code=404)
 
+        if _CACHED_INDEX_HTML is not None:
+            return HTMLResponse(content=_CACHED_INDEX_HTML)
+        
         return FileResponse(FRONTEND_BUILD_PATH / "index.html")
 else:
     logger.warning("React build directory not found. Serve React app separately during development.")
