@@ -10,12 +10,12 @@ domain routers while handling core app configuration.
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import Annotated, Dict, Any
+from typing import Annotated, Dict, Any, Optional
 from pathlib import Path
 
 from fastapi import FastAPI, Cookie, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
@@ -399,7 +399,38 @@ async def get_version():
 # Serve React static files
 FRONTEND_BUILD_PATH = Path(__file__).parent.parent / "frontend" / "build"
 
+# Cache the modified index.html content for path-based routing
+# Read once at startup instead of on every request
+_CACHED_INDEX_HTML: Optional[str] = None
+_ROOT_PATH: str = os.environ.get("ROOT_PATH", "")
+
+def _build_cached_index_html() -> Optional[str]:
+    """Read index.html and inject <base> tag if ROOT_PATH is set.
+    
+    Returns:
+        Modified HTML string if ROOT_PATH is set, None otherwise.
+    """
+    if not _ROOT_PATH:
+        return None
+    
+    index_path = FRONTEND_BUILD_PATH / "index.html"
+    if not index_path.exists():
+        return None
+    
+    with open(index_path, "r") as f:
+        html_content = f.read()
+    
+    # Inject <base> tag if not already present
+    if "<base" not in html_content:
+        base_href = _ROOT_PATH if _ROOT_PATH.endswith("/") else f"{_ROOT_PATH}/"
+        base_tag = f'<base href="{base_href}">'
+        html_content = html_content.replace("<head>", f"<head>\n    {base_tag}")
+    
+    return html_content
+
 if FRONTEND_BUILD_PATH.exists():
+    # Build the cached HTML at import time
+    _CACHED_INDEX_HTML = _build_cached_index_html()
     # Mount static files - path depends on ROOT_PATH
     # When ROOT_PATH is set, FastAPI automatically handles the prefix for routes,
     # but we need to explicitly mount static files at the root level
@@ -423,26 +454,8 @@ if FRONTEND_BUILD_PATH.exists():
             full_path.startswith("static/")):  # Let static files mount handle these
             raise HTTPException(status_code=404)
 
-        # Get ROOT_PATH from environment for path-based routing with ALB
-        root_path = os.environ.get("ROOT_PATH", "")
-        
-        # If ROOT_PATH is set, inject <base> tag for static files to work correctly
-        if root_path:
-            index_path = FRONTEND_BUILD_PATH / "index.html"
-            with open(index_path, 'r') as f:
-                html_content = f.read()
-            
-            # Inject <base> tag if not already present
-            if '<base' not in html_content:
-                # Ensure root_path ends with / for proper base href
-                base_href = root_path if root_path.endswith('/') else f"{root_path}/"
-                base_tag = f'<base href="{base_href}">'
-
-                # Insert after <head> tag
-                html_content = html_content.replace('<head>', f'<head>\n    {base_tag}')
-
-            from fastapi.responses import HTMLResponse
-            return HTMLResponse(content=html_content)
+        if _CACHED_INDEX_HTML is not None:
+            return HTMLResponse(content=_CACHED_INDEX_HTML)
         
         return FileResponse(FRONTEND_BUILD_PATH / "index.html")
 else:
