@@ -2,7 +2,7 @@
 
 **Date**: 2026-01-29
 **Status**: Implemented
-**Issue**: [#370](https://github.com/your-org/mcp-gateway-registry/issues/370)
+**Issue**: [#370](https://github.com/agentic-community/mcp-gateway-registry/issues/370)
 
 ---
 
