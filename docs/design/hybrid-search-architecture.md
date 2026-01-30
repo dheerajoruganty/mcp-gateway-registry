@@ -78,21 +78,30 @@ When a search query arrives:
 - Uses HNSW index on DocumentDB (production) or application-level cosine similarity on MongoDB CE
 - Finds conceptually similar content even with different wording
 - Returns results sorted by cosine similarity
+- DocumentDB uses configurable `efSearch` parameter (default 100) for HNSW recall quality
+- Minimum `k=50` ensures small collections are fully covered
 
 **Keyword Search (Lexical)**
 - Regex matching on path, name, description, tags, and tool names/descriptions
 - Catches explicit references that semantic search might miss
 - Runs as separate query due to DocumentDB limitations (no `$unionWith` support)
+- Each query keyword is matched independently using case-insensitive regex
+- Keyword matches from both vector results and separate keyword query are merged, with the highest boost per document kept
 
 ### 3. Score Combination
 
 The final relevance score combines both approaches:
 
 ```
-relevance_score = normalized_vector_score + (text_boost * 0.1)
+normalized_vector_score = (cosine_similarity + 1.0) / 2.0   # Map [-1,1] to [0,1]
+text_boost_contribution = text_boost * 0.1                   # Scale boost down
+relevance_score = normalized_vector_score + text_boost_contribution
+relevance_score = clamp(relevance_score, 0.0, 1.0)
 ```
 
-Text boost values:
+The multiplier `0.1` is consistent across both DocumentDB and MongoDB CE search paths.
+
+Text boost values (cumulative per keyword match):
 | Match Location | Boost Value |
 |----------------|-------------|
 | Path           | +5.0        |
@@ -101,7 +110,28 @@ Text boost values:
 | Tags           | +1.5        |
 | Tool (each)    | +1.0        |
 
-### 4. Result Structure
+### 4. Score-Before-Filter Pattern
+
+All candidate results are scored before applying the top-3-per-entity-type filter. This ensures the highest-scoring documents are selected:
+
+1. Vector search returns candidates (up to `k` results)
+2. Keyword search returns additional matches (merged by highest boost per document)
+3. Every candidate receives a hybrid score (vector + text boost)
+4. All candidates are sorted by hybrid score descending
+5. Top 3 per entity type (servers, agents, tools) are selected from the sorted list
+
+This prevents lower-scoring documents from consuming a top-3 slot before higher-scoring documents are evaluated.
+
+### 5. Diagnostic Logging
+
+Both search paths emit a `Score for` log line for every candidate, enabling search quality debugging:
+
+```
+Score for 'Context7' (type=mcp_server): vector=0.3412, normalized_vector=0.6706,
+  text_boost=8.0, boost_contrib=0.8000, final=1.0000
+```
+
+### 6. Result Structure
 
 Search returns grouped results:
 
@@ -194,12 +224,107 @@ Search returns grouped results:
   4. Sort and limit results
 - Same API contract as DocumentDB implementation
 
+## Lexical Fallback Mode
+
+When the embedding model is unavailable (misconfigured, network issues, API key expired, model not found), the search system automatically degrades to **lexical-only mode** instead of failing entirely.
+
+### How It Works
+
+1. **Detection**: On the first search request, if the embedding model fails to generate a query vector, the `_embedding_unavailable` flag is set in `DocumentDBSearchRepository`
+2. **Fallback**: All subsequent searches skip embedding generation and use `_lexical_only_search()` instead
+3. **Error Caching**: The `SentenceTransformersClient` caches load errors in `_load_error` to avoid repeated download attempts (e.g., hitting HuggingFace on every call)
+4. **Indexing**: When the model is unavailable during startup, servers and agents are indexed without embeddings. Documents are stored with empty embedding vectors
+5. **Response**: The API response includes a `search_mode` field set to `"lexical-only"` (instead of the normal `"hybrid"`) so callers know the search quality is reduced
+
+### Lexical-Only Search Flow
+
+```
+                          +-------------------+
+                          |   Search Query    |
+                          |  "context7 docs"  |
+                          +--------+----------+
+                                   |
+                                   v
+                       +-----------------------+
+                       | Embedding Model Check |
+                       | _embedding_unavailable|
+                       | == True?              |
+                       +-----------+-----------+
+                                   |
+                          Yes (fallback)
+                                   |
+                                   v
+                       +-----------------------+
+                       |  Keyword Tokenization |
+                       |  ["context7", "docs"] |
+                       +-----------+-----------+
+                                   |
+                                   v
+                       +-----------------------+
+                       |  MongoDB Aggregation  |
+                       |  $regexMatch on path, |
+                       |  name, description,   |
+                       |  tags, tools          |
+                       +-----------+-----------+
+                                   |
+                                   v
+                       +-----------------------+
+                       |  Text Boost Scoring   |
+                       |  Normalized by         |
+                       |  MAX_LEXICAL_BOOST     |
+                       |  (12.5)               |
+                       +-----------+-----------+
+                                   |
+                                   v
+                       +-----------------------+
+                       |  Result Grouping      |
+                       |  search_mode:         |
+                       |  "lexical-only"       |
+                       +-----------------------+
+```
+
+### Scoring in Lexical-Only Mode
+
+In lexical-only mode, the text boost score is normalized to a 0-1 range using a fixed denominator (`MAX_LEXICAL_BOOST = 12.5`):
+
+```
+relevance_score = text_boost / MAX_LEXICAL_BOOST
+```
+
+The same boost weights from hybrid mode apply:
+
+| Match Location | Boost Value |
+|----------------|-------------|
+| Path           | +5.0        |
+| Name           | +3.0        |
+| Description    | +2.0        |
+| Tags           | +1.5        |
+| Tool (each)    | +1.0        |
+
+### Recovery
+
+When the embedding model becomes available again (e.g., after a restart with correct configuration), the system automatically returns to full hybrid search mode. The `_embedding_unavailable` flag and `_load_error` cache are per-process and reset on restart.
+
+## HNSW Tuning (DocumentDB)
+
+The DocumentDB `$search` pipeline includes two tunable parameters:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `k` | `max(max_results * 3, 50)` | Number of nearest neighbors to retrieve. Minimum 50 ensures small collections are fully covered. |
+| `efSearch` | `100` (configurable via `VECTOR_SEARCH_EF_SEARCH`) | Controls HNSW recall quality. Higher values improve recall at the cost of query latency. Default DocumentDB value is ~40, which can miss documents in small collections. |
+
+The `efSearch` setting is configured in `registry/core/config.py` as `vector_search_ef_search`.
+
 ## Performance Considerations
 
 1. **Result Limiting**: Top 3 per entity type to reduce payload size
-2. **Index Reuse**: HNSW index parameters (m=16, efConstruction=128) optimized for recall
-3. **Embedding Caching**: Lazy-loaded model with singleton pattern
-4. **Keyword Fallback**: Separate query ensures explicit matches are not missed
+2. **Score-Before-Filter**: All candidates scored and sorted before applying top-3 filter
+3. **Index Reuse**: HNSW index parameters (m=16, efConstruction=128) optimized for recall
+4. **efSearch Tuning**: Set to 100 for near-exact recall in typical deployments
+5. **Embedding Caching**: Lazy-loaded model with singleton pattern
+6. **Keyword Fallback**: Separate query ensures explicit matches are not missed
+7. **Error Caching**: Failed model loads are cached to avoid repeated download/API attempts
 
 ## Example: Why Hybrid Matters
 

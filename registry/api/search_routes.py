@@ -82,6 +82,10 @@ class SemanticSearchRequest(BaseModel):
 
 class SemanticSearchResponse(BaseModel):
     query: str
+    search_mode: str = Field(
+        default="hybrid",
+        description="Search mode: 'hybrid' (semantic+lexical) or 'lexical-only'"
+    )
     servers: List[ServerSearchResult] = Field(default_factory=list)
     tools: List[ToolSearchResult] = Field(default_factory=list)
     agents: List[AgentSearchResult] = Field(default_factory=list)
