@@ -631,10 +631,21 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
                 # Hybrid score: vector score + normalized text boost
                 # Normalize vector_score to [0, 1] range (cosine can be [-1, 1])
                 normalized_vector_score = (vector_score + 1.0) / 2.0
-                # Increased multiplier (0.05) to give keyword matches more weight
-                # Path match (5.0) adds +0.25, Name match (3.0) adds +0.15
-                relevance_score = normalized_vector_score + (text_boost * 0.05)
+                # Text boost multiplier: 0.1 (same as DocumentDB search path)
+                # Path match (5.0) adds +0.50, Name match (3.0) adds +0.30
+                text_boost_contribution = text_boost * 0.1
+                relevance_score = normalized_vector_score + text_boost_contribution
                 relevance_score = max(0.0, min(1.0, relevance_score))
+
+                logger.info(
+                    "Score for '%s' (type=%s): vector=%.4f, "
+                    "normalized_vector=%.4f, text_boost=%.1f, "
+                    "boost_contrib=%.4f, final=%.4f",
+                    doc.get("name"), doc.get("entity_type"),
+                    vector_score, normalized_vector_score,
+                    text_boost, text_boost_contribution,
+                    relevance_score,
+                )
 
                 scored_docs.append({
                     "doc": doc,
@@ -957,6 +968,8 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
 
             # DocumentDB vector search returns results sorted by similarity
             # We get more results than needed to allow for text-based re-ranking
+            ef_search = settings.vector_search_ef_search
+            k_value = max(max_results * 3, 50)  # At least 50 to avoid missing docs
             pipeline = [
                 {
                     "$search": {
@@ -964,11 +977,16 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
                             "vector": query_embedding,
                             "path": "embedding",
                             "similarity": "cosine",
-                            "k": max_results * 3  # Get 3x results for re-ranking
+                            "k": k_value,
+                            "efSearch": ef_search,
                         }
                     }
                 }
             ]
+            logger.info(
+                "Vector search pipeline: k=%d, efSearch=%d",
+                k_value, ef_search,
+            )
 
             # Apply entity type filter if specified
             if entity_types:
@@ -980,154 +998,24 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
             # Escape special regex characters in tokens for safety
             escaped_tokens = [re.escape(token) for token in query_tokens]
             token_regex = "|".join(escaped_tokens) if escaped_tokens else query
-            logger.debug(f"Hybrid search token regex: {token_regex}")
+            logger.info(
+                "Hybrid search tokens for '%s': %s (regex: %s)",
+                query, query_tokens, token_regex,
+            )
 
             # NOTE: DocumentDB does not support $unionWith, so we run a separate
             # keyword query and merge results in Python code after the main pipeline.
-            # Build keyword match filter for later use
-            keyword_match_filter = {
-                "$or": [
-                    {"name": {"$regex": token_regex, "$options": "i"}},
-                    {"path": {"$regex": token_regex, "$options": "i"}}
-                ]
-            }
-            if entity_types:
-                keyword_match_filter["entity_type"] = {"$in": entity_types}
+            # Reuse shared helper for consistent matching across all fields
+            keyword_match_filter = _build_keyword_match_filter(
+                token_regex=token_regex,
+                entity_types=entity_types,
+            )
 
-            # Add text-based scoring for re-ranking
-            # Higher scores for matches in name (3.0), description (2.0), tags (1.5), tools (1.0 per match)
-            pipeline.append({
-                "$addFields": {
-                    "text_boost": {
-                        "$add": [
-                            # Name match: 3.0
-                            {
-                                "$cond": [
-                                    {
-                                        "$regexMatch": {
-                                            "input": {"$ifNull": ["$name", ""]},
-                                            "regex": token_regex,
-                                            "options": "i"
-                                        }
-                                    },
-                                    3.0,
-                                    0.0
-                                ]
-                            },
-                            # Description match: 2.0
-                            {
-                                "$cond": [
-                                    {
-                                        "$regexMatch": {
-                                            "input": {"$ifNull": ["$description", ""]},
-                                            "regex": token_regex,
-                                            "options": "i"
-                                        }
-                                    },
-                                    2.0,
-                                    0.0
-                                ]
-                            },
-                            # Tags match: 1.5 if any tag matches
-                            {
-                                "$cond": [
-                                    {
-                                        "$gt": [
-                                            {
-                                                "$size": {
-                                                    "$filter": {
-                                                        "input": {"$ifNull": ["$tags", []]},
-                                                        "as": "tag",
-                                                        "cond": {
-                                                            "$regexMatch": {
-                                                                "input": "$$tag",
-                                                                "regex": token_regex,
-                                                                "options": "i"
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                            0
-                                        ]
-                                    },
-                                    1.5,
-                                    0.0
-                                ]
-                            },
-                            # Tools match: 1.0 per matching tool (check name and description)
-                            {
-                                "$size": {
-                                    "$filter": {
-                                        "input": {"$ifNull": ["$tools", []]},
-                                        "as": "tool",
-                                        "cond": {
-                                            "$or": [
-                                                {
-                                                    "$regexMatch": {
-                                                        "input": {"$ifNull": ["$$tool.name", ""]},
-                                                        "regex": token_regex,
-                                                        "options": "i"
-                                                    }
-                                                },
-                                                {
-                                                    "$regexMatch": {
-                                                        "input": {"$ifNull": ["$$tool.description", ""]},
-                                                        "regex": token_regex,
-                                                        "options": "i"
-                                                    }
-                                                }
-                                            ]
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-                    },
-                    # Also track matching tools for display
-                    "matching_tools": {
-                        "$map": {
-                            "input": {
-                                "$filter": {
-                                    "input": {"$ifNull": ["$tools", []]},
-                                    "as": "tool",
-                                    "cond": {
-                                        "$or": [
-                                            {
-                                                "$regexMatch": {
-                                                    "input": {"$ifNull": ["$$tool.name", ""]},
-                                                    "regex": token_regex,
-                                                    "options": "i"
-                                                }
-                                            },
-                                            {
-                                                "$regexMatch": {
-                                                    "input": {"$ifNull": ["$$tool.description", ""]},
-                                                    "regex": token_regex,
-                                                    "options": "i"
-                                                }
-                                            }
-                                        ]
-                                    }
-                                }
-                            },
-                            "as": "tool",
-                            "in": {
-                                "tool_name": "$$tool.name",
-                                "description": {"$ifNull": ["$$tool.description", ""]},
-                                "relevance_score": 1.0,
-                                "match_context": {
-                                    "$cond": [
-                                        {"$ne": ["$$tool.description", None]},
-                                        "$$tool.description",
-                                        {"$concat": ["Tool: ", "$$tool.name"]}
-                                    ]
-                                }
-                            }
-                        }
-                    }
-                }
-            })
+            # Add text-based scoring for re-ranking using shared helper
+            # Scores: path (+5.0), name (+3.0), description (+2.0),
+            # tags (+1.5), tools (+1.0 per match)
+            text_boost_stage = _build_text_boost_stage(token_regex)
+            pipeline.append(text_boost_stage)
 
             # Sort by text boost (descending), keeping vector search order as secondary
             pipeline.append({"$sort": {"text_boost": -1}})
@@ -1138,34 +1026,68 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
             cursor = collection.aggregate(pipeline)
             results = await cursor.to_list(length=max_results)
 
+            # Log vector search results for diagnosis
+            logger.info(
+                "Vector search for '%s' returned %d documents (k=%d, efSearch=%d)",
+                query, len(results), k_value, ef_search,
+            )
+            for i, doc in enumerate(results):
+                logger.info(
+                    "  Vector result [%d]: name='%s', type=%s, "
+                    "text_boost=%.1f, path='%s'",
+                    i, doc.get("name"), doc.get("entity_type"),
+                    doc.get("text_boost", 0.0), doc.get("path"),
+                )
+
             # DocumentDB doesn't support $unionWith, so we run a separate keyword
-            # query to find documents that match by name/path but may not appear
-            # in vector search results (e.g., servers explicitly named like "context7")
+            # query to find documents that match by name/path/description/tags/tools
+            # but may not appear in vector search results
             keyword_cursor = collection.find(keyword_match_filter).limit(5)
             keyword_results = await keyword_cursor.to_list(length=5)
+
+            logger.info(
+                "Keyword search for '%s' found %d candidates",
+                query, len(keyword_results),
+            )
+            for i, kw_doc in enumerate(keyword_results):
+                already_in = kw_doc.get("_id") in {
+                    doc.get("_id") for doc in results
+                }
+                logger.info(
+                    "  Keyword candidate [%d]: name='%s', type=%s, "
+                    "path='%s', already_in_vector=%s",
+                    i, kw_doc.get("name"), kw_doc.get("entity_type"),
+                    kw_doc.get("path"), already_in,
+                )
 
             # Merge keyword results with vector results, avoiding duplicates
             # Calculate text_boost and matching_tools for keyword results since they
             # didn't go through the aggregation pipeline
             result_ids = {doc.get("_id") for doc in results}
+            keyword_added_count = 0
             for kw_doc in keyword_results:
                 if kw_doc.get("_id") not in result_ids:
                     # Calculate text_boost for keyword-matched docs
+                    # Use same weights as pipeline: path(+5), name(+3),
+                    # description(+2), tags(+1.5), tools(+1 each)
                     kw_text_boost = 0.0
                     doc_name = (kw_doc.get("name") or "").lower()
                     doc_path = (kw_doc.get("path") or "").lower()
                     doc_desc = (kw_doc.get("description") or "").lower()
+                    doc_tags = [
+                        (t or "").lower() for t in kw_doc.get("tags", [])
+                    ]
 
                     for token in query_tokens:
                         token_lower = token.lower()
+                        if token_lower in doc_path:
+                            kw_text_boost += 5.0  # Path match
                         if token_lower in doc_name:
                             kw_text_boost += 3.0  # Name match
-                        if token_lower in doc_path:
-                            kw_text_boost += 3.0  # Path match
                         if token_lower in doc_desc:
                             kw_text_boost += 2.0  # Description match
-
-                    kw_doc["text_boost"] = kw_text_boost
+                        if any(token_lower in tag for tag in doc_tags):
+                            kw_text_boost += 1.5  # Tags match
 
                     # Calculate matching_tools for keyword-matched docs
                     tools = kw_doc.get("tools", [])
@@ -1179,26 +1101,74 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
                             for token in query_tokens
                         )
                         if tool_matches:
+                            kw_text_boost += 1.0  # Tool match
                             matching_tools.append({
                                 "tool_name": tool.get("name", ""),
                                 "description": tool.get("description", ""),
                                 "relevance_score": 1.0,
                                 "match_context": tool.get("description") or f"Tool: {tool.get('name', '')}"
                             })
+
+                    kw_doc["text_boost"] = kw_text_boost
                     kw_doc["matching_tools"] = matching_tools
 
                     results.append(kw_doc)
                     result_ids.add(kw_doc.get("_id"))
+                    keyword_added_count += 1
+                    logger.info(
+                        "Keyword merge added '%s' (type=%s, text_boost=%.1f)",
+                        kw_doc.get("name"), kw_doc.get("entity_type"),
+                        kw_text_boost,
+                    )
 
-            # Return results with keys matching the API contract (same as FAISS service)
-            # Calculate cosine similarity scores manually since DocumentDB doesn't expose them
-            # Limit to top 3 per entity type
+            logger.info(
+                "After keyword merge: %d total results "
+                "(%d added from keyword search)",
+                len(results), keyword_added_count,
+            )
+
+            # Calculate hybrid scores for ALL results before grouping
+            # This ensures we log every document's score for diagnosis
+            scored_results = []
+            for doc in results:
+                entity_type = doc.get("entity_type")
+                doc_embedding = doc.get("embedding", [])
+                vector_score = self._calculate_cosine_similarity(
+                    query_embedding, doc_embedding
+                )
+                text_boost = doc.get("text_boost", 0.0)
+
+                # Normalize vector_score from [-1, 1] to [0, 1]
+                normalized_vector_score = (vector_score + 1.0) / 2.0
+
+                # Text boost multiplier: 0.1 gives significant weight to keyword matches
+                # Name match (3.0) adds +0.30, Description (2.0) adds +0.20
+                text_boost_contribution = text_boost * 0.1
+                relevance_score = normalized_vector_score + text_boost_contribution
+                relevance_score = max(0.0, min(1.0, relevance_score))
+
+                logger.info(
+                    "Score for '%s' (type=%s): vector=%.4f, "
+                    "normalized_vector=%.4f, text_boost=%.1f, "
+                    "boost_contrib=%.4f, final=%.4f",
+                    doc.get("name"), entity_type,
+                    vector_score, normalized_vector_score,
+                    text_boost, text_boost_contribution,
+                    relevance_score,
+                )
+
+                scored_results.append((doc, relevance_score))
+
+            # Sort by hybrid score descending so top-3 picks the best
+            scored_results.sort(key=lambda x: x[1], reverse=True)
+
+            # Group results: top 3 per entity type
             grouped_results = {"servers": [], "tools": [], "agents": []}
             server_count = 0
             agent_count = 0
             tool_count = 0
 
-            for doc in results:
+            for doc, relevance_score in scored_results:
                 entity_type = doc.get("entity_type")
 
                 # Skip if we already have 3 of this type
@@ -1208,24 +1178,6 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
                     continue
                 elif entity_type == "mcp_tool" and tool_count >= 3:
                     continue
-
-                # Calculate actual cosine similarity from embeddings
-                doc_embedding = doc.get("embedding", [])
-                vector_score = self._calculate_cosine_similarity(query_embedding, doc_embedding)
-
-                # Get text boost (calculated in pipeline or for keyword results)
-                text_boost = doc.get("text_boost", 0.0)
-
-                # Hybrid score: Combine vector similarity with keyword matching boost
-                # Normalize vector_score to [0, 1] range (cosine can be [-1, 1])
-                normalized_vector_score = (vector_score + 1.0) / 2.0
-
-                # Text boost multiplier: 0.1 gives significant weight to keyword matches
-                # Name match (3.0) adds +0.30, Description (2.0) adds +0.20
-                # This ensures exact name matches rank higher than semantic-only matches
-                text_boost_contribution = text_boost * 0.1
-                relevance_score = normalized_vector_score + text_boost_contribution
-                relevance_score = max(0.0, min(1.0, relevance_score))  # Clamp to [0, 1]
 
                 if entity_type == "mcp_server":
                     matching_tools = doc.get("matching_tools", [])
