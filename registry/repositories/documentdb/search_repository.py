@@ -62,6 +62,201 @@ def _tokens_match_text(
     return any(token in text_lower for token in tokens)
 
 
+# Maximum possible text_boost sum for lexical scoring normalization
+# path(5.0) + name(3.0) + description(2.0) + tag(1.5) + tool(1.0) = 12.5
+MAX_LEXICAL_BOOST: float = 12.5
+
+
+def _build_keyword_match_filter(
+    token_regex: str,
+    entity_types: list[str] | None = None,
+) -> dict:
+    """Build the $match filter for keyword matching across document fields.
+
+    Args:
+        token_regex: Regex pattern combining query tokens with OR
+        entity_types: Optional list of entity types to filter
+
+    Returns:
+        MongoDB $match filter dict
+    """
+    match_filter = {
+        "$or": [
+            {"name": {"$regex": token_regex, "$options": "i"}},
+            {"path": {"$regex": token_regex, "$options": "i"}},
+            {"description": {"$regex": token_regex, "$options": "i"}},
+            {"tags": {"$regex": token_regex, "$options": "i"}},
+            {"tools.name": {"$regex": token_regex, "$options": "i"}},
+            {"tools.description": {"$regex": token_regex, "$options": "i"}},
+        ]
+    }
+    if entity_types:
+        match_filter["entity_type"] = {"$in": entity_types}
+    return match_filter
+
+
+def _build_text_boost_stage(
+    token_regex: str,
+) -> dict:
+    """Build the $addFields stage for text boost calculation.
+
+    Computes text_boost by matching query tokens against document fields:
+    path (+5.0), name (+3.0), description (+2.0), tags (+1.5), tools (+1.0).
+
+    Args:
+        token_regex: Regex pattern combining query tokens with OR
+
+    Returns:
+        MongoDB $addFields pipeline stage dict
+    """
+    return {
+        "$addFields": {
+            "text_boost": {
+                "$add": [
+                    # Path match: +5.0
+                    {
+                        "$cond": [
+                            {
+                                "$regexMatch": {
+                                    "input": {"$ifNull": ["$path", ""]},
+                                    "regex": token_regex,
+                                    "options": "i"
+                                }
+                            },
+                            5.0,
+                            0.0
+                        ]
+                    },
+                    # Name match: +3.0
+                    {
+                        "$cond": [
+                            {
+                                "$regexMatch": {
+                                    "input": {"$ifNull": ["$name", ""]},
+                                    "regex": token_regex,
+                                    "options": "i"
+                                }
+                            },
+                            3.0,
+                            0.0
+                        ]
+                    },
+                    # Description match: +2.0
+                    {
+                        "$cond": [
+                            {
+                                "$regexMatch": {
+                                    "input": {"$ifNull": ["$description", ""]},
+                                    "regex": token_regex,
+                                    "options": "i"
+                                }
+                            },
+                            2.0,
+                            0.0
+                        ]
+                    },
+                    # Tags match: +1.5 if any tag matches
+                    {
+                        "$cond": [
+                            {
+                                "$gt": [
+                                    {
+                                        "$size": {
+                                            "$filter": {
+                                                "input": {"$ifNull": ["$tags", []]},
+                                                "as": "tag",
+                                                "cond": {
+                                                    "$regexMatch": {
+                                                        "input": "$$tag",
+                                                        "regex": token_regex,
+                                                        "options": "i"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    0
+                                ]
+                            },
+                            1.5,
+                            0.0
+                        ]
+                    },
+                    # Tools match: +1.0 per matching tool
+                    {
+                        "$size": {
+                            "$filter": {
+                                "input": {"$ifNull": ["$tools", []]},
+                                "as": "tool",
+                                "cond": {
+                                    "$or": [
+                                        {
+                                            "$regexMatch": {
+                                                "input": {"$ifNull": ["$$tool.name", ""]},
+                                                "regex": token_regex,
+                                                "options": "i"
+                                            }
+                                        },
+                                        {
+                                            "$regexMatch": {
+                                                "input": {"$ifNull": ["$$tool.description", ""]},
+                                                "regex": token_regex,
+                                                "options": "i"
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            # Track matching tools for display
+            "matching_tools": {
+                "$map": {
+                    "input": {
+                        "$filter": {
+                            "input": {"$ifNull": ["$tools", []]},
+                            "as": "tool",
+                            "cond": {
+                                "$or": [
+                                    {
+                                        "$regexMatch": {
+                                            "input": {"$ifNull": ["$$tool.name", ""]},
+                                            "regex": token_regex,
+                                            "options": "i"
+                                        }
+                                    },
+                                    {
+                                        "$regexMatch": {
+                                            "input": {"$ifNull": ["$$tool.description", ""]},
+                                            "regex": token_regex,
+                                            "options": "i"
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "as": "tool",
+                    "in": {
+                        "tool_name": "$$tool.name",
+                        "description": {"$ifNull": ["$$tool.description", ""]},
+                        "relevance_score": 1.0,
+                        "match_context": {
+                            "$cond": [
+                                {"$ne": ["$$tool.description", None]},
+                                "$$tool.description",
+                                {"$concat": ["Tool: ", "$$tool.name"]}
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
 class DocumentDBSearchRepository(SearchRepositoryBase):
     """DocumentDB implementation with hybrid search (text + vector)."""
 
@@ -71,6 +266,7 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
             f"mcp_embeddings_{settings.embeddings_model_dimensions}"
         )
         self._embedding_model = None
+        self._embedding_unavailable: bool = False
 
 
     async def _get_collection(self) -> AsyncIOMotorCollection:
@@ -175,8 +371,16 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
 
         text_for_embedding = " ".join(filter(None, text_parts))
 
-        model = await self._get_embedding_model()
-        embedding = model.encode([text_for_embedding])[0].tolist()
+        try:
+            model = await self._get_embedding_model()
+            embedding = model.encode([text_for_embedding])[0].tolist()
+        except Exception as e:
+            logger.warning(
+                "Embedding model unavailable, indexing '%s' without embeddings: %s",
+                server_info.get("server_name", path),
+                e,
+            )
+            embedding = []
 
         doc = {
             "_id": path,
@@ -244,8 +448,16 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
 
         text_for_embedding = " ".join(filter(None, text_parts))
 
-        model = await self._get_embedding_model()
-        embedding = model.encode([text_for_embedding])[0].tolist()
+        try:
+            model = await self._get_embedding_model()
+            embedding = model.encode([text_for_embedding])[0].tolist()
+        except Exception as e:
+            logger.warning(
+                "Embedding model unavailable, indexing agent '%s' without embeddings: %s",
+                agent_card.name,
+                e,
+            )
+            embedding = []
 
         doc = {
             "_id": path,
@@ -361,10 +573,9 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
             for doc in all_docs:
                 embedding = doc.get("embedding", [])
                 if not embedding:
-                    continue
-
-                # Calculate vector similarity
-                vector_score = self._calculate_cosine_similarity(query_embedding, embedding)
+                    vector_score = 0.0
+                else:
+                    vector_score = self._calculate_cosine_similarity(query_embedding, embedding)
 
                 # Add text-based boost using tokenized matching
                 text_boost = 0.0
@@ -551,6 +762,166 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
             return {"servers": [], "tools": [], "agents": []}
 
 
+    async def _lexical_only_search(
+        self,
+        query: str,
+        entity_types: list[str] | None = None,
+        max_results: int = 10,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Fallback search using keyword matching only (no embeddings).
+
+        Used when the embedding model fails to load. Scores results purely
+        by keyword matches against name, path, description, tags, and tools.
+
+        Args:
+            query: The search query string
+            entity_types: Optional list of entity types to filter
+            max_results: Maximum number of results to return
+
+        Returns:
+            Grouped search results dict with servers, tools, agents lists
+        """
+        collection = await self._get_collection()
+        query_tokens = _tokenize_query(query)
+
+        if not query_tokens:
+            logger.info("Lexical search: no valid tokens from query '%s'", query)
+            return {"servers": [], "tools": [], "agents": []}
+
+        escaped_tokens = [re.escape(token) for token in query_tokens]
+        token_regex = "|".join(escaped_tokens)
+
+        keyword_match_filter = _build_keyword_match_filter(
+            token_regex=token_regex,
+            entity_types=entity_types,
+        )
+
+        text_boost_stage = _build_text_boost_stage(token_regex)
+
+        pipeline = [
+            {"$match": keyword_match_filter},
+            text_boost_stage,
+            {"$sort": {"text_boost": -1}},
+            {"$limit": max_results},
+        ]
+
+        cursor = collection.aggregate(pipeline)
+        results = await cursor.to_list(length=max_results)
+
+        grouped_results = self._format_lexical_results(results)
+
+        logger.info(
+            "Lexical-only search for '%s' returned "
+            "%d servers, %d tools, %d agents",
+            query,
+            len(grouped_results["servers"]),
+            len(grouped_results["tools"]),
+            len(grouped_results["agents"]),
+        )
+
+        return grouped_results
+
+
+    def _format_lexical_results(
+        self,
+        results: list[dict],
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Format lexical search results into grouped response.
+
+        Uses fixed-denominator normalization for relevance scoring.
+
+        Args:
+            results: Raw MongoDB documents with text_boost field
+
+        Returns:
+            Grouped search results dict with servers, tools, agents lists
+        """
+        grouped_results = {"servers": [], "tools": [], "agents": []}
+        server_count = 0
+        agent_count = 0
+        tool_count = 0
+
+        for doc in results:
+            entity_type = doc.get("entity_type")
+            text_boost = doc.get("text_boost", 0.0)
+            relevance_score = min(1.0, text_boost / MAX_LEXICAL_BOOST)
+
+            if entity_type == "mcp_server" and server_count < 3:
+                matching_tools = doc.get("matching_tools", [])
+                result_entry = {
+                    "entity_type": "mcp_server",
+                    "path": doc.get("path"),
+                    "server_name": doc.get("name"),
+                    "description": doc.get("description"),
+                    "tags": doc.get("tags", []),
+                    "num_tools": doc.get("metadata", {}).get("num_tools", 0),
+                    "is_enabled": doc.get("is_enabled", False),
+                    "relevance_score": relevance_score,
+                    "match_context": doc.get("description"),
+                    "matching_tools": matching_tools,
+                }
+                grouped_results["servers"].append(result_entry)
+                server_count += 1
+
+                # Add matching tools to top-level tools array
+                original_tools = doc.get("tools", [])
+                tool_schema_map = {
+                    t.get("name", ""): t.get("inputSchema", {})
+                    for t in original_tools
+                }
+                server_path = doc.get("path", "")
+                server_name = doc.get("name", "")
+                for tool in matching_tools:
+                    if tool_count >= 3:
+                        break
+                    tool_name = tool.get("tool_name", "")
+                    grouped_results["tools"].append({
+                        "entity_type": "tool",
+                        "server_path": server_path,
+                        "server_name": server_name,
+                        "tool_name": tool_name,
+                        "description": tool.get("description", ""),
+                        "inputSchema": tool_schema_map.get(tool_name, {}),
+                        "relevance_score": tool.get("relevance_score", relevance_score),
+                        "match_context": tool.get("match_context", ""),
+                    })
+                    tool_count += 1
+
+            elif entity_type == "a2a_agent" and agent_count < 3:
+                metadata = doc.get("metadata", {})
+                result_entry = {
+                    "entity_type": "a2a_agent",
+                    "path": doc.get("path"),
+                    "agent_name": doc.get("name"),
+                    "description": doc.get("description"),
+                    "tags": doc.get("tags", []),
+                    "skills": metadata.get("skills", []),
+                    "visibility": metadata.get("visibility", "public"),
+                    "trust_level": metadata.get("trust_level"),
+                    "is_enabled": doc.get("is_enabled", False),
+                    "relevance_score": relevance_score,
+                    "match_context": doc.get("description"),
+                    "agent_card": metadata.get("agent_card", {}),
+                }
+                grouped_results["agents"].append(result_entry)
+                agent_count += 1
+
+            elif entity_type == "mcp_tool" and tool_count < 3:
+                result_entry = {
+                    "entity_type": "mcp_tool",
+                    "path": doc.get("path"),
+                    "tool_name": doc.get("name"),
+                    "description": doc.get("description"),
+                    "inputSchema": doc.get("inputSchema", {}),
+                    "relevance_score": relevance_score,
+                    "match_context": doc.get("description"),
+                }
+                grouped_results["tools"].append(result_entry)
+                tool_count += 1
+
+        return grouped_results
+
+
     async def search(
         self,
         query: str,
@@ -566,8 +937,23 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
         collection = await self._get_collection()
 
         try:
-            model = await self._get_embedding_model()
-            query_embedding = model.encode([query])[0].tolist()
+            # Try to get embedding; fall back to lexical-only search if unavailable
+            query_embedding = None
+            if not self._embedding_unavailable:
+                try:
+                    model = await self._get_embedding_model()
+                    query_embedding = model.encode([query])[0].tolist()
+                except Exception as embed_error:
+                    logger.warning(
+                        "Embedding model unavailable, falling back to lexical-only search: %s",
+                        embed_error,
+                    )
+                    self._embedding_unavailable = True
+
+            if query_embedding is None:
+                return await self._lexical_only_search(
+                    query, entity_types, max_results
+                )
 
             # DocumentDB vector search returns results sorted by similarity
             # We get more results than needed to allow for text-based re-ranking

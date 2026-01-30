@@ -78,11 +78,17 @@ class SentenceTransformersClient(EmbeddingsClient):
         self.cache_dir = cache_dir
         self._model: Optional["SentenceTransformer"] = None
         self._dimension: Optional[int] = None
+        self._load_error: Optional[RuntimeError] = None
 
     def _load_model(self) -> None:
         """Load the sentence-transformers model."""
         if self._model is not None:
             return
+
+        # If a previous load attempt failed, raise the cached error immediately
+        # to avoid repeated download attempts (e.g., hitting HuggingFace on every call)
+        if self._load_error is not None:
+            raise self._load_error
 
         try:
             from sentence_transformers import SentenceTransformer
@@ -128,7 +134,10 @@ class SentenceTransformersClient(EmbeddingsClient):
             logger.error(
                 f"Failed to load SentenceTransformer model: {e}", exc_info=True
             )
-            raise RuntimeError(f"Failed to load SentenceTransformer model: {e}") from e
+            self._load_error = RuntimeError(
+                f"Failed to load SentenceTransformer model: {e}"
+            )
+            raise self._load_error from e
 
     def encode(
         self,
