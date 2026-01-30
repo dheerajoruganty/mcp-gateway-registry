@@ -614,6 +614,22 @@ async def search(self, query: str, max_results: int = 10):
 **Latency:** ~10-50ms for millions of documents
 **Scalability:** Millions of documents
 
+### Search Resilience: Lexical Fallback
+
+Both backends support automatic fallback to lexical-only search when the embedding model is unavailable. This ensures search remains operational even during embedding provider outages, misconfiguration, or API key expiration.
+
+**Behavior when embeddings are unavailable:**
+
+- Servers and agents are indexed without embeddings (empty vectors)
+- DocumentDB rejects 0-dimension vectors, so documents are stored without vector data
+- Search uses MongoDB aggregation with `$regexMatch` for keyword matching on path, name, description, tags, and tools
+- The `_load_error` cache in `SentenceTransformersClient` prevents repeated model download attempts
+- API response includes `"search_mode": "lexical-only"` to indicate degraded mode
+
+**Recovery:** Restart the service with correct embedding configuration. The error cache resets on restart and search returns to full hybrid mode.
+
+See [Hybrid Search Architecture](hybrid-search-architecture.md) for detailed fallback flow and scoring.
+
 ### Hybrid Search (Text + Vector)
 
 Both backends support hybrid search combining:
