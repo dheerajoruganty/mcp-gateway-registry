@@ -244,6 +244,9 @@ services:
       - DOCUMENTDB_USE_IAM=${DOCUMENTDB_USE_IAM:-false}
       - DOCUMENTDB_REPLICA_SET=${DOCUMENTDB_REPLICA_SET:-rs0}
       - DOCUMENTDB_READ_PREFERENCE=${DOCUMENTDB_READ_PREFERENCE:-secondaryPreferred}
+      # Registry API static token auth (IdP-independent access)
+      - REGISTRY_STATIC_TOKEN_AUTH_ENABLED=${REGISTRY_STATIC_TOKEN_AUTH_ENABLED:-false}
+      - REGISTRY_API_TOKEN=${REGISTRY_API_TOKEN:-}
     ports:
       - "8888:8888"
     volumes:

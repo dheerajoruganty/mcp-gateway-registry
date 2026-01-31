@@ -24,7 +24,8 @@
 #   - Enterprise CIDR: "10.0.0.0/8" (your organization's network)
 ingress_cidr_blocks = [
   "71.114.44.148/32",      # Example: Your laptop IP
-  "44.192.72.20/32"        # Example: Your EC2 instance IP
+  "44.192.72.20/32",       # Example: Your EC2 instance IP
+  "107.0.121.66/32"        # Example: Additional IP
 ]
 
 # ============================================================================
@@ -210,6 +211,21 @@ session_cookie_domain = ""
 # Default: 1 (recommended for most deployments)
 # Increase only when scaling beyond single shard capacity
 # documentdb_shard_count = 1
+
+# ============================================================================
+# REGISTRY STATIC TOKEN AUTH (IdP-independent API access)
+# ============================================================================
+
+# Enable static token auth for Registry API endpoints (/api/*, /v0.1/*)
+# MCP Gateway endpoints still require full IdP authentication
+# Default: false
+registry_static_token_auth_enabled = true
+
+# Static API key for Registry API. Clients send: Authorization: Bearer <token>
+# Generate with: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+# Can also be set via environment variable:
+#   export TF_VAR_registry_api_token="your-generated-token"
+registry_api_token = "m3zT65wREARMVDToKosg_DgNkKqS_434hNxy3sslGPY"
 
 # ============================================================================
 # AUTHENTICATION PROVIDER CONFIGURATION

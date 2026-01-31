@@ -498,3 +498,16 @@ variable "entra_client_secret" {
   default     = ""
   sensitive   = true
 }
+
+variable "registry_static_token_auth_enabled" {
+  description = "Enable static token auth for Registry API (IdP-independent access using REGISTRY_API_TOKEN)"
+  type        = bool
+  default     = false
+}
+
+variable "registry_api_token" {
+  description = "Static API key for network-trusted mode. Must match the Bearer token value sent by clients."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

@@ -180,10 +180,10 @@ class TestGroupToScopeMapping:
         mock_repo = AsyncMock()
         mock_repo.get_group_mappings.side_effect = lambda group: {
             "users": ["read:servers", "read:tools"],
-            "developers": ["write:servers"]
+            "developers": ["write:servers"],
         }.get(group, [])
 
-        with patch('auth_server.server.get_scope_repository', return_value=mock_repo):
+        with patch("auth_server.server.get_scope_repository", return_value=mock_repo):
             groups = ["users", "developers"]
 
             # Act
@@ -204,10 +204,10 @@ class TestGroupToScopeMapping:
         # Both groups return "read:servers" to test deduplication
         mock_repo.get_group_mappings.side_effect = lambda group: {
             "users": ["read:servers", "read:tools"],
-            "developers": ["read:servers", "write:servers"]
+            "developers": ["read:servers", "write:servers"],
         }.get(group, [])
 
-        with patch('auth_server.server.get_scope_repository', return_value=mock_repo):
+        with patch("auth_server.server.get_scope_repository", return_value=mock_repo):
             # Both groups have "read:servers"
             groups = ["users", "developers"]
 
@@ -229,7 +229,7 @@ class TestGroupToScopeMapping:
         mock_repo = AsyncMock()
         mock_repo.get_group_mappings.return_value = []
 
-        with patch('auth_server.server.get_scope_repository', return_value=mock_repo):
+        with patch("auth_server.server.get_scope_repository", return_value=mock_repo):
             groups = ["unknown-group"]
 
             # Act
@@ -248,7 +248,9 @@ class TestScopeValidation:
         from auth_server.server import validate_server_tool_access
 
         # Arrange
-        with patch('auth_server.server.get_scope_repository', return_value=mock_scope_repository_with_data):
+        with patch(
+            "auth_server.server.get_scope_repository", return_value=mock_scope_repository_with_data
+        ):
             server_name = "test-server"
             method = "initialize"
             tool_name = None
@@ -266,7 +268,9 @@ class TestScopeValidation:
         from auth_server.server import validate_server_tool_access
 
         # Arrange
-        with patch('auth_server.server.get_scope_repository', return_value=mock_scope_repository_with_data):
+        with patch(
+            "auth_server.server.get_scope_repository", return_value=mock_scope_repository_with_data
+        ):
             server_name = "other-server"
             method = "initialize"
             tool_name = None
@@ -279,12 +283,16 @@ class TestScopeValidation:
             assert result is False
 
     @pytest.mark.asyncio
-    async def test_validate_server_tool_access_wildcard_server(self, mock_scope_repository_with_data):
+    async def test_validate_server_tool_access_wildcard_server(
+        self, mock_scope_repository_with_data
+    ):
         """Test wildcard server access."""
         from auth_server.server import validate_server_tool_access
 
         # Arrange
-        with patch('auth_server.server.get_scope_repository', return_value=mock_scope_repository_with_data):
+        with patch(
+            "auth_server.server.get_scope_repository", return_value=mock_scope_repository_with_data
+        ):
             server_name = "any-server"
             method = "initialize"
             tool_name = None
@@ -302,7 +310,9 @@ class TestScopeValidation:
         from auth_server.server import validate_server_tool_access
 
         # Arrange
-        with patch('auth_server.server.get_scope_repository', return_value=mock_scope_repository_with_data):
+        with patch(
+            "auth_server.server.get_scope_repository", return_value=mock_scope_repository_with_data
+        ):
             server_name = "test-server"
             method = "tools/call"
             tool_name = "test-tool"
@@ -367,6 +377,7 @@ class TestRateLimiting:
         # Arrange
         monkeypatch.setenv("MAX_TOKENS_PER_USER_PER_HOUR", "3")
         from auth_server import server
+
         server.MAX_TOKENS_PER_USER_PER_HOUR = 3
 
         user_token_generation_counts.clear()
@@ -421,7 +432,7 @@ class TestSessionCookieValidation:
         test_signer = URLSafeTimedSerializer(auth_env_vars["SECRET_KEY"])
 
         # Patch the module's signer to use test key (loaded at import time)
-        with patch('auth_server.server.signer', test_signer):
+        with patch("auth_server.server.signer", test_signer):
             # Act
             result = await validate_session_cookie(valid_session_cookie)
 
@@ -444,12 +455,13 @@ class TestSessionCookieValidation:
         # Create cookie with far past timestamp
         old_data = {"username": "testuser", "groups": []}
         import time
+
         old_time = time.time() - 30000  # Way past max_age
-        with patch('time.time', return_value=old_time):
+        with patch("time.time", return_value=old_time):
             old_cookie = test_signer.dumps(old_data)
 
         # Patch the module's signer to use test key
-        with patch('auth_server.server.signer', test_signer):
+        with patch("auth_server.server.signer", test_signer):
             # Act & Assert
             with pytest.raises(ValueError, match="expired"):
                 await validate_session_cookie(old_cookie)
@@ -486,7 +498,7 @@ class TestSimplifiedCognitoValidator:
         assert validator.default_region == "us-west-2"
         assert validator._jwks_cache == {}
 
-    @patch('auth_server.server.requests.get')
+    @patch("auth_server.server.requests.get")
     def test_get_jwks_success(self, mock_get, mock_jwks_response):
         """Test successful JWKS retrieval."""
         from auth_server.server import SimplifiedCognitoValidator
@@ -509,7 +521,7 @@ class TestSimplifiedCognitoValidator:
         assert len(jwks["keys"]) == 2
         mock_get.assert_called_once()
 
-    @patch('auth_server.server.requests.get')
+    @patch("auth_server.server.requests.get")
     def test_get_jwks_cached(self, mock_get, mock_jwks_response):
         """Test JWKS caching."""
         from auth_server.server import SimplifiedCognitoValidator
@@ -539,7 +551,7 @@ class TestSimplifiedCognitoValidator:
         validator = SimplifiedCognitoValidator()
 
         # Patch SECRET_KEY at module level (loaded at import time before fixture sets env)
-        with patch('auth_server.server.SECRET_KEY', auth_env_vars["SECRET_KEY"]):
+        with patch("auth_server.server.SECRET_KEY", auth_env_vars["SECRET_KEY"]):
             # Act
             result = validator.validate_self_signed_token(self_signed_token)
 
@@ -565,12 +577,12 @@ class TestSimplifiedCognitoValidator:
             "sub": "testuser",
             "exp": now - 3600,  # Expired 1 hour ago
             "iat": now - 7200,
-            "token_use": "access"
+            "token_use": "access",
         }
-        expired_token = jwt.encode(payload, secret_key, algorithm='HS256')
+        expired_token = jwt.encode(payload, secret_key, algorithm="HS256")
 
         # Patch SECRET_KEY at module level (loaded at import time before fixture sets env)
-        with patch('auth_server.server.SECRET_KEY', secret_key):
+        with patch("auth_server.server.SECRET_KEY", secret_key):
             # Act & Assert
             with pytest.raises(ValueError, match="expired"):
                 validator.validate_self_signed_token(expired_token)
@@ -584,7 +596,7 @@ class TestSimplifiedCognitoValidator:
 class TestHealthEndpoint:
     """Tests for /health endpoint."""
 
-    @patch('auth_server.server.get_auth_provider')
+    @patch("auth_server.server.get_auth_provider")
     def test_health_check(self, mock_get_provider):
         """Test health check endpoint."""
         # Arrange - import after mocking
@@ -605,8 +617,14 @@ class TestHealthEndpoint:
 class TestValidateEndpoint:
     """Tests for /validate endpoint."""
 
-    @patch('auth_server.server.get_auth_provider')
-    def test_validate_with_valid_token(self, mock_get_provider, mock_cognito_provider, auth_env_vars, mock_scope_repository_with_data):
+    @patch("auth_server.server.get_auth_provider")
+    def test_validate_with_valid_token(
+        self,
+        mock_get_provider,
+        mock_cognito_provider,
+        auth_env_vars,
+        mock_scope_repository_with_data,
+    ):
         """Test validation with valid JWT token."""
         # Arrange
         mock_get_provider.return_value = mock_cognito_provider
@@ -614,7 +632,9 @@ class TestValidateEndpoint:
         import auth_server.server as server_module
 
         # Patch scope repository to return test data
-        with patch('auth_server.server.get_scope_repository', return_value=mock_scope_repository_with_data):
+        with patch(
+            "auth_server.server.get_scope_repository", return_value=mock_scope_repository_with_data
+        ):
             client = TestClient(server_module.app)
 
             # Act
@@ -622,8 +642,8 @@ class TestValidateEndpoint:
                 "/validate",
                 headers={
                     "Authorization": "Bearer test-token",
-                    "X-Original-URL": "https://example.com/test-server/initialize"
-                }
+                    "X-Original-URL": "https://example.com/test-server/initialize",
+                },
             )
 
             # Assert
@@ -632,7 +652,7 @@ class TestValidateEndpoint:
             assert data["valid"] is True
             assert data["username"] == "testuser"
 
-    @patch('auth_server.server.get_auth_provider')
+    @patch("auth_server.server.get_auth_provider")
     def test_validate_missing_auth_header(self, mock_get_provider, auth_env_vars):
         """Test validation without Authorization header.
 
@@ -656,8 +676,14 @@ class TestValidateEndpoint:
         assert response.status_code == 500
         assert "Internal validation error" in response.json()["detail"]
 
-    @patch('auth_server.server.get_auth_provider')
-    def test_validate_with_session_cookie(self, mock_get_provider, auth_env_vars, valid_session_cookie, mock_scope_repository_with_data):
+    @patch("auth_server.server.get_auth_provider")
+    def test_validate_with_session_cookie(
+        self,
+        mock_get_provider,
+        auth_env_vars,
+        valid_session_cookie,
+        mock_scope_repository_with_data,
+    ):
         """Test validation with valid session cookie."""
         # Arrange
         from itsdangerous import URLSafeTimedSerializer
@@ -667,8 +693,10 @@ class TestValidateEndpoint:
         # Create signer with test SECRET_KEY (module's signer uses different key loaded at import)
         test_signer = URLSafeTimedSerializer(auth_env_vars["SECRET_KEY"])
 
-        with patch('auth_server.server.get_scope_repository', return_value=mock_scope_repository_with_data):
-            with patch('auth_server.server.signer', test_signer):
+        with patch(
+            "auth_server.server.get_scope_repository", return_value=mock_scope_repository_with_data
+        ):
+            with patch("auth_server.server.signer", test_signer):
                 client = TestClient(server_module.app)
 
                 # Act
@@ -676,8 +704,8 @@ class TestValidateEndpoint:
                     "/validate",
                     headers={
                         "Cookie": f"mcp_gateway_session={valid_session_cookie}",
-                        "X-Original-URL": "https://example.com/test-server/initialize"
-                    }
+                        "X-Original-URL": "https://example.com/test-server/initialize",
+                    },
                 )
 
                 # Assert
@@ -689,7 +717,7 @@ class TestValidateEndpoint:
 class TestConfigEndpoint:
     """Tests for /config endpoint."""
 
-    @patch('auth_server.server.get_auth_provider')
+    @patch("auth_server.server.get_auth_provider")
     def test_config_keycloak(self, mock_get_provider, mock_keycloak_provider):
         """Test config endpoint with Keycloak provider."""
         # Arrange
@@ -711,7 +739,7 @@ class TestConfigEndpoint:
 class TestGenerateTokenEndpoint:
     """Tests for /internal/tokens endpoint."""
 
-    @patch('auth_server.server.get_auth_provider')
+    @patch("auth_server.server.get_auth_provider")
     def test_generate_token_success(self, mock_get_provider, auth_env_vars):
         """Test successful token generation using Keycloak M2M."""
         # Arrange
@@ -719,27 +747,24 @@ class TestGenerateTokenEndpoint:
 
         # Mock Keycloak provider
         mock_provider = Mock()
-        mock_provider.get_provider_info.return_value = {'provider_type': 'keycloak'}
+        mock_provider.get_provider_info.return_value = {"provider_type": "keycloak"}
         # M2M token uses fixed scopes for IdP compatibility, not user-requested scopes
         mock_provider.get_m2m_token.return_value = {
-            'access_token': 'mock_keycloak_m2m_token',
-            'refresh_token': None,
-            'expires_in': 28800,
-            'refresh_expires_in': 0,
-            'scope': 'openid email profile'
+            "access_token": "mock_keycloak_m2m_token",
+            "refresh_token": None,
+            "expires_in": 28800,
+            "refresh_expires_in": 0,
+            "scope": "openid email profile",
         }
         mock_get_provider.return_value = mock_provider
 
         client = TestClient(server_module.app)
 
         request_data = {
-            "user_context": {
-                "username": "testuser",
-                "scopes": ["read:servers", "write:servers"]
-            },
+            "user_context": {"username": "testuser", "scopes": ["read:servers", "write:servers"]},
             "requested_scopes": ["read:servers"],
             "expires_in_hours": 8,
-            "description": "Test token"
+            "description": "Test token",
         }
 
         # Act
@@ -756,7 +781,7 @@ class TestGenerateTokenEndpoint:
         # Verify Keycloak M2M was called with IdP-compatible scopes
         mock_provider.get_m2m_token.assert_called_once_with(scope="openid email profile")
 
-    @patch('auth_server.server.get_auth_provider')
+    @patch("auth_server.server.get_auth_provider")
     def test_generate_token_missing_username(self, mock_get_provider, auth_env_vars):
         """Test token generation without username."""
         # Arrange
@@ -765,11 +790,9 @@ class TestGenerateTokenEndpoint:
         client = TestClient(server_module.app)
 
         request_data = {
-            "user_context": {
-                "scopes": ["read:servers"]
-            },
+            "user_context": {"scopes": ["read:servers"]},
             "requested_scopes": ["read:servers"],
-            "expires_in_hours": 8
+            "expires_in_hours": 8,
         }
 
         # Act
@@ -779,7 +802,7 @@ class TestGenerateTokenEndpoint:
         assert response.status_code == 400
         assert "Username is required" in response.json()["detail"]
 
-    @patch('auth_server.server.get_auth_provider')
+    @patch("auth_server.server.get_auth_provider")
     def test_generate_token_invalid_scopes(self, mock_get_provider, auth_env_vars):
         """Test token generation with invalid scopes."""
         # Arrange
@@ -788,12 +811,9 @@ class TestGenerateTokenEndpoint:
         client = TestClient(server_module.app)
 
         request_data = {
-            "user_context": {
-                "username": "testuser",
-                "scopes": ["read:servers"]
-            },
+            "user_context": {"username": "testuser", "scopes": ["read:servers"]},
             "requested_scopes": ["admin:all"],  # User doesn't have this
-            "expires_in_hours": 8
+            "expires_in_hours": 8,
         }
 
         # Act
@@ -803,37 +823,35 @@ class TestGenerateTokenEndpoint:
         assert response.status_code == 403
         assert "exceed user permissions" in response.json()["detail"]
 
-    @patch('auth_server.server.get_auth_provider')
+    @patch("auth_server.server.get_auth_provider")
     def test_generate_token_rate_limit(self, mock_get_provider, auth_env_vars, monkeypatch):
         """Test token generation rate limiting."""
         # Arrange
         monkeypatch.setenv("MAX_TOKENS_PER_USER_PER_HOUR", "2")
 
         import auth_server.server as server_module
+
         server_module.MAX_TOKENS_PER_USER_PER_HOUR = 2
         server_module.user_token_generation_counts.clear()
 
         # Mock Keycloak provider for successful token generation
         mock_provider = Mock()
-        mock_provider.get_provider_info.return_value = {'provider_type': 'keycloak'}
+        mock_provider.get_provider_info.return_value = {"provider_type": "keycloak"}
         mock_provider.get_m2m_token.return_value = {
-            'access_token': 'mock_keycloak_m2m_token',
-            'refresh_token': None,
-            'expires_in': 28800,
-            'refresh_expires_in': 0,
-            'scope': 'read:servers'
+            "access_token": "mock_keycloak_m2m_token",
+            "refresh_token": None,
+            "expires_in": 28800,
+            "refresh_expires_in": 0,
+            "scope": "read:servers",
         }
         mock_get_provider.return_value = mock_provider
 
         client = TestClient(server_module.app)
 
         request_data = {
-            "user_context": {
-                "username": "testuser",
-                "scopes": ["read:servers"]
-            },
+            "user_context": {"username": "testuser", "scopes": ["read:servers"]},
             "requested_scopes": ["read:servers"],
-            "expires_in_hours": 8
+            "expires_in_hours": 8,
         }
 
         # Act - generate tokens up to limit
@@ -852,8 +870,8 @@ class TestGenerateTokenEndpoint:
 class TestReloadScopesEndpoint:
     """Tests for /internal/reload-scopes endpoint."""
 
-    @patch('registry.common.scopes_loader.reload_scopes_config')
-    @patch('auth_server.server.get_auth_provider')
+    @patch("registry.common.scopes_loader.reload_scopes_config")
+    @patch("auth_server.server.get_auth_provider")
     def test_reload_scopes_success(self, mock_get_provider, mock_reload_scopes, auth_env_vars):
         """Test successful scopes reload."""
         # Arrange
@@ -869,8 +887,7 @@ class TestReloadScopesEndpoint:
 
         # Act
         response = client.post(
-            "/internal/reload-scopes",
-            headers={"Authorization": f"Basic {credentials}"}
+            "/internal/reload-scopes", headers={"Authorization": f"Basic {credentials}"}
         )
 
         # Assert
@@ -878,7 +895,7 @@ class TestReloadScopesEndpoint:
         data = response.json()
         assert "successfully" in data["message"]
 
-    @patch('auth_server.server.get_auth_provider')
+    @patch("auth_server.server.get_auth_provider")
     def test_reload_scopes_no_auth(self, mock_get_provider):
         """Test scopes reload without authentication."""
         # Arrange
@@ -892,7 +909,7 @@ class TestReloadScopesEndpoint:
         # Assert
         assert response.status_code == 401
 
-    @patch('auth_server.server.get_auth_provider')
+    @patch("auth_server.server.get_auth_provider")
     def test_reload_scopes_invalid_credentials(self, mock_get_provider, auth_env_vars):
         """Test scopes reload with invalid credentials."""
         # Arrange
@@ -906,9 +923,252 @@ class TestReloadScopesEndpoint:
 
         # Act
         response = client.post(
-            "/internal/reload-scopes",
-            headers={"Authorization": f"Basic {credentials}"}
+            "/internal/reload-scopes", headers={"Authorization": f"Basic {credentials}"}
         )
 
         # Assert
         assert response.status_code == 401
+
+
+# =============================================================================
+# NETWORK-TRUSTED MODE TESTS
+# =============================================================================
+
+
+class TestNetworkTrustedMode:
+    """Tests for network-trusted auth bypass mode (issue #357)."""
+
+    def test_network_trusted_bypasses_registry_api(self):
+        """When enabled, registry API requests bypass JWT validation."""
+        # Arrange
+        import auth_server.server as server_module
+
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", True),
+            patch.object(server_module, "REGISTRY_API_TOKEN", "test-api-key"),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act
+            response = client.get(
+                "/validate",
+                headers={
+                    "Authorization": "Bearer test-api-key",
+                    "X-Original-URL": "https://example.com/api/servers",
+                },
+            )
+
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["valid"] is True
+            assert data["username"] == "network-user"
+            assert data["client_id"] == "network-trusted"
+            assert data["method"] == "network-trusted"
+            assert "mcp-servers-unrestricted/read" in data["scopes"]
+            assert "mcp-servers-unrestricted/execute" in data["scopes"]
+            assert response.headers["X-Auth-Method"] == "network-trusted"
+            assert response.headers["X-Username"] == "network-user"
+
+    def test_network_trusted_requires_auth_header(self):
+        """Auth header must be present even in network-trusted mode."""
+        # Arrange
+        import auth_server.server as server_module
+
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", True),
+            patch.object(server_module, "REGISTRY_API_TOKEN", "test-api-key"),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act
+            response = client.get(
+                "/validate",
+                headers={
+                    "X-Original-URL": "https://example.com/api/servers",
+                },
+            )
+
+            # Assert
+            assert response.status_code == 401
+            assert "Authorization header required" in response.json()["detail"]
+
+    @patch("auth_server.server.get_auth_provider")
+    def test_network_trusted_does_not_bypass_mcp_gateway(
+        self,
+        mock_get_provider,
+        auth_env_vars,
+    ):
+        """MCP server access still requires full validation even when bypass is enabled."""
+        # Arrange
+        import auth_server.server as server_module
+
+        mock_provider = MagicMock()
+        mock_provider.validate_token = AsyncMock(side_effect=ValueError("Invalid token"))
+        mock_get_provider.return_value = mock_provider
+
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", True),
+            patch.object(server_module, "REGISTRY_API_TOKEN", "test-api-key"),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act - request to an MCP server path, not /api/ or /v0.1/
+            response = client.get(
+                "/validate",
+                headers={
+                    "Authorization": "Bearer test-api-key",
+                    "X-Original-URL": "https://example.com/mcpserver/messages",
+                },
+            )
+
+            # Assert - should NOT be bypassed, falls through to normal validation
+            assert response.status_code != 200 or response.json().get("method") != "network-trusted"
+
+    def test_network_trusted_disabled_by_default(self, auth_env_vars):
+        """Default behavior requires full authentication, no bypass."""
+        # Arrange
+        import auth_server.server as server_module
+
+        with patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", False):
+            client = TestClient(server_module.app)
+
+            # Act
+            response = client.get(
+                "/validate",
+                headers={
+                    "Authorization": "Bearer network-trusted",
+                    "X-Original-URL": "https://example.com/api/servers",
+                },
+            )
+
+            # Assert - should NOT return network-trusted response
+            if response.status_code == 200:
+                assert response.json().get("method") != "network-trusted"
+
+    def test_network_trusted_bypasses_v01_api(self):
+        """When enabled, /v0.1/* requests also bypass JWT validation."""
+        # Arrange
+        import auth_server.server as server_module
+
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", True),
+            patch.object(server_module, "REGISTRY_API_TOKEN", "test-api-key"),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act
+            response = client.get(
+                "/validate",
+                headers={
+                    "Authorization": "Bearer test-api-key",
+                    "X-Original-URL": "https://example.com/v0.1/servers",
+                },
+            )
+
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["valid"] is True
+            assert data["username"] == "network-user"
+            assert data["method"] == "network-trusted"
+
+    def test_network_trusted_valid_api_token(self):
+        """When REGISTRY_API_TOKEN is set, matching Bearer token is accepted."""
+        # Arrange
+        import auth_server.server as server_module
+
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", True),
+            patch.object(server_module, "REGISTRY_API_TOKEN", "my-secret-key"),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act
+            response = client.get(
+                "/validate",
+                headers={
+                    "Authorization": "Bearer my-secret-key",
+                    "X-Original-URL": "https://example.com/api/servers",
+                },
+            )
+
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["valid"] is True
+            assert data["method"] == "network-trusted"
+
+    def test_network_trusted_invalid_api_token(self):
+        """When REGISTRY_API_TOKEN is set, mismatched Bearer token is rejected."""
+        # Arrange
+        import auth_server.server as server_module
+
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", True),
+            patch.object(server_module, "REGISTRY_API_TOKEN", "my-secret-key"),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act
+            response = client.get(
+                "/validate",
+                headers={
+                    "Authorization": "Bearer wrong-key",
+                    "X-Original-URL": "https://example.com/api/servers",
+                },
+            )
+
+            # Assert
+            assert response.status_code == 403
+            assert "Invalid API token" in response.json()["detail"]
+
+    def test_network_trusted_disabled_when_no_token_configured(self):
+        """When REGISTRY_API_TOKEN is empty, static token auth is disabled (falls back to JWT)."""
+        # Arrange
+        import auth_server.server as server_module
+
+        # Simulate: enabled flag was set to False at startup because token was empty
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", False),
+            patch.object(server_module, "REGISTRY_API_TOKEN", ""),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act
+            response = client.get(
+                "/validate",
+                headers={
+                    "Authorization": "Bearer anything-goes",
+                    "X-Original-URL": "https://example.com/api/servers",
+                },
+            )
+
+            # Assert - should NOT return network-trusted (falls through to JWT validation)
+            if response.status_code == 200:
+                assert response.json().get("method") != "network-trusted"
+
+    def test_network_trusted_skips_bypass_when_session_cookie_present(self):
+        """When session cookie is present, bypass is skipped for normal cookie auth flow."""
+        # Arrange
+        import auth_server.server as server_module
+
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", True),
+            patch.object(server_module, "REGISTRY_API_TOKEN", "test-api-key"),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act - send with session cookie but no Bearer token
+            response = client.get(
+                "/validate",
+                headers={
+                    "X-Original-URL": "https://example.com/api/servers",
+                    "Cookie": "mcp_gateway_session=some-session-value",
+                },
+            )
+
+            # Assert - should NOT get 401 from bypass (bypass was skipped)
+            # It will fail session validation, but not with the bypass 401 message
+            if response.status_code == 401:
+                assert "Authorization header required" not in response.json().get("detail", "")

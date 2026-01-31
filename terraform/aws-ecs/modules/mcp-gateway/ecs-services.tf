@@ -154,6 +154,14 @@ module "ecs_service_auth" {
           value = var.session_cookie_domain
         },
         {
+          name  = "REGISTRY_STATIC_TOKEN_AUTH_ENABLED"
+          value = tostring(var.registry_static_token_auth_enabled)
+        },
+        {
+          name  = "REGISTRY_API_TOKEN"
+          value = var.registry_api_token
+        },
+        {
           name  = "STORAGE_BACKEND"
           value = var.storage_backend
         },
