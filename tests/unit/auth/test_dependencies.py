@@ -127,7 +127,15 @@ def sample_scopes_config() -> dict[str, Any]:
         "registry-admins": [
             {
                 "server": "*",
-                "methods": ["initialize", "GET", "POST", "PUT", "DELETE", "tools/list", "tools/call"],
+                "methods": [
+                    "initialize",
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "DELETE",
+                    "tools/list",
+                    "tools/call",
+                ],
                 "tools": "*",
             }
         ],
@@ -145,9 +153,7 @@ def sample_scopes_config() -> dict[str, Any]:
 def mock_scopes_config(sample_scopes_config: dict[str, Any], monkeypatch):
     """Mock SCOPES_CONFIG global variable and scope repository."""
     # Keep existing monkeypatch for backward compatibility
-    monkeypatch.setattr(
-        "registry.auth.dependencies.SCOPES_CONFIG", sample_scopes_config
-    )
+    monkeypatch.setattr("registry.auth.dependencies.SCOPES_CONFIG", sample_scopes_config)
 
     # Create mock repository
     mock_repo = AsyncMock()
@@ -178,10 +184,7 @@ def mock_scopes_config(sample_scopes_config: dict[str, Any], monkeypatch):
 
     # Patch get_scope_repository to return our mock using patch context manager
     # Since it's imported locally in functions, we need to patch the import
-    with patch(
-        "registry.repositories.factory.get_scope_repository",
-        return_value=mock_repo
-    ):
+    with patch("registry.repositories.factory.get_scope_repository", return_value=mock_repo):
         yield sample_scopes_config
 
 
@@ -201,9 +204,7 @@ def mock_session_validator(test_secret_key: str):
 class TestGetCurrentUser:
     """Tests for get_current_user dependency."""
 
-    def test_get_current_user_with_valid_session(
-        self, mock_signer: URLSafeTimedSerializer
-    ):
+    def test_get_current_user_with_valid_session(self, mock_signer: URLSafeTimedSerializer):
         """Test extracting user from valid session cookie."""
         # Arrange
         session_data = {"username": "testuser"}
@@ -224,18 +225,14 @@ class TestGetCurrentUser:
         assert exc_info.value.status_code == 401
         assert "Authentication required" in exc_info.value.detail
 
-    def test_get_current_user_expired_session(
-        self, mock_signer: URLSafeTimedSerializer
-    ):
+    def test_get_current_user_expired_session(self, mock_signer: URLSafeTimedSerializer):
         """Test that expired session raises 401."""
         # Arrange
         session_data = {"username": "testuser"}
         session_cookie = mock_signer.dumps(session_data)
 
         # Mock signature expired exception
-        with patch.object(
-            mock_signer, "loads", side_effect=SignatureExpired("Expired")
-        ):
+        with patch.object(mock_signer, "loads", side_effect=SignatureExpired("Expired")):
             # Act & Assert
             with pytest.raises(HTTPException) as exc_info:
                 get_current_user(session=session_cookie)
@@ -243,9 +240,7 @@ class TestGetCurrentUser:
             assert exc_info.value.status_code == 401
             assert "expired" in exc_info.value.detail.lower()
 
-    def test_get_current_user_invalid_signature(
-        self, mock_signer: URLSafeTimedSerializer
-    ):
+    def test_get_current_user_invalid_signature(self, mock_signer: URLSafeTimedSerializer):
         """Test that invalid signature raises 401."""
         # Arrange
         invalid_session = "invalid.session.cookie"
@@ -257,9 +252,7 @@ class TestGetCurrentUser:
         assert exc_info.value.status_code == 401
         assert "Invalid session" in exc_info.value.detail
 
-    def test_get_current_user_no_username_in_session(
-        self, mock_signer: URLSafeTimedSerializer
-    ):
+    def test_get_current_user_no_username_in_session(self, mock_signer: URLSafeTimedSerializer):
         """Test that session without username raises 401."""
         # Arrange
         session_data = {"other_field": "value"}
@@ -272,7 +265,10 @@ class TestGetCurrentUser:
         assert exc_info.value.status_code == 401
         # Note: The actual message is "Authentication failed" due to exception handling
         # in the code (the inner HTTPException is caught by outer except)
-        assert "Authentication failed" in exc_info.value.detail or "Invalid session data" in exc_info.value.detail
+        assert (
+            "Authentication failed" in exc_info.value.detail
+            or "Invalid session data" in exc_info.value.detail
+        )
 
 
 # =============================================================================
@@ -285,9 +281,7 @@ class TestGetCurrentUser:
 class TestGetUserSessionData:
     """Tests for get_user_session_data dependency."""
 
-    def test_get_session_data_traditional_user(
-        self, mock_signer: URLSafeTimedSerializer
-    ):
+    def test_get_session_data_traditional_user(self, mock_signer: URLSafeTimedSerializer):
         """Test extracting session data for traditional auth user."""
         # Arrange
         session_data = {
@@ -306,9 +300,7 @@ class TestGetUserSessionData:
         assert "registry-admins" in result["groups"]
         assert "registry-admins" in result["scopes"]
 
-    def test_get_session_data_oauth2_user(
-        self, mock_signer: URLSafeTimedSerializer
-    ):
+    def test_get_session_data_oauth2_user(self, mock_signer: URLSafeTimedSerializer):
         """Test extracting session data for OAuth2 user."""
         # Arrange
         session_data = {
@@ -327,9 +319,7 @@ class TestGetUserSessionData:
         assert result["auth_method"] == "oauth2"
         assert result["groups"] == ["registry-users-lob1"]
         # OAuth2 users don't get default admin privileges
-        assert "scopes" not in result or "mcp-registry-admin" not in result.get(
-            "scopes", []
-        )
+        assert "scopes" not in result or "mcp-registry-admin" not in result.get("scopes", [])
 
     def test_get_session_data_no_session(self):
         """Test that missing session raises 401."""
@@ -345,9 +335,7 @@ class TestGetUserSessionData:
         # Arrange
         session_cookie = "some.session.cookie"
 
-        with patch.object(
-            mock_signer, "loads", side_effect=SignatureExpired("Expired")
-        ):
+        with patch.object(mock_signer, "loads", side_effect=SignatureExpired("Expired")):
             # Act & Assert
             with pytest.raises(HTTPException) as exc_info:
                 get_user_session_data(session=session_cookie)
@@ -367,9 +355,7 @@ class TestGetUserSessionData:
 class TestLoadScopesConfig:
     """Tests for load_scopes_config function."""
 
-    def test_load_scopes_config_from_default_path(
-        self, tmp_path: Path, monkeypatch
-    ):
+    def test_load_scopes_config_from_default_path(self, tmp_path: Path, monkeypatch):
         """Test loading scopes config from default path."""
         # Arrange
         scopes_file = tmp_path / "auth_server" / "scopes.yml"
@@ -578,9 +564,7 @@ class TestGetUIPermissionsForUser:
         assert permissions == {}
 
     @pytest.mark.asyncio
-    async def test_unknown_scope_no_permissions(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_unknown_scope_no_permissions(self, mock_scopes_config: dict[str, Any]):
         """Test unknown scope grants no permissions."""
         # Arrange
         user_scopes = ["unknown-scope"]
@@ -608,9 +592,7 @@ class TestUserHasUIPermissionForService:
         permissions = {"list_service": ["all"]}
 
         # Act & Assert
-        assert user_has_ui_permission_for_service(
-            "list_service", "any_service", permissions
-        )
+        assert user_has_ui_permission_for_service("list_service", "any_service", permissions)
 
     def test_has_permission_for_specific_service(self):
         """Test user with specific service permission."""
@@ -618,12 +600,8 @@ class TestUserHasUIPermissionForService:
         permissions = {"list_service": ["currenttime", "mcpgw"]}
 
         # Act & Assert
-        assert user_has_ui_permission_for_service(
-            "list_service", "currenttime", permissions
-        )
-        assert user_has_ui_permission_for_service(
-            "list_service", "mcpgw", permissions
-        )
+        assert user_has_ui_permission_for_service("list_service", "currenttime", permissions)
+        assert user_has_ui_permission_for_service("list_service", "mcpgw", permissions)
 
     def test_no_permission_for_service(self):
         """Test user without permission for service."""
@@ -631,9 +609,7 @@ class TestUserHasUIPermissionForService:
         permissions = {"list_service": ["currenttime"]}
 
         # Act & Assert
-        assert not user_has_ui_permission_for_service(
-            "list_service", "other_service", permissions
-        )
+        assert not user_has_ui_permission_for_service("list_service", "other_service", permissions)
 
     def test_permission_not_in_user_permissions(self):
         """Test permission type not in user's permissions."""
@@ -715,9 +691,7 @@ class TestGetAccessibleAgentsForUser:
     def test_specific_agents_accessible(self):
         """Test user with specific agents."""
         # Arrange
-        permissions = {
-            "list_agents": ["/code-reviewer", "/test-automation"]
-        }
+        permissions = {"list_agents": ["/code-reviewer", "/test-automation"]}
 
         # Act
         agents = get_accessible_agents_for_user(permissions)
@@ -749,9 +723,7 @@ class TestGetServersForScope:
     """Tests for get_servers_for_scope function."""
 
     @pytest.mark.asyncio
-    async def test_wildcard_scope_returns_wildcard(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_wildcard_scope_returns_wildcard(self, mock_scopes_config: dict[str, Any]):
         """Test wildcard scope returns wildcard server."""
         # Act
         servers = await get_servers_for_scope("mcp-servers-unrestricted/read")
@@ -760,9 +732,7 @@ class TestGetServersForScope:
         assert "*" in servers
 
     @pytest.mark.asyncio
-    async def test_specific_scope_returns_servers(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_specific_scope_returns_servers(self, mock_scopes_config: dict[str, Any]):
         """Test specific scope returns specific servers."""
         # Act
         servers = await get_servers_for_scope("registry-users-lob1")
@@ -771,9 +741,7 @@ class TestGetServersForScope:
         assert "currenttime" in servers
 
     @pytest.mark.asyncio
-    async def test_unknown_scope_returns_empty(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_unknown_scope_returns_empty(self, mock_scopes_config: dict[str, Any]):
         """Test unknown scope returns empty list."""
         # Act
         servers = await get_servers_for_scope("unknown-scope")
@@ -793,9 +761,7 @@ class TestUserHasWildcardAccess:
     """Tests for user_has_wildcard_access function."""
 
     @pytest.mark.asyncio
-    async def test_admin_has_wildcard_access(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_admin_has_wildcard_access(self, mock_scopes_config: dict[str, Any]):
         """Test admin user has wildcard access."""
         # Arrange
         scopes = ["mcp-servers-unrestricted/read"]
@@ -807,9 +773,7 @@ class TestUserHasWildcardAccess:
         assert has_access is True
 
     @pytest.mark.asyncio
-    async def test_restricted_user_no_wildcard_access(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_restricted_user_no_wildcard_access(self, mock_scopes_config: dict[str, Any]):
         """Test restricted user has no wildcard access."""
         # Arrange
         scopes = ["registry-users-lob1"]
@@ -821,9 +785,7 @@ class TestUserHasWildcardAccess:
         assert has_access is False
 
     @pytest.mark.asyncio
-    async def test_no_scopes_no_wildcard_access(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_no_scopes_no_wildcard_access(self, mock_scopes_config: dict[str, Any]):
         """Test user with no scopes has no wildcard access."""
         # Arrange
         scopes = []
@@ -846,9 +808,7 @@ class TestGetUserAccessibleServers:
     """Tests for get_user_accessible_servers function."""
 
     @pytest.mark.asyncio
-    async def test_admin_access_all_servers(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_admin_access_all_servers(self, mock_scopes_config: dict[str, Any]):
         """Test admin user can access all servers (wildcard)."""
         # Arrange
         scopes = ["mcp-servers-unrestricted/read"]
@@ -860,9 +820,7 @@ class TestGetUserAccessibleServers:
         assert "*" in servers
 
     @pytest.mark.asyncio
-    async def test_lob1_access_specific_servers(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_lob1_access_specific_servers(self, mock_scopes_config: dict[str, Any]):
         """Test LOB1 user can access specific servers."""
         # Arrange
         scopes = ["registry-users-lob1"]
@@ -875,9 +833,7 @@ class TestGetUserAccessibleServers:
         assert "*" not in servers
 
     @pytest.mark.asyncio
-    async def test_multiple_scopes_combine_servers(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_multiple_scopes_combine_servers(self, mock_scopes_config: dict[str, Any]):
         """Test multiple scopes combine accessible servers."""
         # Arrange
         scopes = [
@@ -963,9 +919,7 @@ class TestUserCanAccessServer:
     """Tests for user_can_access_server function."""
 
     @pytest.mark.asyncio
-    async def test_admin_can_access_any_server(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_admin_can_access_any_server(self, mock_scopes_config: dict[str, Any]):
         """Test admin can access any server."""
         # Arrange
         scopes = ["mcp-servers-unrestricted/read"]
@@ -984,9 +938,7 @@ class TestUserCanAccessServer:
         assert not await user_can_access_server("any-server", scopes)
 
     @pytest.mark.asyncio
-    async def test_user_can_access_allowed_server(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_user_can_access_allowed_server(self, mock_scopes_config: dict[str, Any]):
         """Test user can access allowed server."""
         # Arrange
         scopes = ["registry-users-lob1"]
@@ -995,9 +947,7 @@ class TestUserCanAccessServer:
         assert await user_can_access_server("currenttime", scopes)
 
     @pytest.mark.asyncio
-    async def test_user_cannot_access_disallowed_server(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_user_cannot_access_disallowed_server(self, mock_scopes_config: dict[str, Any]):
         """Test user cannot access disallowed server."""
         # Arrange
         scopes = ["registry-users-lob1"]
@@ -1020,9 +970,7 @@ class TestCreateSessionCookie:
         """Test creating traditional auth session cookie."""
         # Act
         session_cookie = create_session_cookie(
-            username="testuser",
-            auth_method="traditional",
-            provider="local"
+            username="testuser", auth_method="traditional", provider="local"
         )
 
         # Assert
@@ -1037,9 +985,7 @@ class TestCreateSessionCookie:
         """Test creating OAuth2 session cookie."""
         # Act
         session_cookie = create_session_cookie(
-            username="oauth_user",
-            auth_method="oauth2",
-            provider="cognito"
+            username="oauth_user", auth_method="oauth2", provider="cognito"
         )
 
         # Assert
@@ -1067,8 +1013,7 @@ class TestValidateLoginCredentials:
 
         # Act
         is_valid = validate_login_credentials(
-            test_settings.admin_user,
-            test_settings.admin_password
+            test_settings.admin_user, test_settings.admin_password
         )
 
         # Assert
@@ -1080,10 +1025,7 @@ class TestValidateLoginCredentials:
         monkeypatch.setattr("registry.auth.dependencies.settings", test_settings)
 
         # Act
-        is_valid = validate_login_credentials(
-            "wronguser",
-            test_settings.admin_password
-        )
+        is_valid = validate_login_credentials("wronguser", test_settings.admin_password)
 
         # Assert
         assert is_valid is False
@@ -1094,10 +1036,7 @@ class TestValidateLoginCredentials:
         monkeypatch.setattr("registry.auth.dependencies.settings", test_settings)
 
         # Act
-        is_valid = validate_login_credentials(
-            test_settings.admin_user,
-            "wrongpassword"
-        )
+        is_valid = validate_login_credentials(test_settings.admin_user, "wrongpassword")
 
         # Assert
         assert is_valid is False
@@ -1113,9 +1052,7 @@ class TestValidateLoginCredentials:
 class TestAuthWrappers:
     """Tests for api_auth and web_auth wrapper functions."""
 
-    def test_api_auth_calls_get_current_user(
-        self, mock_signer: URLSafeTimedSerializer
-    ):
+    def test_api_auth_calls_get_current_user(self, mock_signer: URLSafeTimedSerializer):
         """Test api_auth delegates to get_current_user."""
         # Arrange
         session_data = {"username": "apiuser"}
@@ -1127,9 +1064,7 @@ class TestAuthWrappers:
         # Assert
         assert username == "apiuser"
 
-    def test_web_auth_calls_get_current_user(
-        self, mock_signer: URLSafeTimedSerializer
-    ):
+    def test_web_auth_calls_get_current_user(self, mock_signer: URLSafeTimedSerializer):
         """Test web_auth delegates to get_current_user."""
         # Arrange
         session_data = {"username": "webuser"}
@@ -1227,9 +1162,7 @@ class TestNginxProxiedAuth:
     """Tests for nginx_proxied_auth dependency."""
 
     @pytest.mark.asyncio
-    async def test_nginx_auth_with_headers(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    async def test_nginx_auth_with_headers(self, mock_scopes_config: dict[str, Any]):
         """Test nginx auth with X-User headers."""
         # Arrange
         mock_request = Mock(spec=Request)
@@ -1328,9 +1261,7 @@ class TestNginxProxiedAuth:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
-    def test_session_with_empty_username(
-        self, mock_signer: URLSafeTimedSerializer
-    ):
+    def test_session_with_empty_username(self, mock_signer: URLSafeTimedSerializer):
         """Test session with empty string username."""
         # Arrange
         session_data = {"username": ""}
@@ -1355,10 +1286,7 @@ class TestEdgeCases:
 
         mock_repo.get_group_mappings.side_effect = mock_get_group_mappings_with_duplicates
 
-        with patch(
-            "registry.repositories.factory.get_scope_repository",
-            return_value=mock_repo
-        ):
+        with patch("registry.repositories.factory.get_scope_repository", return_value=mock_repo):
             # Act
             scopes = await map_cognito_groups_to_scopes(["test-group"])
 
@@ -1390,16 +1318,47 @@ class TestEdgeCases:
         assert context["scopes"] == []
         assert context["can_modify_servers"] is False
 
-    def test_ui_permissions_with_all_and_specific(
-        self, mock_scopes_config: dict[str, Any]
-    ):
+    def test_ui_permissions_with_all_and_specific(self, mock_scopes_config: dict[str, Any]):
         """Test UI permissions handles 'all' with specific services."""
         # Arrange - Create permissions with both 'all' and specific
-        permissions = {
-            "list_service": ["all", "currenttime"]
-        }
+        permissions = {"list_service": ["all", "currenttime"]}
 
         # Act & Assert
-        assert user_has_ui_permission_for_service(
-            "list_service", "any_service", permissions
+        assert user_has_ui_permission_for_service("list_service", "any_service", permissions)
+
+
+# =============================================================================
+# NETWORK-TRUSTED AUTH METHOD TESTS
+# =============================================================================
+
+
+class TestNetworkTrustedAuthMethod:
+    """Tests for network-trusted auth method in nginx_proxied_auth (issue #357)."""
+
+    @pytest.mark.asyncio
+    async def test_network_trusted_with_admin_scopes_gets_admin_group(
+        self, mock_scopes_config: dict[str, Any]
+    ):
+        """Test network-trusted auth method with admin scopes gets admin group."""
+        # Arrange
+        mock_request = Mock(spec=Request)
+        mock_request.url.path = "/api/servers"
+        mock_request.method = "GET"
+        mock_request.headers = {}
+
+        # Act
+        context = await nginx_proxied_auth(
+            request=mock_request,
+            session=None,
+            x_user="network-user",
+            x_username="network-user",
+            x_scopes="mcp-servers-unrestricted/read mcp-servers-unrestricted/execute",
+            x_auth_method="network-trusted",
         )
+
+        # Assert
+        assert context["username"] == "network-user"
+        assert context["auth_method"] == "network-trusted"
+        assert "mcp-registry-admin" in context["groups"]
+        assert "mcp-servers-unrestricted/read" in context["scopes"]
+        assert "mcp-servers-unrestricted/execute" in context["scopes"]

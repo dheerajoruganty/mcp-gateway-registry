@@ -99,17 +99,20 @@ TOKEN_CONTENT=$(cat "$TOKEN_FILE")
 # Format 1: JSON with access_token field (from generate_creds.sh)
 # Format 2: Raw JWT token (from get-m2m-token.sh)
 # Format 3: JSON with nested tokens.access_token field (from UI sidebar token generation)
+# Format 4: Plain text token (e.g., network-trusted placeholder)
 if echo "$TOKEN_CONTENT" | grep -q "^eyJ"; then
     # Format 2: Raw JWT token (starts with eyJ which is base64 for '{"')
     ACCESS_TOKEN="$TOKEN_CONTENT"
-else
+elif echo "$TOKEN_CONTENT" | grep -q "^{"; then
+    # JSON format - try to extract access_token
     if command -v jq &> /dev/null; then
-        # Use jq if available - try flat access_token first, then nested tokens.access_token
         ACCESS_TOKEN=$(echo "$TOKEN_CONTENT" | jq -r '.access_token // .tokens.access_token // empty')
     else
-        # Fallback to grep/sed if jq is not available
         ACCESS_TOKEN=$(echo "$TOKEN_CONTENT" | grep -o '"access_token":"[^"]*"' | head -1 | sed 's/"access_token":"\([^"]*\)"/\1/')
     fi
+else
+    # Format 4: Plain text token (use file content verbatim)
+    ACCESS_TOKEN=$(echo "$TOKEN_CONTENT" | tr -d '[:space:]')
 fi
 
 if [ -z "$ACCESS_TOKEN" ]; then
@@ -120,6 +123,7 @@ if [ -z "$ACCESS_TOKEN" ]; then
     echo "  1. JSON format: {\"access_token\": \"...\"}"
     echo "  2. Raw JWT token: eyJ..."
     echo "  3. Nested JSON: {\"tokens\": {\"access_token\": \"...\"}}"
+    echo "  4. Plain text token (used as-is)"
     echo ""
     echo "To regenerate tokens:"
     echo "  cd credentials-provider && ./generate_creds.sh && cd .."
@@ -127,6 +131,11 @@ if [ -z "$ACCESS_TOKEN" ]; then
 fi
 
 # Decode JWT to check expiration (JWT format: header.payload.signature)
+# Skip expiration check for non-JWT tokens (plain text placeholders)
+if ! echo "$ACCESS_TOKEN" | grep -q "^eyJ"; then
+    echo -e "${YELLOW}Token is not a JWT - skipping expiration check (plain text token)${NC}"
+    echo ""
+else
 # Extract payload (second part)
 PAYLOAD=$(echo "$ACCESS_TOKEN" | cut -d. -f2)
 
@@ -168,6 +177,7 @@ if command -v base64 &> /dev/null; then
 else
     echo -e "${YELLOW}Warning: base64 command not found, skipping token expiration check${NC}"
 fi
+fi  # end of JWT expiration check (non-JWT tokens skip this block)
 echo ""
 
 # Test data with timestamp for uniqueness

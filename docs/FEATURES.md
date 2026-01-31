@@ -8,50 +8,82 @@ This document provides a comprehensive overview of the MCP Gateway & Registry so
 - **Dynamic Tool Discovery**: Intelligent routing based on natural language queries and semantic matching, reducing configuration overhead
 
 ## Registry & Management
-- **Centralized Server Registry**: JSON-based configuration for all MCP servers and their capabilities
+- **Centralized Server Registry**: MongoDB/DocumentDB-backed configuration for all MCP servers and their capabilities
 - **Dynamic Tool Catalog**: Real-time discovery of available tools across registered servers
+- **MCP Server Version Routing**: Run multiple versions of the same server behind a single gateway endpoint with instant rollback, version pinning, and deprecation lifecycle
+- **Custom Metadata**: Add rich custom metadata to servers and agents for organization, compliance, and integration tracking, fully searchable via semantic search
+- **Server & Agent Rating System**: 5-star rating widget with aggregate scoring, one rating per user, and rotating buffer
 - **Health Monitoring**: Built-in health checks and status monitoring for all registered services
 - **Scalable Architecture**: Docker-based deployment with horizontal scaling support
 
+## Agent Registry & A2A Communication
+- **A2A Protocol Support**: Agent registration, discovery, and direct agent-to-agent communication
+- **Agent Security Scanning**: Integrated scanning using Cisco AI Defense A2A Scanner with YARA pattern matching and heuristic threat detection
+- **Agent Discovery API**: Semantic search API for dynamic agent composition at runtime
+- **Agent Cards & Metadata**: Rich metadata for agent capabilities, skills, and authentication schemes
+
 ## Authentication & Security
 - **Multi-Provider OAuth 2.0/OIDC Support**: Keycloak, Microsoft Entra ID, AWS Cognito integration
-- **Enterprise SSO Ready**: Seamless integration with existing identity providers
-- **Service Principal Support**: Automated authentication for AI agents and scripts
-- **Group-Based Authorization**: Fine-grained access control through identity provider groups
+- **Multi-Provider IAM**: Harmonized API for user and group management across identity providers
+- **Static Token Auth**: IdP-independent API access for Registry endpoints using static API keys, designed for CI/CD pipelines and trusted network environments
+- **Enterprise SSO Ready**: Seamless integration with existing identity providers including Microsoft Entra ID
+- **Service Principal Support**: M2M service accounts with OAuth2 Client Credentials flow for AI agent identity
+- **Fine-Grained Access Control**: Scopes define which MCP servers, methods, tools, and agents each user can access
+- **Self-Signed JWT Tokens**: Human users can generate tokens for CLI tools and AI coding assistants
 - **Secure Token Management**: OAuth token refresh and validation with centralized session management
+- **MCP Server Security Scanning**: Integrated vulnerability scanning with Cisco AI Defense MCP Scanner
 
 ## Intelligent Tool Discovery
-- **Semantic Search**: FAISS-powered vector search using sentence transformers for natural language tool queries
+- **Hybrid Search**: Combined vector similarity with tokenized keyword matching for servers, tools, and agents
+- **Semantic Search**: HNSW vector search using sentence transformers or LiteLLM-supported providers
+- **Unified Search**: Single endpoint searches across MCP servers, tools, and A2A agents
 - **Tag-Based Filtering**: Multi-tag filtering with AND logic for precise tool selection
-- **Hybrid Search**: Combined semantic and tag-based discovery for optimal results
+- **Flexible Embeddings**: Local sentence-transformers, OpenAI, Amazon Bedrock Titan, or any LiteLLM-supported provider
 - **Performance Optimized**: Configurable result limits and caching for fast response times
 
 ## Developer Experience
+- **MCP Registry CLI**: Claude Code-like conversational interface for registry management with real-time token status and cost tracking
+- **Registry Management API**: Programmatic API for managing servers, groups, and users with Python client
 - **Multiple Client Libraries**: Python agent with extensible authentication
 - **Comprehensive Documentation**: Setup guides, API documentation, and integration examples
-- **Testing Framework**: Complete test suite with shell script validation
+- **Testing Framework**: 850+ pytest tests (unit, integration, E2E) with GitHub Actions CI
 - **Development Tools**: Docker Compose for local development and testing
+
+## Federation & External Registries
+- **Federated Registry**: Import servers and agents from external registries
+- **Anthropic MCP Registry**: Import curated MCP servers with API compatibility
+- **Workday ASOR**: Import AI agents from Agent System of Record
+- **Automatic Sync**: Scheduled synchronization with external registries
+- **Amazon Bedrock AgentCore**: Gateway support with dual authentication
 
 ## Enterprise Integration
 - **Container-Ready Deployment**: Docker Hub images with pre-built containers
+- **AWS ECS Production Deployment**: Multi-AZ Fargate deployment with ALB, auto-scaling, CloudWatch, and Terraform
+- **Flexible Deployment Modes**: CloudFront Only, Custom Domain with Route53/ACM, or CloudFront + Custom Domain
 - **Reverse Proxy Architecture**: Nginx-based ingress with SSL termination
-- **Production Monitoring**: Health check endpoints and logging infrastructure
+- **DocumentDB & MongoDB CE Storage**: Production-grade distributed storage with HNSW vector search
+- **Real-Time Metrics & Observability**: Grafana dashboards with SQLite and OpenTelemetry integration
 - **Configuration Management**: Environment-based configuration with validation
 
 ## Technical Specifications
 - **Protocol Compliance**: Full MCP (Model Context Protocol) specification support
+- **A2A Protocol**: Agent-to-Agent protocol support for autonomous agent ecosystems
 - **High Performance**: Async/await architecture with concurrent request handling
 - **Extensible Design**: Plugin architecture for custom authentication providers
 - **Cross-Platform**: Linux, macOS, Windows support with consistent APIs
 
 ## Deployment Options
-- **Quick Start**: Docker Compose setup in under 5 minutes
+- **Pre-built Images**: Deploy instantly with Docker Hub images
+- **Quick Start**: Docker Compose setup in minutes
+- **AWS ECS Fargate**: Production deployment with Terraform
 - **Cloud Native**: Kubernetes manifests and cloud deployment guides
-- **Local Development**: Standalone Python installation with minimal dependencies
-- **Production Ready**: Load balancer integration and multi-instance deployment
+- **Local Development**: MongoDB CE with full-featured local development
+- **Podman Support**: Rootless container deployment for macOS and Linux
 
 ## Use Cases Supported
 - **AI Agent Orchestration**: Centralized tool access for autonomous agents
+- **Agent-to-Agent Communication**: Direct peer-to-peer agent communication through unified registry
+- **CI/CD Integration**: Static token auth for automated pipelines without IdP dependency
 - **Enterprise Tool Consolidation**: Single gateway for diverse internal tools
 - **Development Team Productivity**: Unified interface for developer tools and services
 - **Research & Analytics**: Streamlined access to data processing and analysis tools
@@ -59,21 +91,8 @@ This document provides a comprehensive overview of the MCP Gateway & Registry so
 
 ## Competitive Advantages
 - **Zero Vendor Lock-in**: Open architecture supporting any MCP-compliant server
+- **Unified Agent & Server Registry**: Single control plane for both MCP servers and AI agents
 - **Minimal Configuration**: Automatic tool discovery reduces setup complexity
-- **Enterprise Security**: Production-grade authentication and authorization
-- **Developer Friendly**: Clear APIs and comprehensive documentation
+- **Enterprise Security**: Production-grade authentication and authorization with multiple IdP support
+- **Developer Friendly**: Clear APIs, CLI tools, and comprehensive documentation
 - **Cost Effective**: Reduces integration overhead and maintenance complexity
-
-## Development Roadmap
-
-- **[Virtual MCP Server Support - Dynamic Tool Aggregation and Intelligent Routing](https://github.com/agentic-community/mcp-gateway-registry/issues/129)**: Enable logical grouping of tools from multiple backend servers with intelligent routing using Lua/JavaScript scripting. Provides purpose-built virtual servers that abstract away backend complexity.
-
-- **[Add Microsoft Entra ID (Azure AD) Authentication Provider](https://github.com/agentic-community/mcp-gateway-registry/issues/128)**: Extend authentication support beyond Keycloak to include Microsoft Entra ID integration. Enables enterprise SSO for organizations using Azure Active Directory.
-
-- **[Migrate to OpenSearch for Server Storage and Vector Search](https://github.com/agentic-community/mcp-gateway-registry/issues/121)**: Replace current storage with OpenSearch to provide advanced vector search capabilities and improved scalability for large server registries.
-
-- **[CLI Tool for MCP Server Registration and Health Validation](https://github.com/agentic-community/mcp-gateway-registry/issues/120)**: Command-line interface for automated server registration, health checks, and registry management. Streamlines DevOps workflows and CI/CD integration.
-
-- **[Implement Well-Known URL for MCP Server Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/119)**: Standardized discovery mechanism using /.well-known/mcp-servers endpoint for automatic server detection and federation across organizations.
-
-- **[Agent-as-Tool Integration: Dynamic MCP Server Generation](https://github.com/agentic-community/mcp-gateway-registry/issues/118)**: Convert existing AI agents into MCP servers dynamically, enabling legacy agent ecosystems to participate in the MCP protocol without code rewrites.
