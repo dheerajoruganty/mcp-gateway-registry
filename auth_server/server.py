@@ -1395,10 +1395,10 @@ async def validate_request(request: Request):
             headers={"WWW-Authenticate": "Bearer", "Connection": "close"},
         )
     except HTTPException as e:
-        # If it's a 403 HTTPException, re-raise it as is
-        if e.status_code == 403:
+        # Re-raise client error HTTPExceptions (4xx) as-is
+        if 400 <= e.status_code < 500:
             raise
-        # For other HTTPExceptions, let them fall through to general handler
+        # For non-client HTTPExceptions, convert to 500
         logger.error(f"HTTP error during validation: {e}")
         raise HTTPException(
             status_code=500,
