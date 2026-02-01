@@ -434,3 +434,20 @@ variable "entra_client_secret" {
   default     = ""
   sensitive   = true
 }
+
+# =============================================================================
+# REGISTRY STATIC TOKEN AUTH (IdP-independent API access)
+# =============================================================================
+
+variable "registry_static_token_auth_enabled" {
+  description = "Enable static token auth for Registry API endpoints (/api/*, /v0.1/*). MCP Gateway endpoints still require full IdP authentication."
+  type        = bool
+  default     = false
+}
+
+variable "registry_api_token" {
+  description = "Static API key for Registry API. Clients send: Authorization: Bearer <token>. Generate with: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\""
+  type        = string
+  default     = ""
+  sensitive   = true
+}
