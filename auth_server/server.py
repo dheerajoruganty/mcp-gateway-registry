@@ -1256,7 +1256,7 @@ async def validate_request(request: Request):
                 logger.error(f"Authentication provider error: {e}")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Authentication provider configuration error: {str(e)}",
+                    detail="Authentication provider configuration error",
                     headers={"Connection": "close"},
                 )
 
@@ -1692,7 +1692,7 @@ async def reload_scopes(request: Request, authorization: str | None = Header(Non
         )
     except Exception as e:
         logger.error(f"Failed to reload scopes configuration: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to reload scopes: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to reload scopes configuration")
 
 
 def parse_arguments():
@@ -1973,11 +1973,13 @@ async def oauth2_login(provider: str, request: Request, redirect_uri: str = None
 
         # Create response with temporary session cookie
         response = RedirectResponse(url=auth_url, status_code=302)
+        cookie_secure = scheme == "https"
         response.set_cookie(
             key="oauth2_temp_session",
             value=temp_session,
             max_age=600,  # 10 minutes for OAuth2 flow
             httponly=True,
+            secure=cookie_secure,
             samesite="lax",
         )
 

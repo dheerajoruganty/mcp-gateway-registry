@@ -574,10 +574,12 @@ async def register_service(
 
     if not result["success"]:
         # Check if it's a version conflict (same path, same version)
+        logger.warning(f"Server registration failed for path '{path}': {result['message']}")
         return JSONResponse(
             status_code=409,
             content={
-                "error": result["message"],
+                "error": "Service registration failed",
+                "detail": "Check server logs for more information",
             },
         )
 
@@ -590,7 +592,7 @@ async def register_service(
         return JSONResponse(
             status_code=201,
             content={
-                "message": result["message"],
+                "message": f"Service '{name}' version registered successfully",
                 "service": server_entry,
                 "is_new_version": True,
                 "existing_version": result.get("existing_version"),
@@ -849,14 +851,14 @@ async def internal_register_service(
 
     if not success:
         logger.warning(
-            f"INTERNAL REGISTER: Registration failed for path {path}"
-        )  # TODO: replace with debug
+            f"INTERNAL REGISTER: Registration failed for path {path}: "
+            f"{result.get('message', 'unknown error')}"
+        )
         return JSONResponse(
             status_code=409,  # Conflict status code for existing resource
             content={
                 "error": "Service registration failed",
-                "reason": result.get("message", f"Failed to register service at path '{path}'"),
-                "suggestion": "Check server logs for detailed error information",
+                "detail": "Check server logs for more information",
             },
         )
 
@@ -2968,12 +2970,14 @@ async def register_service_api(
             is_new_version = result.get("is_new_version", False)
 
         if not success:
-            logger.error(f"Service registration failed for {path}")
+            logger.error(
+                f"Service registration failed for {path}: "
+                f"{result.get('message', 'unknown error')}"
+            )
             return JSONResponse(
                 status_code=409,
                 content={
                     "error": "Service registration failed",
-                    "reason": result.get("message", f"Failed to register service at path '{path}'"),
                     "detail": "Check server logs for more information",
                 },
             )
