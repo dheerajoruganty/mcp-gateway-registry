@@ -2,14 +2,12 @@
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from ...core.config import settings
 from ...schemas.federation_schema import FederationConfig
 from ..interfaces import FederationConfigRepositoryBase
-
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +15,7 @@ logger = logging.getLogger(__name__)
 class FileFederationConfigRepository(FederationConfigRepositoryBase):
     """File-based implementation of federation configuration repository."""
 
-    def __init__(self, config_dir: Optional[Path] = None):
+    def __init__(self, config_dir: Path | None = None):
         """
         Initialize file-based federation config repository.
 
@@ -30,18 +28,15 @@ class FileFederationConfigRepository(FederationConfigRepositoryBase):
         self._config_dir = config_dir
         self._config_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Initialized File FederationConfigRepository with directory: {self._config_dir}")
-
+        logger.info(
+            f"Initialized File FederationConfigRepository with directory: {self._config_dir}"
+        )
 
     def _get_config_path(self, config_id: str) -> Path:
         """Get file path for a config ID."""
         return self._config_dir / f"{config_id}.json"
 
-
-    async def get_config(
-        self,
-        config_id: str = "default"
-    ) -> Optional[FederationConfig]:
+    async def get_config(self, config_id: str = "default") -> FederationConfig | None:
         """
         Get federation configuration by ID.
 
@@ -58,7 +53,7 @@ class FileFederationConfigRepository(FederationConfigRepositoryBase):
                 logger.info(f"Federation config file not found: {config_path}")
                 return None
 
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 data = json.load(f)
 
             # Remove internal fields before creating Pydantic model
@@ -74,11 +69,8 @@ class FileFederationConfigRepository(FederationConfigRepositoryBase):
             logger.error(f"Failed to read federation config {config_id}: {e}", exc_info=True)
             return None
 
-
     async def save_config(
-        self,
-        config: FederationConfig,
-        config_id: str = "default"
+        self, config: FederationConfig, config_id: str = "default"
     ) -> FederationConfig:
         """
         Save or update federation configuration.
@@ -96,14 +88,14 @@ class FileFederationConfigRepository(FederationConfigRepositoryBase):
             # Check if config exists
             existing = None
             if config_path.exists():
-                with open(config_path, "r") as f:
+                with open(config_path) as f:
                     existing = json.load(f)
 
             # Prepare document
             doc = config.model_dump()
             doc["config_id"] = config_id
 
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(UTC).isoformat()
             if existing:
                 # Preserve created_at for updates
                 doc["created_at"] = existing.get("created_at", now)
@@ -124,11 +116,7 @@ class FileFederationConfigRepository(FederationConfigRepositoryBase):
             logger.error(f"Failed to save federation config {config_id}: {e}", exc_info=True)
             raise
 
-
-    async def delete_config(
-        self,
-        config_id: str = "default"
-    ) -> bool:
+    async def delete_config(self, config_id: str = "default") -> bool:
         """
         Delete federation configuration.
 
@@ -153,8 +141,7 @@ class FileFederationConfigRepository(FederationConfigRepositoryBase):
             logger.error(f"Failed to delete federation config {config_id}: {e}", exc_info=True)
             return False
 
-
-    async def list_configs(self) -> List[Dict[str, Any]]:
+    async def list_configs(self) -> list[dict[str, Any]]:
         """
         List all federation configurations.
 
@@ -168,14 +155,16 @@ class FileFederationConfigRepository(FederationConfigRepositoryBase):
             configs = []
             for config_file in self._config_dir.glob("*.json"):
                 try:
-                    with open(config_file, "r") as f:
+                    with open(config_file) as f:
                         data = json.load(f)
 
-                    configs.append({
-                        "id": data.get("config_id", config_file.stem),
-                        "created_at": data.get("created_at"),
-                        "updated_at": data.get("updated_at")
-                    })
+                    configs.append(
+                        {
+                            "id": data.get("config_id", config_file.stem),
+                            "created_at": data.get("created_at"),
+                            "updated_at": data.get("updated_at"),
+                        }
+                    )
                 except Exception as e:
                     logger.error(f"Failed to read config file {config_file}: {e}")
                     continue

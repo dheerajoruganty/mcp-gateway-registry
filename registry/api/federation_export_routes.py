@@ -10,15 +10,17 @@ Based on: docs/federation.md
 
 import logging
 import socket
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..auth.dependencies import nginx_proxied_auth
+from ..core.config import settings
 from ..schemas.peer_federation_schema import FederationExportResponse
 from ..services.agent_service import agent_service
+from ..services.federation_audit_service import get_federation_audit_service
+from ..services.peer_federation_service import get_peer_federation_service
 from ..services.server_service import server_service
-
 
 # Configure logging with basicConfig
 logging.basicConfig(
@@ -42,12 +44,17 @@ def _get_registry_id() -> str:
     """
     Get the unique identifier for this registry instance.
 
-    Uses hostname as registry ID. In production, this should be configured
-    via environment variable or configuration file.
+    Uses REGISTRY_ID from settings if configured, otherwise falls back
+    to hostname-based ID.
 
     Returns:
         Registry identifier string
     """
+    # Use configured registry_id if available
+    if settings.registry_id:
+        return settings.registry_id
+
+    # Fallback to hostname-based ID
     try:
         hostname = socket.gethostname()
         return f"registry-{hostname}"
@@ -57,7 +64,7 @@ def _get_registry_id() -> str:
 
 
 def _check_federation_scope(
-    user_context: Dict[str, Any],
+    user_context: dict[str, Any],
 ) -> None:
     """
     Check if user has federation-service scope.
@@ -102,9 +109,9 @@ def _get_item_attr(
 
 
 def _filter_by_visibility(
-    items: List[Any],
-    peer_groups: List[str],
-) -> List[Any]:
+    items: list[Any],
+    peer_groups: list[str],
+) -> list[Any]:
     """
     Filter items based on visibility and peer's group membership.
 
@@ -151,19 +158,22 @@ def _filter_by_visibility(
 
 
 def _filter_by_generation(
-    items: List[Any],
-    since_generation: Optional[int],
-) -> List[Any]:
+    items: list[Any],
+    since_generation: int | None,
+) -> list[Any]:
     """
     Filter items by sync generation for incremental sync.
 
     Args:
         items: List of items (dict or object) to filter
-        since_generation: Minimum generation number (exclusive)
+        since_generation: Minimum generation number (exclusive).
+                          If None, returns all items (full sync).
+                          If 0, returns only items with generation > 0.
 
     Returns:
         Filtered list of items with generation > since_generation
     """
+    # Full sync: return all items if since_generation is None
     if since_generation is None:
         return items
 
@@ -176,6 +186,8 @@ def _filter_by_generation(
             else:
                 item_generation = getattr(sync_metadata, "sync_generation", 0)
         else:
+            # Items without sync_metadata are considered new (generation 0)
+            # and should be included in all syncs
             item_generation = 0
 
         if item_generation > since_generation:
@@ -190,7 +202,7 @@ def _filter_by_generation(
 
 def _item_to_dict(
     item: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Convert item to dictionary, supporting both dict and object types.
 
@@ -208,10 +220,10 @@ def _item_to_dict(
 
 
 def _paginate(
-    items: List[Any],
+    items: list[Any],
     limit: int,
     offset: int,
-) -> tuple[List[Any], bool]:
+) -> tuple[list[Any], bool]:
     """
     Paginate items list.
 
@@ -232,24 +244,44 @@ def _paginate(
 
 
 async def federation_auth(
-    user_context: Annotated[Dict[str, Any], Depends(nginx_proxied_auth)],
-) -> Dict[str, Any]:
+    user_context: Annotated[dict[str, Any], Depends(nginx_proxied_auth)],
+) -> dict[str, Any]:
     """
     Authentication dependency for federation endpoints.
 
-    Validates that the requester has federation-service scope in their JWT.
-    This scope is granted to peer registries that are authorized to sync data.
+    Validates that the requester has federation-service scope in their JWT
+    and identifies the peer by matching their client_id (azp claim) to a
+    registered peer's expected_client_id.
 
     Args:
         user_context: User context from nginx_proxied_auth
 
     Returns:
-        User context if authorized
+        User context enriched with peer_id and peer_name if peer is identified
 
     Raises:
         HTTPException: 403 if federation-service scope not present
     """
     _check_federation_scope(user_context)
+
+    # Extract client_id from token (azp claim)
+    client_id = user_context.get("client_id", "")
+
+    # Look up peer by client_id
+    if client_id:
+        peer_service = get_peer_federation_service()
+        peer = await peer_service.get_peer_by_client_id(client_id)
+        if peer:
+            user_context["peer_id"] = peer.peer_id
+            user_context["peer_name"] = peer.name
+            logger.info(
+                f"Identified federation peer: {peer.peer_id} (client_id: {client_id})"
+            )
+        else:
+            logger.debug(
+                f"Federation request from unregistered client_id: {client_id}"
+            )
+
     return user_context
 
 
@@ -287,12 +319,12 @@ async def export_servers(
         ge=0,
         description="Number of items to skip (default 0)",
     ),
-    since_generation: Optional[int] = Query(
+    since_generation: int | None = Query(
         None,
         ge=0,
         description="Return only items with generation > this value (for incremental sync)",
     ),
-    user_context: Annotated[Dict[str, Any], Depends(federation_auth)] = None,
+    user_context: Annotated[dict[str, Any], Depends(federation_auth)] = None,
 ):
     """
     Export servers for federation sync.
@@ -333,15 +365,14 @@ async def export_servers(
     )
 
     # Get all servers (enabled and disabled) - returns Dict[str, Dict[str, Any]]
-    all_servers_dict = server_service.get_all_servers()
+    all_servers_dict = await server_service.get_all_servers()
 
     # Convert to list and filter out disabled servers - never sync disabled servers
     # Each server is a dict with 'path' key
-    enabled_servers = [
-        server_data
-        for path, server_data in all_servers_dict.items()
-        if server_service.is_service_enabled(path)
-    ]
+    enabled_servers = []
+    for path, server_data in all_servers_dict.items():
+        if await server_service.is_service_enabled(path):
+            enabled_servers.append(server_data)
 
     # Extract peer groups from JWT for visibility filtering
     peer_groups = user_context.get("groups", [])
@@ -363,6 +394,17 @@ async def export_servers(
     logger.info(
         f"Exporting {len(items)} servers to peer '{user_context['username']}' "
         f"(total visible: {total_count}, has_more: {has_more})"
+    )
+
+    # Log the connection for audit trail
+    audit_service = get_federation_audit_service()
+    await audit_service.log_connection(
+        peer_id=user_context.get("peer_id", user_context.get("username", "unknown")),
+        peer_name=user_context.get("peer_name", ""),
+        client_id=user_context.get("client_id", ""),
+        endpoint="/api/v1/federation/servers",
+        items_requested=len(items),
+        success=True,
     )
 
     return FederationExportResponse(
@@ -390,12 +432,12 @@ async def export_agents(
         ge=0,
         description="Number of items to skip (default 0)",
     ),
-    since_generation: Optional[int] = Query(
+    since_generation: int | None = Query(
         None,
         ge=0,
         description="Return only items with generation > this value (for incremental sync)",
     ),
-    user_context: Annotated[Dict[str, Any], Depends(federation_auth)] = None,
+    user_context: Annotated[dict[str, Any], Depends(federation_auth)] = None,
 ):
     """
     Export agents for federation sync.
@@ -436,7 +478,7 @@ async def export_agents(
     )
 
     # Get all agents (enabled and disabled)
-    all_agents = agent_service.get_all_agents()
+    all_agents = await agent_service.get_all_agents()
 
     # Filter out disabled agents - never sync disabled agents
     enabled_agents = [a for a in all_agents if agent_service.is_agent_enabled(a.path)]
@@ -461,6 +503,17 @@ async def export_agents(
     logger.info(
         f"Exporting {len(items)} agents to peer '{user_context['username']}' "
         f"(total visible: {total_count}, has_more: {has_more})"
+    )
+
+    # Log the connection for audit trail
+    audit_service = get_federation_audit_service()
+    await audit_service.log_connection(
+        peer_id=user_context.get("peer_id", user_context.get("username", "unknown")),
+        peer_name=user_context.get("peer_name", ""),
+        client_id=user_context.get("client_id", ""),
+        endpoint="/api/v1/federation/agents",
+        items_requested=len(items),
+        success=True,
     )
 
     return FederationExportResponse(

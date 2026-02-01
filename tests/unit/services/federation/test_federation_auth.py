@@ -5,8 +5,7 @@ Tests OAuth2 client credentials authentication including token caching,
 expiry handling, and error scenarios.
 """
 
-import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, Mock, patch
 
 import httpx
@@ -14,7 +13,6 @@ import pytest
 
 from registry.services.federation.federation_auth import (
     FederationAuthManager,
-    TOKEN_REFRESH_BUFFER_SECONDS,
 )
 
 
@@ -192,6 +190,7 @@ class TestFederationAuthManagerConfiguration:
         """Test that configuration is logged at startup."""
         # Arrange & Act
         import logging
+
         caplog.set_level(logging.INFO)
         auth_manager = FederationAuthManager()
 
@@ -303,7 +302,7 @@ class TestFederationAuthManagerTokenRequest:
         token1 = auth_manager.get_token()
 
         # Manually expire the token by setting expiry in the past
-        auth_manager._token_expiry = datetime.now(timezone.utc) - timedelta(seconds=1)
+        auth_manager._token_expiry = datetime.now(UTC) - timedelta(seconds=1)
 
         # Act - Second request (should refresh)
         token2 = auth_manager.get_token()
@@ -338,7 +337,7 @@ class TestFederationAuthManagerTokenRequest:
         token1 = auth_manager.get_token()
 
         # Set token expiry to 30 seconds from now (within buffer)
-        auth_manager._token_expiry = datetime.now(timezone.utc) + timedelta(seconds=30)
+        auth_manager._token_expiry = datetime.now(UTC) + timedelta(seconds=30)
 
         # Act - Second request (should refresh due to buffer)
         token2 = auth_manager.get_token()
@@ -368,7 +367,7 @@ class TestFederationAuthManagerTokenRequest:
         token1 = auth_manager.get_token()
 
         # Set token expiry to 120 seconds from now (outside buffer)
-        auth_manager._token_expiry = datetime.now(timezone.utc) + timedelta(seconds=120)
+        auth_manager._token_expiry = datetime.now(UTC) + timedelta(seconds=120)
 
         # Act - Second request (should use cache)
         token2 = auth_manager.get_token()
@@ -471,9 +470,7 @@ class TestFederationAuthManagerErrorHandling:
         """Test that network timeouts are handled gracefully."""
         # Arrange
         auth_manager = FederationAuthManager()
-        mock_http_client.post.side_effect = httpx.TimeoutException(
-            "Request timed out"
-        )
+        mock_http_client.post.side_effect = httpx.TimeoutException("Request timed out")
 
         # Act
         token = auth_manager.get_token()
@@ -492,9 +489,7 @@ class TestFederationAuthManagerErrorHandling:
         """Test that network connection errors are handled gracefully."""
         # Arrange
         auth_manager = FederationAuthManager()
-        mock_http_client.post.side_effect = httpx.ConnectError(
-            "Connection failed"
-        )
+        mock_http_client.post.side_effect = httpx.ConnectError("Connection failed")
 
         # Act
         token = auth_manager.get_token()

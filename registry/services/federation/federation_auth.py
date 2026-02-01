@@ -7,12 +7,11 @@ for peer registry federation. Handles token caching and automatic refresh.
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from threading import Lock
 from typing import Optional
 
 import httpx
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,8 +52,8 @@ class FederationAuthManager:
             return
 
         self._initialized = True
-        self._access_token: Optional[str] = None
-        self._token_expiry: Optional[datetime] = None
+        self._access_token: str | None = None
+        self._token_expiry: datetime | None = None
         self._token_lock = Lock()
 
         # Get configuration from environment
@@ -93,9 +92,7 @@ class FederationAuthManager:
             logger.warning(
                 "Peer registry federation will not be available until these variables are set."
             )
-            logger.info(
-                "To enable federation, set the following environment variables:"
-            )
+            logger.info("To enable federation, set the following environment variables:")
             for var in missing:
                 logger.info(f"  - {var}")
         else:
@@ -108,20 +105,22 @@ class FederationAuthManager:
         Check if federation authentication is properly configured.
 
         Returns:
-            True if all required environment variables are set
+            True if all OAuth2 variables are set
         """
-        return all([
-            self._token_endpoint,
-            self._client_id,
-            self._client_secret,
-        ])
+        return all(
+            [
+                self._token_endpoint,
+                self._client_id,
+                self._client_secret,
+            ]
+        )
 
-    def get_token(self) -> Optional[str]:
+    def get_token(self) -> str | None:
         """
         Get valid access token for federation API calls.
 
-        Returns cached token if still valid (with 60s buffer),
-        otherwise requests a new token via client credentials flow.
+        Returns cached OAuth2 token if still valid (with 60s buffer),
+        or requests a new token via client credentials flow.
 
         Returns:
             Access token or None if authentication fails
@@ -157,14 +156,12 @@ class FederationAuthManager:
             return False
 
         # Check if token expires within buffer period
-        now = datetime.now(timezone.utc)
-        buffer_time = self._token_expiry - timedelta(
-            seconds=TOKEN_REFRESH_BUFFER_SECONDS
-        )
+        now = datetime.now(UTC)
+        buffer_time = self._token_expiry - timedelta(seconds=TOKEN_REFRESH_BUFFER_SECONDS)
 
         return now < buffer_time
 
-    def _refresh_token(self) -> Optional[str]:
+    def _refresh_token(self) -> str | None:
         """
         Request new access token via OAuth2 client credentials flow.
 
@@ -205,19 +202,13 @@ class FederationAuthManager:
                 return None
 
             # Set expiry time
-            self._token_expiry = datetime.now(timezone.utc) + timedelta(
-                seconds=expires_in
-            )
+            self._token_expiry = datetime.now(UTC) + timedelta(seconds=expires_in)
 
-            logger.info(
-                f"Successfully obtained access token (expires in {expires_in}s)"
-            )
+            logger.info(f"Successfully obtained access token (expires in {expires_in}s)")
             return self._access_token
 
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"HTTP error obtaining access token: {e.response.status_code} - {e}"
-            )
+            logger.error(f"HTTP error obtaining access token: {e.response.status_code} - {e}")
             if e.response.status_code in [401, 403]:
                 logger.error(
                     "Authentication failed. Check FEDERATION_CLIENT_ID and "

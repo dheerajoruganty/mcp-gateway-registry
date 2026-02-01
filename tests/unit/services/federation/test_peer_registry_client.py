@@ -5,7 +5,7 @@ Tests peer registry federation client including server/agent fetching,
 health checks, and authentication integration.
 """
 
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import httpx
 import pytest
@@ -92,7 +92,9 @@ class TestPeerRegistryClientInitialization:
     ):
         """Test that client warns when authentication is not configured."""
         # Arrange
-        with patch("registry.services.federation.peer_registry_client.FederationAuthManager") as mock_auth:
+        with patch(
+            "registry.services.federation.peer_registry_client.FederationAuthManager"
+        ) as mock_auth:
             instance = MagicMock()
             instance.is_configured.return_value = False
             mock_auth.return_value = instance
@@ -259,7 +261,9 @@ class TestPeerRegistryClientFetchServers:
     ):
         """Test fetch_servers handles authentication failure."""
         # Arrange
-        with patch("registry.services.federation.peer_registry_client.FederationAuthManager") as mock_auth:
+        with patch(
+            "registry.services.federation.peer_registry_client.FederationAuthManager"
+        ) as mock_auth:
             instance = MagicMock()
             instance.is_configured.return_value = True
             instance.get_token.return_value = None  # Auth failure
@@ -282,7 +286,9 @@ class TestPeerRegistryClientFetchServers:
     ):
         """Test fetch_servers handles authentication not configured."""
         # Arrange
-        with patch("registry.services.federation.peer_registry_client.FederationAuthManager") as mock_auth:
+        with patch(
+            "registry.services.federation.peer_registry_client.FederationAuthManager"
+        ) as mock_auth:
             instance = MagicMock()
             instance.is_configured.return_value = True
             instance.get_token.side_effect = ValueError("Not configured")
@@ -423,7 +429,9 @@ class TestPeerRegistryClientFetchAgents:
     ):
         """Test fetch_agents handles authentication failure."""
         # Arrange
-        with patch("registry.services.federation.peer_registry_client.FederationAuthManager") as mock_auth:
+        with patch(
+            "registry.services.federation.peer_registry_client.FederationAuthManager"
+        ) as mock_auth:
             instance = MagicMock()
             instance.is_configured.return_value = True
             instance.get_token.return_value = None  # Auth failure

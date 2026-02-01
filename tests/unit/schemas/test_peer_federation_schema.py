@@ -22,26 +22,25 @@ Tests cover:
 """
 
 import json
+from datetime import UTC, datetime, timedelta
+
 import pytest
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict
 from pydantic import ValidationError
 
 from registry.schemas.peer_federation_schema import (
-    PeerRegistryConfig,
-    SyncMetadata,
-    SyncHistoryEntry,
-    PeerSyncStatus,
-    SyncResult,
-    FederationExportResponse,
-    MIN_SYNC_INTERVAL_MINUTES,
-    MAX_SYNC_INTERVAL_MINUTES,
     DEFAULT_SYNC_INTERVAL_MINUTES,
     MAX_SYNC_HISTORY_ENTRIES,
+    MAX_SYNC_INTERVAL_MINUTES,
+    MIN_SYNC_INTERVAL_MINUTES,
+    FederationExportResponse,
+    PeerRegistryConfig,
+    PeerSyncStatus,
+    SyncHistoryEntry,
+    SyncMetadata,
+    SyncResult,
     _validate_endpoint_url,
     _validate_peer_id,
 )
-
 
 # =============================================================================
 # Test Helper Functions
@@ -187,7 +186,7 @@ class TestValidatePeerId:
 
     def test_quote_rejected(self):
         """Quote should be rejected (invalid filename character)."""
-        with pytest.raises(ValueError, match='cannot contain \'"\' character'):
+        with pytest.raises(ValueError, match="cannot contain '\"' character"):
             _validate_peer_id('central"registry')
 
     def test_less_than_rejected(self):
@@ -247,7 +246,7 @@ class TestPeerRegistryConfig:
     def test_valid_full_config(self):
         """Full configuration with all fields should be accepted."""
         # Arrange, Act
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         config = PeerRegistryConfig(
             peer_id="team-registry",
             name="Team Registry",
@@ -497,7 +496,7 @@ class TestSyncMetadata:
 
     def test_valid_minimal_metadata(self):
         """Minimal valid metadata should be accepted."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         metadata = SyncMetadata(
             upstream_peer_id="central-registry",
             upstream_path="/finance-tools",
@@ -511,7 +510,7 @@ class TestSyncMetadata:
 
     def test_valid_full_metadata(self):
         """Full metadata with all fields should be accepted."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         orphaned_time = now - timedelta(days=1)
         metadata = SyncMetadata(
             upstream_peer_id="central-registry",
@@ -531,7 +530,7 @@ class TestSyncMetadata:
 
     def test_sync_generation_minimum_enforced(self):
         """Sync generation below 1 should raise validation error."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with pytest.raises(ValidationError):
             SyncMetadata(
                 upstream_peer_id="central-registry",
@@ -542,7 +541,7 @@ class TestSyncMetadata:
 
     def test_orphaned_at_auto_set(self):
         """orphaned_at should be auto-set when is_orphaned is True."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         metadata = SyncMetadata(
             upstream_peer_id="central-registry",
             upstream_path="/finance-tools",
@@ -554,7 +553,7 @@ class TestSyncMetadata:
 
     def test_datetime_serialization(self):
         """Datetime fields should serialize correctly."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         metadata = SyncMetadata(
             upstream_peer_id="central-registry",
             upstream_path="/finance-tools",
@@ -567,7 +566,7 @@ class TestSyncMetadata:
 
     def test_datetime_deserialization(self):
         """Datetime fields should deserialize correctly."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         json_data = {
             "upstream_peer_id": "central-registry",
             "upstream_path": "/finance-tools",
@@ -578,7 +577,7 @@ class TestSyncMetadata:
 
     def test_local_overrides_dict(self):
         """local_overrides should accept dictionary."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         overrides = {"tags": ["tag1"], "description": "Custom desc"}
         metadata = SyncMetadata(
             upstream_peer_id="central-registry",
@@ -608,7 +607,7 @@ class TestSyncHistoryEntry:
 
     def test_valid_minimal_entry(self):
         """Minimal valid sync history entry should be accepted."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         entry = SyncHistoryEntry(
             sync_id="sync-123",
             started_at=now,
@@ -620,7 +619,7 @@ class TestSyncHistoryEntry:
 
     def test_valid_successful_entry(self):
         """Successful sync entry with all fields should be accepted."""
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
         completed = started + timedelta(seconds=15)
         entry = SyncHistoryEntry(
             sync_id="sync-123",
@@ -642,7 +641,7 @@ class TestSyncHistoryEntry:
 
     def test_valid_failed_entry(self):
         """Failed sync entry with error message should be accepted."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         entry = SyncHistoryEntry(
             sync_id="sync-123",
             started_at=now,
@@ -655,7 +654,7 @@ class TestSyncHistoryEntry:
 
     def test_negative_counts_rejected(self):
         """Negative sync counts should be rejected."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with pytest.raises(ValidationError):
             SyncHistoryEntry(
                 sync_id="sync-123",
@@ -692,7 +691,7 @@ class TestPeerSyncStatus:
 
     def test_valid_full_status(self):
         """Full sync status with all fields should be accepted."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         status = PeerSyncStatus(
             peer_id="central-registry",
             is_healthy=True,
@@ -711,7 +710,7 @@ class TestPeerSyncStatus:
 
     def test_add_history_entry(self):
         """Adding history entry should work correctly."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         status = PeerSyncStatus(peer_id="central-registry")
         entry = SyncHistoryEntry(
             sync_id="sync-123",
@@ -723,7 +722,7 @@ class TestPeerSyncStatus:
 
     def test_add_history_entry_maintains_max_limit(self):
         """Adding entries beyond max should maintain limit."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         status = PeerSyncStatus(peer_id="central-registry")
 
         # Add more than max entries
@@ -738,7 +737,7 @@ class TestPeerSyncStatus:
 
     def test_add_history_entry_newest_first(self):
         """Newest history entries should appear first."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         status = PeerSyncStatus(peer_id="central-registry")
 
         entry1 = SyncHistoryEntry(sync_id="sync-1", started_at=now)
@@ -998,7 +997,7 @@ class TestEdgeCases:
 
     def test_datetime_with_timezone(self):
         """Test datetime fields with various timezones."""
-        utc_time = datetime.now(timezone.utc)
+        utc_time = datetime.now(UTC)
         metadata = SyncMetadata(
             upstream_peer_id="test",
             upstream_path="/test",
@@ -1008,7 +1007,7 @@ class TestEdgeCases:
 
     def test_empty_local_overrides(self):
         """Test SyncMetadata with empty local_overrides."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         metadata = SyncMetadata(
             upstream_peer_id="test",
             upstream_path="/test",
@@ -1019,7 +1018,7 @@ class TestEdgeCases:
 
     def test_zero_values_in_numeric_fields(self):
         """Test zero values in numeric fields where allowed."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         entry = SyncHistoryEntry(
             sync_id="sync-0",
             started_at=now,
@@ -1034,7 +1033,7 @@ class TestEdgeCases:
 
     def test_model_round_trip_serialization(self):
         """Test complete serialization round-trip for all models."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Test each model
         models = [

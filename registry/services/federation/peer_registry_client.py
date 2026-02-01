@@ -6,12 +6,11 @@ federation API endpoints with JWT authentication.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from ...schemas.peer_federation_schema import PeerRegistryConfig
 from .base_client import BaseFederationClient
 from .federation_auth import FederationAuthManager
-from ...schemas.peer_federation_schema import PeerRegistryConfig
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,10 +24,7 @@ class PeerRegistryClient(BaseFederationClient):
     """Client for fetching servers and agents from peer registries."""
 
     def __init__(
-        self,
-        peer_config: PeerRegistryConfig,
-        timeout_seconds: int = 30,
-        retry_attempts: int = 3
+        self, peer_config: PeerRegistryConfig, timeout_seconds: int = 30, retry_attempts: int = 3
     ):
         """
         Initialize peer registry client.
@@ -55,10 +51,7 @@ class PeerRegistryClient(BaseFederationClient):
             f"at {peer_config.endpoint}"
         )
 
-    def fetch_servers(
-        self,
-        since_generation: Optional[int] = None
-    ) -> Optional[List[Dict[str, Any]]]:
+    def fetch_servers(self, since_generation: int | None = None) -> list[dict[str, Any]] | None:
         """
         Fetch servers from peer registry.
 
@@ -106,9 +99,7 @@ class PeerRegistryClient(BaseFederationClient):
         response = self._make_request(url, headers=headers, params=params)
 
         if not response:
-            logger.error(
-                f"Failed to fetch servers from peer '{self.peer_config.peer_id}'"
-            )
+            logger.error(f"Failed to fetch servers from peer '{self.peer_config.peer_id}'")
             return None
 
         # Extract items from response
@@ -140,10 +131,7 @@ class PeerRegistryClient(BaseFederationClient):
             )
             return None
 
-    def fetch_agents(
-        self,
-        since_generation: Optional[int] = None
-    ) -> Optional[List[Dict[str, Any]]]:
+    def fetch_agents(self, since_generation: int | None = None) -> list[dict[str, Any]] | None:
         """
         Fetch agents from peer registry.
 
@@ -191,9 +179,7 @@ class PeerRegistryClient(BaseFederationClient):
         response = self._make_request(url, headers=headers, params=params)
 
         if not response:
-            logger.error(
-                f"Failed to fetch agents from peer '{self.peer_config.peer_id}'"
-            )
+            logger.error(f"Failed to fetch agents from peer '{self.peer_config.peer_id}'")
             return None
 
         # Extract items from response
@@ -246,8 +232,7 @@ class PeerRegistryClient(BaseFederationClient):
             # Accept 2xx status codes
             if 200 <= response.status_code < 300:
                 logger.debug(
-                    f"Peer '{self.peer_config.peer_id}' is healthy "
-                    f"(status={response.status_code})"
+                    f"Peer '{self.peer_config.peer_id}' is healthy (status={response.status_code})"
                 )
                 return True
 
@@ -258,16 +243,10 @@ class PeerRegistryClient(BaseFederationClient):
             return False
 
         except Exception as e:
-            logger.error(
-                f"Health check failed for peer '{self.peer_config.peer_id}': {e}"
-            )
+            logger.error(f"Health check failed for peer '{self.peer_config.peer_id}': {e}")
             return False
 
-    def fetch_server(
-        self,
-        server_name: str,
-        **kwargs
-    ) -> Optional[Dict[str, Any]]:
+    def fetch_server(self, server_name: str, **kwargs) -> dict[str, Any] | None:
         """
         Fetch a single server from peer registry.
 
@@ -293,16 +272,10 @@ class PeerRegistryClient(BaseFederationClient):
             if server.get("path") == server_name or server.get("server_name") == server_name:
                 return server
 
-        logger.warning(
-            f"Server '{server_name}' not found in peer '{self.peer_config.peer_id}'"
-        )
+        logger.warning(f"Server '{server_name}' not found in peer '{self.peer_config.peer_id}'")
         return None
 
-    def fetch_all_servers(
-        self,
-        server_names: List[str],
-        **kwargs
-    ) -> List[Dict[str, Any]]:
+    def fetch_all_servers(self, server_names: list[str], **kwargs) -> list[dict[str, Any]]:
         """
         Fetch multiple servers from peer registry.
 

@@ -8,8 +8,8 @@ Based on: docs/federation.md and implementation plan
 """
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -18,7 +18,6 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-
 
 # Configure logging with basicConfig
 logging.basicConfig(
@@ -62,6 +61,7 @@ def _validate_endpoint_url(
 
     try:
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         if not parsed.netloc:
             raise ValueError("Endpoint URL must include a valid hostname")
@@ -93,12 +93,10 @@ def _validate_peer_id(
         raise ValueError("Peer ID cannot be whitespace only")
 
     # Check for invalid filename characters
-    invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0']
+    invalid_chars = ["/", "\\", ":", "*", "?", '"', "<", ">", "|", "\0"]
     for char in invalid_chars:
         if char in peer_id:
-            raise ValueError(
-                f"Peer ID cannot contain '{char}' character"
-            )
+            raise ValueError(f"Peer ID cannot contain '{char}' character")
 
     # Limit length for filesystem compatibility
     if len(peer_id) > 255:
@@ -136,11 +134,11 @@ class SyncMetadata(BaseModel):
         default=False,
         description="Whether this item no longer exists in upstream",
     )
-    orphaned_at: Optional[datetime] = Field(
+    orphaned_at: datetime | None = Field(
         default=None,
         description="Timestamp when item was marked as orphaned",
     )
-    local_overrides: Dict[str, Any] = Field(
+    local_overrides: dict[str, Any] = Field(
         default_factory=dict,
         description="Fields that have been locally customized",
     )
@@ -171,7 +169,7 @@ class SyncMetadata(BaseModel):
         """Validate orphaned_at is set when is_orphaned is True."""
         if self.is_orphaned and self.orphaned_at is None:
             # Auto-set orphaned_at if not provided
-            object.__setattr__(self, "orphaned_at", datetime.now(timezone.utc))
+            object.__setattr__(self, "orphaned_at", datetime.now(UTC))
         return self
 
 
@@ -209,15 +207,15 @@ class PeerRegistryConfig(BaseModel):
         default="all",
         description="Sync mode: all items, whitelist only, or tag-based filtering",
     )
-    whitelist_servers: List[str] = Field(
+    whitelist_servers: list[str] = Field(
         default_factory=list,
         description="Server paths to sync when sync_mode is 'whitelist'",
     )
-    whitelist_agents: List[str] = Field(
+    whitelist_agents: list[str] = Field(
         default_factory=list,
         description="Agent paths to sync when sync_mode is 'whitelist'",
     )
-    tag_filters: List[str] = Field(
+    tag_filters: list[str] = Field(
         default_factory=list,
         description="Tags to filter by when sync_mode is 'tag_filter'",
     )
@@ -230,12 +228,22 @@ class PeerRegistryConfig(BaseModel):
         description=f"Sync interval in minutes ({MIN_SYNC_INTERVAL_MINUTES}-{MAX_SYNC_INTERVAL_MINUTES})",
     )
 
+    # Identity binding (for peer identification via OAuth2 tokens)
+    expected_client_id: str | None = Field(
+        default=None,
+        description="Azure AD/Keycloak client_id (azp claim) that identifies this peer",
+    )
+    expected_issuer: str | None = Field(
+        default=None,
+        description="Expected token issuer URL (for cross-tenant validation)",
+    )
+
     # Metadata (set by service, not user input)
-    created_at: Optional[datetime] = Field(
+    created_at: datetime | None = Field(
         default=None,
         description="When this peer config was created",
     )
-    updated_at: Optional[datetime] = Field(
+    updated_at: datetime | None = Field(
         default=None,
         description="When this peer config was last updated",
     )
@@ -250,6 +258,8 @@ class PeerRegistryConfig(BaseModel):
                 "enabled": True,
                 "sync_mode": "all",
                 "sync_interval_minutes": 30,
+                "expected_client_id": "uuid-central-1111-2222-3333",
+                "expected_issuer": "https://login.microsoftonline.com/tenant-id/v2.0",
             }
         },
     )
@@ -309,7 +319,7 @@ class SyncHistoryEntry(BaseModel):
         ...,
         description="When the sync operation started",
     )
-    completed_at: Optional[datetime] = Field(
+    completed_at: datetime | None = Field(
         default=None,
         description="When the sync operation completed",
     )
@@ -337,7 +347,7 @@ class SyncHistoryEntry(BaseModel):
         ge=0,
         description="Number of agents marked as orphaned",
     )
-    error_message: Optional[str] = Field(
+    error_message: str | None = Field(
         default=None,
         description="Error message if sync failed",
     )
@@ -386,15 +396,15 @@ class PeerSyncStatus(BaseModel):
         default=False,
         description="Whether the peer is currently reachable",
     )
-    last_health_check: Optional[datetime] = Field(
+    last_health_check: datetime | None = Field(
         default=None,
         description="When health was last checked",
     )
-    last_successful_sync: Optional[datetime] = Field(
+    last_successful_sync: datetime | None = Field(
         default=None,
         description="When last successful sync completed",
     )
-    last_sync_attempt: Optional[datetime] = Field(
+    last_sync_attempt: datetime | None = Field(
         default=None,
         description="When last sync was attempted",
     )
@@ -422,7 +432,7 @@ class PeerSyncStatus(BaseModel):
         ge=0,
         description="Number of consecutive sync failures",
     )
-    sync_history: List[SyncHistoryEntry] = Field(
+    sync_history: list[SyncHistoryEntry] = Field(
         default_factory=list,
         description=f"Recent sync history (max {MAX_SYNC_HISTORY_ENTRIES} entries)",
     )
@@ -495,7 +505,7 @@ class SyncResult(BaseModel):
         ge=0,
         description="Number of agents marked as orphaned",
     )
-    error_message: Optional[str] = Field(
+    error_message: str | None = Field(
         default=None,
         description="Error message if sync failed",
     )
@@ -523,7 +533,7 @@ class FederationExportResponse(BaseModel):
     metadata for incremental sync support.
     """
 
-    items: List[Dict[str, Any]] = Field(
+    items: list[dict[str, Any]] = Field(
         default_factory=list,
         description="List of items (servers or agents) to sync",
     )
@@ -549,9 +559,7 @@ class FederationExportResponse(BaseModel):
         populate_by_name=True,
         json_schema_extra={
             "example": {
-                "items": [
-                    {"path": "/finance-tools", "name": "Finance Tools"}
-                ],
+                "items": [{"path": "/finance-tools", "name": "Finance Tools"}],
                 "sync_generation": 100,
                 "total_count": 42,
                 "has_more": False,
