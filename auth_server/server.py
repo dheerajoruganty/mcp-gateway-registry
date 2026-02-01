@@ -751,7 +751,7 @@ class SimplifiedCognitoValidator:
             token_client_id = claims.get("client_id")
             if token_client_id and token_client_id != client_id:
                 logger.warning(
-                    f"Token issued for different client: {token_client_id} vs expected {client_id}"
+                    "Token issued for different client than expected"
                 )
                 # Don't fail immediately - could be user token with different structure
 

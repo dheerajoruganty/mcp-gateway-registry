@@ -52,6 +52,8 @@ help:
 	@echo "  push IMAGE=name             Push specific image to ECR"
 	@echo "  build-push                  Build and push all images"
 	@echo "  build-push IMAGE=name       Build and push specific image"
+	@echo "  build-push-deploy           Build, push, and deploy (default: both services)"
+	@echo "  build-push-deploy IMAGE=x   Build, push, deploy specific (registry or auth_server)"
 	@echo "  generate-manifest           Generate image-manifest.json for Terraform"
 	@echo "  validate-config             Validate build-config.yaml syntax"
 	@echo ""
@@ -231,11 +233,7 @@ build-push:
 	@$(if $(NO_CACHE),NO_CACHE=$(NO_CACHE),) $(if $(IMAGE),IMAGE=$(IMAGE),) ./scripts/build-images.sh build-push
 
 build-push-deploy:
-	@if [ "$(IMAGE)" != "registry" ]; then \
-		echo "Error: build-push-deploy only supports IMAGE=registry"; \
-		exit 1; \
-	fi
-	@$(if $(NO_CACHE),NO_CACHE=$(NO_CACHE),) IMAGE=registry ./scripts/deploy-registry.sh
+	@./scripts/deploy.sh $(if $(IMAGE),--service $(IMAGE),) $(if $(NO_CACHE),--no-cache,) --skip-monitor
 
 # ========================================
 # DockerHub Publishing
