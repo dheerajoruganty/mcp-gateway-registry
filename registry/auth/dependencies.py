@@ -586,6 +586,14 @@ async def nginx_proxied_auth(
         # Check modification permissions
         can_modify = user_can_modify_servers(groups, scopes)
 
+        # Network-trusted mode: grant full admin access directly
+        # (avoids database lookup that may fail if scope documents are missing)
+        if x_auth_method == "network-trusted":
+            is_admin = True
+            can_modify = True
+        else:
+            is_admin = await user_has_wildcard_access(scopes)
+
         user_context = {
             "username": username,
             "groups": groups,
@@ -597,7 +605,7 @@ async def nginx_proxied_auth(
             "accessible_agents": accessible_agents,
             "ui_permissions": ui_permissions,
             "can_modify_servers": can_modify,
-            "is_admin": await user_has_wildcard_access(scopes),
+            "is_admin": is_admin,
         }
 
         logger.debug(f"nginx-proxied auth context for {username}: {user_context}")
