@@ -796,9 +796,9 @@ class TestRegisterService:
                 }
             )
 
-            # Assert - returns 409 Conflict now
+            # Assert - returns 409 Conflict with generic error (no internal details)
             assert response.status_code == 409
-            assert "already exists" in response.json()["error"].lower()
+            assert "registration failed" in response.json()["error"].lower()
 
     def test_register_service_normalizes_path(
         self,
