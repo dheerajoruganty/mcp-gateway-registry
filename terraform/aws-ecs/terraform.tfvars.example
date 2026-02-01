@@ -23,9 +23,8 @@
 #   - Public access: "0.0.0.0/0" (use with caution)
 #   - Enterprise CIDR: "10.0.0.0/8" (your organization's network)
 ingress_cidr_blocks = [
-  "71.114.44.148/32",      # Example: Your laptop IP
-  "44.192.72.20/32",       # Example: Your EC2 instance IP
-  "107.0.121.66/32"        # Example: Additional IP
+  "YOUR.LAPTOP.IP.ADDR/32",    # Your laptop IP (find with: curl ifconfig.me)
+  "YOUR.EC2.INSTANCE.IP/32",   # Your EC2 instance or NAT Gateway IP
 ]
 
 # ============================================================================
