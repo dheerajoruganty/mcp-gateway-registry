@@ -699,6 +699,11 @@ class AgentInfo(BaseModel):
         alias="syncMetadata",
         description="Federation sync metadata for items from peer registries",
     )
+    registered_by: Optional[str] = Field(
+        None,
+        alias="registeredBy",
+        description="Username who registered the agent",
+    )
 
     model_config = ConfigDict(
         populate_by_name=True  # Allow both snake_case and camelCase on input
