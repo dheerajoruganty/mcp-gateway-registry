@@ -219,10 +219,10 @@ async def lifespan(app: FastAPI):
             logger.error(f"Failed to load federation config: {e}")
             logger.info("Continuing without federation")
 
-        logger.info("🤝 Initializing peer federation service...")
+        logger.info("Initializing peer federation service...")
         peer_federation_service = get_peer_federation_service()
-        peer_federation_service.load_peers_and_state()
-        logger.info(f"✅ Loaded {len(peer_federation_service.registered_peers)} peer registries")
+        await peer_federation_service.load_peers_and_state()
+        logger.info(f"Loaded {len(peer_federation_service.registered_peers)} peer registries")
 
         logger.info("🌐 Generating initial Nginx configuration...")
         enabled_service_paths = await server_service.get_enabled_services()

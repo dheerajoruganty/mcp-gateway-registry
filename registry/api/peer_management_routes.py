@@ -3,6 +3,11 @@ Peer management API routes.
 
 Provides REST endpoints for managing peer registry configurations
 and triggering synchronization operations.
+
+IMPORTANT: Route ordering matters in FastAPI. All specific-path routes
+(e.g., /connections/all, /shared-resources, /sync) MUST be defined BEFORE
+any parameterized routes (e.g., /{peer_id}) to prevent the catch-all
+parameter from shadowing the specific paths.
 """
 
 import logging
@@ -24,12 +29,6 @@ from ..services.federation_audit_service import (
 )
 from ..services.peer_federation_service import get_peer_federation_service
 
-# Configure logging with basicConfig
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s,p%(process)s,{%(filename)s:%(lineno)d},%(levelname)s,%(message)s",
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -39,7 +38,10 @@ router = APIRouter(
 )
 
 
-# --- CRUD Operations ---
+# ============================================================================
+# SECTION 1: Routes with FIXED paths (no path parameters)
+# These MUST come before any /{peer_id} routes to avoid shadowing.
+# ============================================================================
 
 
 @router.get("", response_model=list[PeerRegistryConfig])
@@ -69,42 +71,6 @@ async def list_peers(
 
     logger.info(f"Returning {len(peers)} peer configs")
     return peers
-
-
-@router.get("/{peer_id}", response_model=PeerRegistryConfig)
-async def get_peer(
-    peer_id: str,
-    user_context: dict = Depends(enhanced_auth),
-) -> PeerRegistryConfig:
-    """
-    Get a specific peer by ID.
-
-    Args:
-        peer_id: Peer identifier
-        user_context: Authenticated user context
-
-    Returns:
-        Peer registry configuration
-
-    Raises:
-        HTTPException: 404 if peer not found
-
-    Example:
-        GET /api/v1/peers/central-registry
-    """
-    logger.info(f"User '{user_context.get('username')}' retrieving peer '{peer_id}'")
-
-    service = get_peer_federation_service()
-
-    try:
-        peer = await service.get_peer(peer_id)
-        return peer
-    except ValueError as e:
-        logger.error(f"Peer not found: {peer_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        )
 
 
 @router.post("", response_model=PeerRegistryConfig, status_code=status.HTTP_201_CREATED)
@@ -159,6 +125,154 @@ async def create_peer(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=error_msg,
             )
+
+
+@router.post("/sync", response_model=dict[str, SyncResult])
+async def sync_all_peers(
+    enabled_only: bool = Query(True, description="If True, only sync enabled peers"),
+    user_context: dict = Depends(enhanced_auth),
+) -> dict[str, SyncResult]:
+    """
+    Trigger synchronization for all (or enabled) peers.
+
+    Args:
+        enabled_only: If True, only sync enabled peers (default: True)
+        user_context: Authenticated user context
+
+    Returns:
+        Dictionary mapping peer_id to SyncResult
+
+    Example:
+        POST /api/v1/peers/sync
+        POST /api/v1/peers/sync?enabled_only=false
+    """
+    logger.info(
+        f"User '{user_context.get('username')}' triggering sync for all peers "
+        f"(enabled_only={enabled_only})"
+    )
+
+    service = get_peer_federation_service()
+
+    results = await service.sync_all_peers(enabled_only=enabled_only)
+
+    # Count successes and failures
+    successful = sum(1 for r in results.values() if r.success)
+    failed = len(results) - successful
+    total_servers = sum(r.servers_synced for r in results.values())
+    total_agents = sum(r.agents_synced for r in results.values())
+
+    logger.info(
+        f"Sync all completed: {successful} succeeded, {failed} failed. "
+        f"Total: {total_servers} servers, {total_agents} agents"
+    )
+
+    return results
+
+
+@router.get("/connections/all", response_model=list[FederationConnectionLog])
+async def get_all_connections(
+    since: datetime | None = Query(None, description="Only return connections after this timestamp"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum entries to return"),
+    user_context: dict = Depends(enhanced_auth),
+) -> list[FederationConnectionLog]:
+    """
+    Get all federation connection history.
+
+    Returns a list of all federation connections from all peers, useful for
+    monitoring overall federation activity.
+
+    Args:
+        since: Only return connections after this timestamp
+        limit: Maximum entries to return (default: 100, max: 1000)
+        user_context: Authenticated user context
+
+    Returns:
+        List of all connection logs
+
+    Example:
+        GET /api/v1/peers/connections/all
+        GET /api/v1/peers/connections/all?limit=50
+    """
+    logger.info(f"User '{user_context.get('username')}' retrieving all federation connections")
+
+    audit_service = get_federation_audit_service()
+    connections = await audit_service.get_all_connections(
+        since=since,
+        limit=limit,
+    )
+
+    logger.info(f"Returning {len(connections)} total connection logs")
+    return connections
+
+
+@router.get("/shared-resources", response_model=dict[str, PeerSyncSummary])
+async def get_shared_resources(
+    user_context: dict = Depends(enhanced_auth),
+) -> dict[str, PeerSyncSummary]:
+    """
+    Get summary of resources shared with each peer.
+
+    Returns statistics about what has been shared with each peer,
+    including connection counts and resource totals.
+
+    Args:
+        user_context: Authenticated user context
+
+    Returns:
+        Dictionary mapping peer_id to PeerSyncSummary
+
+    Example:
+        GET /api/v1/peers/shared-resources
+    """
+    logger.info(f"User '{user_context.get('username')}' retrieving shared resources summary")
+
+    audit_service = get_federation_audit_service()
+    summaries = await audit_service.get_shared_resources_summary()
+
+    logger.info(f"Returning shared resources summary for {len(summaries)} peers")
+    return summaries
+
+
+# ============================================================================
+# SECTION 2: Routes with /{peer_id} path parameter
+# These MUST come after all fixed-path routes above.
+# ============================================================================
+
+
+@router.get("/{peer_id}", response_model=PeerRegistryConfig)
+async def get_peer(
+    peer_id: str,
+    user_context: dict = Depends(enhanced_auth),
+) -> PeerRegistryConfig:
+    """
+    Get a specific peer by ID.
+
+    Args:
+        peer_id: Peer identifier
+        user_context: Authenticated user context
+
+    Returns:
+        Peer registry configuration
+
+    Raises:
+        HTTPException: 404 if peer not found
+
+    Example:
+        GET /api/v1/peers/central-registry
+    """
+    logger.info(f"User '{user_context.get('username')}' retrieving peer '{peer_id}'")
+
+    service = get_peer_federation_service()
+
+    try:
+        peer = await service.get_peer(peer_id)
+        return peer
+    except ValueError as e:
+        logger.error(f"Peer not found: {peer_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
 
 
 @router.put("/{peer_id}", response_model=PeerRegistryConfig)
@@ -250,52 +364,6 @@ async def delete_peer(
         )
 
 
-# --- Sync Operations ---
-# NOTE: /sync must be defined BEFORE /{peer_id}/sync to avoid route collision
-
-
-@router.post("/sync", response_model=dict[str, SyncResult])
-async def sync_all_peers(
-    enabled_only: bool = Query(True, description="If True, only sync enabled peers"),
-    user_context: dict = Depends(enhanced_auth),
-) -> dict[str, SyncResult]:
-    """
-    Trigger synchronization for all (or enabled) peers.
-
-    Args:
-        enabled_only: If True, only sync enabled peers (default: True)
-        user_context: Authenticated user context
-
-    Returns:
-        Dictionary mapping peer_id to SyncResult
-
-    Example:
-        POST /api/v1/peers/sync
-        POST /api/v1/peers/sync?enabled_only=false
-    """
-    logger.info(
-        f"User '{user_context.get('username')}' triggering sync for all peers "
-        f"(enabled_only={enabled_only})"
-    )
-
-    service = get_peer_federation_service()
-
-    results = await service.sync_all_peers(enabled_only=enabled_only)
-
-    # Count successes and failures
-    successful = sum(1 for r in results.values() if r.success)
-    failed = len(results) - successful
-    total_servers = sum(r.servers_synced for r in results.values())
-    total_agents = sum(r.agents_synced for r in results.values())
-
-    logger.info(
-        f"Sync all completed: {successful} succeeded, {failed} failed. "
-        f"Total: {total_servers} servers, {total_agents} agents"
-    )
-
-    return results
-
-
 @router.post("/{peer_id}/sync", response_model=SyncResult)
 async def sync_peer(
     peer_id: str,
@@ -344,9 +412,6 @@ async def sync_peer(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=error_msg,
             )
-
-
-# --- Status Operations ---
 
 
 @router.get("/{peer_id}/status", response_model=PeerSyncStatus)
@@ -460,9 +525,6 @@ async def disable_peer(
         )
 
 
-# --- Connection History Operations ---
-
-
 @router.get("/{peer_id}/connections", response_model=list[FederationConnectionLog])
 async def get_peer_connections(
     peer_id: str,
@@ -502,70 +564,6 @@ async def get_peer_connections(
 
     logger.info(f"Returning {len(connections)} connection logs for peer '{peer_id}'")
     return connections
-
-
-@router.get("/connections/all", response_model=list[FederationConnectionLog])
-async def get_all_connections(
-    since: datetime | None = Query(None, description="Only return connections after this timestamp"),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum entries to return"),
-    user_context: dict = Depends(enhanced_auth),
-) -> list[FederationConnectionLog]:
-    """
-    Get all federation connection history.
-
-    Returns a list of all federation connections from all peers, useful for
-    monitoring overall federation activity.
-
-    Args:
-        since: Only return connections after this timestamp
-        limit: Maximum entries to return (default: 100, max: 1000)
-        user_context: Authenticated user context
-
-    Returns:
-        List of all connection logs
-
-    Example:
-        GET /api/v1/peers/connections/all
-        GET /api/v1/peers/connections/all?limit=50
-    """
-    logger.info(f"User '{user_context.get('username')}' retrieving all federation connections")
-
-    audit_service = get_federation_audit_service()
-    connections = await audit_service.get_all_connections(
-        since=since,
-        limit=limit,
-    )
-
-    logger.info(f"Returning {len(connections)} total connection logs")
-    return connections
-
-
-@router.get("/shared-resources", response_model=dict[str, PeerSyncSummary])
-async def get_shared_resources(
-    user_context: dict = Depends(enhanced_auth),
-) -> dict[str, PeerSyncSummary]:
-    """
-    Get summary of resources shared with each peer.
-
-    Returns statistics about what has been shared with each peer,
-    including connection counts and resource totals.
-
-    Args:
-        user_context: Authenticated user context
-
-    Returns:
-        Dictionary mapping peer_id to PeerSyncSummary
-
-    Example:
-        GET /api/v1/peers/shared-resources
-    """
-    logger.info(f"User '{user_context.get('username')}' retrieving shared resources summary")
-
-    audit_service = get_federation_audit_service()
-    summaries = await audit_service.get_shared_resources_summary()
-
-    logger.info(f"Returning shared resources summary for {len(summaries)} peers")
-    return summaries
 
 
 @router.get("/{peer_id}/shared-resources", response_model=PeerSyncSummary)

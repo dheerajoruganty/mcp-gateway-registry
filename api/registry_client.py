@@ -832,6 +832,8 @@ class RegistryClient:
             endpoint.startswith("/api/management") or
             endpoint.startswith("/api/search") or
             endpoint.startswith("/api/federation") or
+            endpoint.startswith("/api/v1/federation") or
+            endpoint.startswith("/api/v1/peers") or
             endpoint == "/api/servers/groups/import" or
             "/versions" in endpoint):
             # Send as JSON for agent, management, search, federation, and import endpoints
@@ -2536,4 +2538,336 @@ class RegistryClient:
 
         result = response.json()
         logger.info(f"Federation sync completed: {result.get('total_synced', 0)} items synced")
+        return result
+
+
+    # ==========================================
+    # Peer Federation Management Methods
+    # ==========================================
+
+    def list_peers(
+        self,
+        enabled: Optional[bool] = None
+    ) -> Dict[str, Any]:
+        """
+        List all configured peer registries.
+
+        Args:
+            enabled: Optional filter by enabled status
+
+        Returns:
+            Dictionary with peers list
+
+        Raises:
+            requests.HTTPError: If request fails
+        """
+        logger.info("Listing peer registries")
+
+        params = {}
+        if enabled is not None:
+            params["enabled"] = str(enabled).lower()
+
+        response = self._make_request(
+            method="GET",
+            endpoint="/api/v1/peers",
+            params=params if params else None
+        )
+
+        result = response.json()
+        logger.info(f"Retrieved {len(result) if isinstance(result, list) else 0} peers")
+        return result
+
+
+    def add_peer(
+        self,
+        config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Add a new peer registry.
+
+        Args:
+            config: Peer configuration dictionary with peer_id, name, endpoint, etc.
+
+        Returns:
+            Created peer configuration
+
+        Raises:
+            requests.HTTPError: If peer already exists (409) or request fails
+        """
+        peer_id = config.get("peer_id", "unknown")
+        logger.info(f"Adding peer registry: {peer_id}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint="/api/v1/peers",
+            data=config
+        )
+
+        result = response.json()
+        logger.info(f"Peer registry added successfully: {peer_id}")
+        return result
+
+
+    def get_peer(
+        self,
+        peer_id: str
+    ) -> Dict[str, Any]:
+        """
+        Get details of a specific peer registry.
+
+        Args:
+            peer_id: Peer registry identifier
+
+        Returns:
+            Peer configuration details
+
+        Raises:
+            requests.HTTPError: If peer not found (404) or request fails
+        """
+        logger.info(f"Getting peer registry: {peer_id}")
+
+        response = self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/peers/{peer_id}"
+        )
+
+        result = response.json()
+        logger.info(f"Retrieved peer registry: {peer_id}")
+        return result
+
+
+    def update_peer(
+        self,
+        peer_id: str,
+        config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update an existing peer registry configuration.
+
+        Args:
+            peer_id: Peer registry identifier
+            config: Updated peer configuration
+
+        Returns:
+            Updated peer configuration
+
+        Raises:
+            requests.HTTPError: If peer not found (404) or request fails
+        """
+        logger.info(f"Updating peer registry: {peer_id}")
+
+        response = self._make_request(
+            method="PUT",
+            endpoint=f"/api/v1/peers/{peer_id}",
+            data=config
+        )
+
+        result = response.json()
+        logger.info(f"Peer registry updated successfully: {peer_id}")
+        return result
+
+
+    def remove_peer(
+        self,
+        peer_id: str
+    ) -> Dict[str, Any]:
+        """
+        Remove a peer registry.
+
+        Args:
+            peer_id: Peer registry identifier
+
+        Returns:
+            Deletion confirmation
+
+        Raises:
+            requests.HTTPError: If peer not found (404) or request fails
+        """
+        logger.info(f"Removing peer registry: {peer_id}")
+
+        response = self._make_request(
+            method="DELETE",
+            endpoint=f"/api/v1/peers/{peer_id}"
+        )
+
+        result = response.json()
+        logger.info(f"Peer registry removed successfully: {peer_id}")
+        return result
+
+
+    def sync_peer(
+        self,
+        peer_id: str
+    ) -> Dict[str, Any]:
+        """
+        Trigger sync from a specific peer registry.
+
+        Args:
+            peer_id: Peer registry identifier
+
+        Returns:
+            Sync result with statistics
+
+        Raises:
+            requests.HTTPError: If peer not found (404) or request fails
+        """
+        logger.info(f"Syncing from peer registry: {peer_id}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint=f"/api/v1/peers/{peer_id}/sync"
+        )
+
+        result = response.json()
+        logger.info(f"Peer sync completed: {peer_id}")
+        return result
+
+
+    def sync_all_peers(self) -> Dict[str, Any]:
+        """
+        Trigger sync from all enabled peer registries.
+
+        Returns:
+            Sync results for all peers
+
+        Raises:
+            requests.HTTPError: If request fails
+        """
+        logger.info("Syncing from all peer registries")
+
+        response = self._make_request(
+            method="POST",
+            endpoint="/api/v1/peers/sync"
+        )
+
+        result = response.json()
+        logger.info("All peer sync completed")
+        return result
+
+
+    def get_peer_status(
+        self,
+        peer_id: str
+    ) -> Dict[str, Any]:
+        """
+        Get sync status for a specific peer registry.
+
+        Args:
+            peer_id: Peer registry identifier
+
+        Returns:
+            Sync status with history
+
+        Raises:
+            requests.HTTPError: If peer not found (404) or request fails
+        """
+        logger.info(f"Getting sync status for peer: {peer_id}")
+
+        response = self._make_request(
+            method="GET",
+            endpoint=f"/api/v1/peers/{peer_id}/status"
+        )
+
+        result = response.json()
+        logger.info(f"Retrieved sync status for peer: {peer_id}")
+        return result
+
+
+    def enable_peer(
+        self,
+        peer_id: str
+    ) -> Dict[str, Any]:
+        """
+        Enable a peer registry.
+
+        Args:
+            peer_id: Peer registry identifier
+
+        Returns:
+            Updated peer configuration
+
+        Raises:
+            requests.HTTPError: If peer not found (404) or request fails
+        """
+        logger.info(f"Enabling peer registry: {peer_id}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint=f"/api/v1/peers/{peer_id}/enable"
+        )
+
+        result = response.json()
+        logger.info(f"Peer registry enabled: {peer_id}")
+        return result
+
+
+    def disable_peer(
+        self,
+        peer_id: str
+    ) -> Dict[str, Any]:
+        """
+        Disable a peer registry.
+
+        Args:
+            peer_id: Peer registry identifier
+
+        Returns:
+            Updated peer configuration
+
+        Raises:
+            requests.HTTPError: If peer not found (404) or request fails
+        """
+        logger.info(f"Disabling peer registry: {peer_id}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint=f"/api/v1/peers/{peer_id}/disable"
+        )
+
+        result = response.json()
+        logger.info(f"Peer registry disabled: {peer_id}")
+        return result
+
+
+    def get_peer_connections(self) -> Dict[str, Any]:
+        """
+        Get all federation connections across all peers.
+
+        Returns:
+            Dictionary with connection details
+
+        Raises:
+            requests.HTTPError: If request fails
+        """
+        logger.info("Getting all peer connections")
+
+        response = self._make_request(
+            method="GET",
+            endpoint="/api/v1/peers/connections/all"
+        )
+
+        result = response.json()
+        logger.info("Retrieved peer connections")
+        return result
+
+
+    def get_shared_resources(self) -> Dict[str, Any]:
+        """
+        Get resource sharing summary across all peers.
+
+        Returns:
+            Dictionary with shared resource details
+
+        Raises:
+            requests.HTTPError: If request fails
+        """
+        logger.info("Getting shared resources summary")
+
+        response = self._make_request(
+            method="GET",
+            endpoint="/api/v1/peers/shared-resources"
+        )
+
+        result = response.json()
+        logger.info("Retrieved shared resources summary")
         return result

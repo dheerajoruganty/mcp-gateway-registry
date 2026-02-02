@@ -12,11 +12,6 @@ from ...schemas.peer_federation_schema import PeerRegistryConfig
 from .base_client import BaseFederationClient
 from .federation_auth import FederationAuthManager
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s,p%(process)s,{%(filename)s:%(lineno)d},%(levelname)s,%(message)s",
-)
-
 logger = logging.getLogger(__name__)
 
 

@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     agent_security_add_pending_tag: bool = True
     a2a_scanner_llm_api_key: str = ""  # Optional Azure OpenAI API key for LLM-based analysis
     
+    # Federation settings
+    registry_id: Optional[str] = None  # Unique identifier for this registry instance in federation
+
     # Storage Backend Configuration
     storage_backend: str = "file"  # Options: "file", "documentdb"
 

@@ -8,11 +8,12 @@ MongoDB/DocumentDB and file-based storage backends.
 Based on: registry/services/server_service.py and registry/services/agent_service.py
 """
 
+import asyncio
 import logging
 import time
 import uuid
 from datetime import UTC, datetime
-from threading import Lock
+from threading import Lock as ThreadingLock
 from typing import Any, Literal, Optional
 
 from ..repositories.factory import get_peer_federation_repository
@@ -38,7 +39,7 @@ class PeerFederationService:
     """
 
     _instance: Optional["PeerFederationService"] = None
-    _lock: Lock = Lock()
+    _lock: ThreadingLock = ThreadingLock()
 
     def __new__(cls) -> "PeerFederationService":
         """Singleton pattern with thread-safe double-checked locking."""
@@ -56,7 +57,7 @@ class PeerFederationService:
             return
 
         self._repo: PeerFederationRepositoryBase | None = None
-        self._operation_lock = Lock()  # Thread safety for operations
+        self._operation_lock = asyncio.Lock()  # Async-safe lock for operations
 
         # In-memory caches for quick access (populated from repository)
         self.registered_peers: dict[str, PeerRegistryConfig] = {}
@@ -127,7 +128,7 @@ class PeerFederationService:
         Raises:
             ValueError: If peer_id already exists or is invalid
         """
-        with self._operation_lock:
+        async with self._operation_lock:
             repo = self._get_repo()
 
             # Create peer via repository (handles validation and timestamps)
@@ -197,7 +198,7 @@ class PeerFederationService:
         Raises:
             ValueError: If peer not found or invalid
         """
-        with self._operation_lock:
+        async with self._operation_lock:
             repo = self._get_repo()
 
             # Update via repository (handles validation)
@@ -225,7 +226,7 @@ class PeerFederationService:
         Raises:
             ValueError: If peer not found
         """
-        with self._operation_lock:
+        async with self._operation_lock:
             # Get peer name for logging before deletion
             peer_name = self.registered_peers.get(
                 peer_id,

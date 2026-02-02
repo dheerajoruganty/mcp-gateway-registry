@@ -22,12 +22,6 @@ from ..services.federation_audit_service import get_federation_audit_service
 from ..services.peer_federation_service import get_peer_federation_service
 from ..services.server_service import server_service
 
-# Configure logging with basicConfig
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s,p%(process)s,{%(filename)s:%(lineno)d},%(levelname)s,%(message)s",
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -37,7 +31,37 @@ router = APIRouter(prefix="/api/v1/federation", tags=["federation"])
 # Constants
 DEFAULT_PAGE_LIMIT: int = 100
 MAX_PAGE_LIMIT: int = 1000
-CURRENT_SYNC_GENERATION: int = 1  # TODO: Track this dynamically
+
+
+async def _get_current_sync_generation() -> int:
+    """
+    Compute the current sync generation dynamically.
+
+    Uses the total count of enabled servers and agents as a generation proxy.
+    When items are added, removed, or toggled, the count changes, signaling
+    peers that a re-sync may be needed. Returns at least 1 so that peers
+    with generation 0 always get all items on their first sync.
+
+    Returns:
+        Current sync generation number (minimum 1)
+    """
+    try:
+        all_servers = await server_service.get_all_servers()
+        enabled_server_count = 0
+        for path in all_servers:
+            if await server_service.is_service_enabled(path):
+                enabled_server_count += 1
+
+        all_agents = await agent_service.get_all_agents()
+        enabled_agent_count = len(
+            [a for a in all_agents if agent_service.is_agent_enabled(a.path)]
+        )
+
+        generation = max(1, enabled_server_count + enabled_agent_count)
+        return generation
+    except Exception as e:
+        logger.warning(f"Failed to compute sync generation, defaulting to 1: {e}")
+        return 1
 
 
 def _get_registry_id() -> str:
@@ -409,7 +433,7 @@ async def export_servers(
 
     return FederationExportResponse(
         items=items,
-        sync_generation=CURRENT_SYNC_GENERATION,
+        sync_generation=await _get_current_sync_generation(),
         total_count=total_count,
         has_more=has_more,
         registry_id=_get_registry_id(),
@@ -518,7 +542,7 @@ async def export_agents(
 
     return FederationExportResponse(
         items=items,
-        sync_generation=CURRENT_SYNC_GENERATION,
+        sync_generation=await _get_current_sync_generation(),
         total_count=total_count,
         has_more=has_more,
         registry_id=_get_registry_id(),
