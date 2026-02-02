@@ -16,7 +16,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
-from ..auth.dependencies import enhanced_auth
+from ..auth.dependencies import nginx_proxied_auth
 from ..schemas.peer_federation_schema import (
     PeerRegistryConfig,
     PeerSyncStatus,
@@ -47,7 +47,7 @@ router = APIRouter(
 @router.get("", response_model=list[PeerRegistryConfig])
 async def list_peers(
     enabled: bool | None = None,
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> list[PeerRegistryConfig]:
     """
     List all peer registries with optional filtering by enabled status.
@@ -76,7 +76,7 @@ async def list_peers(
 @router.post("", response_model=PeerRegistryConfig, status_code=status.HTTP_201_CREATED)
 async def create_peer(
     config: PeerRegistryConfig,
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> PeerRegistryConfig:
     """
     Create a new peer registry configuration.
@@ -130,7 +130,7 @@ async def create_peer(
 @router.post("/sync", response_model=dict[str, SyncResult])
 async def sync_all_peers(
     enabled_only: bool = Query(True, description="If True, only sync enabled peers"),
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> dict[str, SyncResult]:
     """
     Trigger synchronization for all (or enabled) peers.
@@ -173,7 +173,7 @@ async def sync_all_peers(
 async def get_all_connections(
     since: datetime | None = Query(None, description="Only return connections after this timestamp"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum entries to return"),
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> list[FederationConnectionLog]:
     """
     Get all federation connection history.
@@ -207,7 +207,7 @@ async def get_all_connections(
 
 @router.get("/shared-resources", response_model=dict[str, PeerSyncSummary])
 async def get_shared_resources(
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> dict[str, PeerSyncSummary]:
     """
     Get summary of resources shared with each peer.
@@ -242,7 +242,7 @@ async def get_shared_resources(
 @router.get("/{peer_id}", response_model=PeerRegistryConfig)
 async def get_peer(
     peer_id: str,
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> PeerRegistryConfig:
     """
     Get a specific peer by ID.
@@ -279,7 +279,7 @@ async def get_peer(
 async def update_peer(
     peer_id: str,
     updates: dict[str, Any] = Body(...),
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> PeerRegistryConfig:
     """
     Update an existing peer configuration.
@@ -332,7 +332,7 @@ async def update_peer(
 @router.delete("/{peer_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_peer(
     peer_id: str,
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ):
     """
     Delete a peer registry configuration.
@@ -367,7 +367,7 @@ async def delete_peer(
 @router.post("/{peer_id}/sync", response_model=SyncResult)
 async def sync_peer(
     peer_id: str,
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> SyncResult:
     """
     Trigger synchronization for a specific peer.
@@ -417,7 +417,7 @@ async def sync_peer(
 @router.get("/{peer_id}/status", response_model=PeerSyncStatus)
 async def get_peer_status(
     peer_id: str,
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> PeerSyncStatus:
     """
     Get sync status for a specific peer.
@@ -454,7 +454,7 @@ async def get_peer_status(
 @router.post("/{peer_id}/enable", response_model=PeerRegistryConfig)
 async def enable_peer(
     peer_id: str,
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> PeerRegistryConfig:
     """
     Enable a peer registry.
@@ -491,7 +491,7 @@ async def enable_peer(
 @router.post("/{peer_id}/disable", response_model=PeerRegistryConfig)
 async def disable_peer(
     peer_id: str,
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> PeerRegistryConfig:
     """
     Disable a peer registry.
@@ -530,7 +530,7 @@ async def get_peer_connections(
     peer_id: str,
     since: datetime | None = Query(None, description="Only return connections after this timestamp"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum entries to return"),
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> list[FederationConnectionLog]:
     """
     Get connection history for a specific peer.
@@ -569,7 +569,7 @@ async def get_peer_connections(
 @router.get("/{peer_id}/shared-resources", response_model=PeerSyncSummary)
 async def get_peer_shared_resources(
     peer_id: str,
-    user_context: dict = Depends(enhanced_auth),
+    user_context: dict = Depends(nginx_proxied_auth),
 ) -> PeerSyncSummary:
     """
     Get summary of resources shared with a specific peer.
