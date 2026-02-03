@@ -808,7 +808,7 @@ class PeerFederationService:
         all_servers = await server_service.get_all_servers(include_federated=True)
         for server in all_servers.values():
             server_dict = server if isinstance(server, dict) else server
-            sync_metadata = server_dict.get("sync_metadata", {})
+            sync_metadata = server_dict.get("sync_metadata") or {}
             path = server_dict.get("path", "")
 
             if sync_metadata.get("source_peer_id") == peer_id:
@@ -827,7 +827,7 @@ class PeerFederationService:
         all_agents = await agent_service.get_all_agents()
         for agent in all_agents:
             agent_dict = agent.model_dump() if hasattr(agent, "model_dump") else agent
-            sync_metadata = agent_dict.get("sync_metadata", {})
+            sync_metadata = agent_dict.get("sync_metadata") or {}
             path = agent_dict.get("path", "")
 
             if sync_metadata.get("source_peer_id") == peer_id:
@@ -875,7 +875,7 @@ class PeerFederationService:
                 server_dict = existing_server
 
                 # Update sync_metadata
-                sync_metadata = server_dict.get("sync_metadata", {})
+                sync_metadata = server_dict.get("sync_metadata") or {}
                 sync_metadata["is_orphaned"] = True
                 sync_metadata["orphaned_at"] = datetime.now(UTC).isoformat()
 
@@ -897,7 +897,7 @@ class PeerFederationService:
                 agent_dict = existing_agent
 
                 # Update sync_metadata
-                sync_metadata = agent_dict.get("sync_metadata", {})
+                sync_metadata = agent_dict.get("sync_metadata") or {}
                 sync_metadata["is_orphaned"] = True
                 sync_metadata["orphaned_at"] = datetime.now(UTC).isoformat()
 
@@ -1020,7 +1020,7 @@ class PeerFederationService:
                 server_dict = existing_server
 
                 # Update sync_metadata
-                sync_metadata = server_dict.get("sync_metadata", {})
+                sync_metadata = server_dict.get("sync_metadata") or {}
                 sync_metadata["local_overrides"] = override
 
                 server_dict["sync_metadata"] = sync_metadata
@@ -1041,7 +1041,7 @@ class PeerFederationService:
                 agent_dict = existing_agent
 
                 # Update sync_metadata
-                sync_metadata = agent_dict.get("sync_metadata", {})
+                sync_metadata = agent_dict.get("sync_metadata") or {}
                 sync_metadata["local_overrides"] = override
 
                 agent_dict["sync_metadata"] = sync_metadata
@@ -1077,7 +1077,7 @@ class PeerFederationService:
         Returns:
             True if item has local override
         """
-        sync_metadata = item.get("sync_metadata", {})
+        sync_metadata = item.get("sync_metadata") or {}
         return sync_metadata.get("local_overrides", False)
 
     async def _store_synced_servers(
