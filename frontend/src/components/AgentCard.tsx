@@ -300,6 +300,13 @@ const AgentCard: React.FC<AgentCardProps> = React.memo(({
     return { Icon: ShieldCheckIcon, color: 'text-green-500 dark:text-green-400', title: 'Security scan passed' };
   };
 
+  // Check if this is a federated agent from a peer registry
+  // Federated agents have paths like /peer-registry-name/agent-path
+  const isFederatedAgent = agent.path?.startsWith('/peer-');
+  const peerRegistryId = isFederatedAgent
+    ? agent.path.split('/')[1]  // Extract "peer-registry-name" from "/peer-registry-name/agent-path"
+    : null;
+
   return (
     <>
       <div className="group rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 h-full flex flex-col bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 border-2 border-cyan-200 dark:border-cyan-700 hover:border-cyan-300 dark:hover:border-cyan-600">
@@ -334,6 +341,16 @@ const AgentCard: React.FC<AgentCardProps> = React.memo(({
                   }`}>
                     {getVisibilityIcon()}
                     {agent.visibility.toUpperCase()}
+                  </span>
+                )}
+                {/* Registry source badge - show LOCAL or peer registry name */}
+                {isFederatedAgent ? (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-gradient-to-r from-violet-100 to-purple-100 text-violet-700 dark:from-violet-900/30 dark:to-purple-900/30 dark:text-violet-300 rounded-full flex-shrink-0 border border-violet-200 dark:border-violet-600" title={`Synced from ${peerRegistryId}`}>
+                    {peerRegistryId?.toUpperCase().replace('PEER-REGISTRY-', '')}
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 dark:from-green-900/30 dark:to-emerald-900/30 dark:text-green-300 rounded-full flex-shrink-0 border border-green-200 dark:border-green-600">
+                    LOCAL
                   </span>
                 )}
               </div>

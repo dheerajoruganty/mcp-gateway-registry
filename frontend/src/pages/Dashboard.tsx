@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MagnifyingGlassIcon, PlusIcon, XMarkIcon, ArrowPathIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, PlusIcon, XMarkIcon, ArrowPathIcon, CheckCircleIcon, ExclamationCircleIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useServerStats } from '../hooks/useServerStats';
 import { useAuth } from '../contexts/AuthContext';
 import ServerCard from '../components/ServerCard';
@@ -144,6 +144,21 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
 
   // View filter state
   const [viewFilter, setViewFilter] = useState<'all' | 'servers' | 'agents' | 'external'>('all');
+
+  // Collapsible state for registry groups (tracks which groups are expanded)
+  // Key is registry name: 'local' or peer registry ID like 'peer-registry-lob-1'
+  const [expandedRegistries, setExpandedRegistries] = useState<Record<string, boolean>>({
+    'local': true  // Local registry expanded by default
+  });
+
+  // Toggle a registry group's expanded state
+  const toggleRegistryGroup = useCallback((registryId: string) => {
+    setExpandedRegistries(prev => ({
+      ...prev,
+      [registryId]: !prev[registryId]
+    }));
+  }, []);
+
   const [editAgentForm, setEditAgentForm] = useState({
     name: '',
     path: '',
@@ -265,6 +280,57 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
       return EXTERNAL_REGISTRY_TAGS.some(tag => agentTags.includes(tag));
     });
   }, [agents]);
+
+  // Group servers by source registry (local vs peer registries)
+  // Returns a map of registry ID to servers: { 'local': [...], 'peer-registry-lob-1': [...], ... }
+  const serversByRegistry = useMemo(() => {
+    const groups: Record<string, Server[]> = { 'local': [] };
+
+    internalServers.forEach(server => {
+      // Check if server is from a peer registry (path starts with /peer-)
+      if (server.path?.startsWith('/peer-')) {
+        const registryId = server.path.split('/')[1];  // Extract 'peer-registry-xxx'
+        if (!groups[registryId]) {
+          groups[registryId] = [];
+        }
+        groups[registryId].push(server);
+      } else {
+        groups['local'].push(server);
+      }
+    });
+
+    return groups;
+  }, [internalServers]);
+
+  // Get sorted list of registry IDs (local first, then peer registries alphabetically)
+  const registryIds = useMemo(() => {
+    const ids = Object.keys(serversByRegistry);
+    return ['local', ...ids.filter(id => id !== 'local').sort()];
+  }, [serversByRegistry]);
+
+  // Group agents by source registry similarly
+  const agentsByRegistry = useMemo(() => {
+    const groups: Record<string, Agent[]> = { 'local': [] };
+
+    internalAgents.forEach(agent => {
+      if (agent.path?.startsWith('/peer-')) {
+        const registryId = agent.path.split('/')[1];
+        if (!groups[registryId]) {
+          groups[registryId] = [];
+        }
+        groups[registryId].push(agent);
+      } else {
+        groups['local'].push(agent);
+      }
+    });
+
+    return groups;
+  }, [internalAgents]);
+
+  const agentRegistryIds = useMemo(() => {
+    const ids = Object.keys(agentsByRegistry);
+    return ['local', ...ids.filter(id => id !== 'local').sort()];
+  }, [agentsByRegistry]);
 
   // Semantic search
   const semanticEnabled = committedQuery.trim().length >= 2;
@@ -747,13 +813,76 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
 
   const renderDashboardCollections = () => (
     <>
-      {/* MCP Servers Section */}
+      {/* MCP Servers Section - Grouped by Registry */}
       {(viewFilter === 'all' || viewFilter === 'servers') &&
         (filteredServers.length > 0 || (!searchTerm && activeFilter === 'all')) && (
           <div className="mb-8">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-              MCP Servers
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                MCP Servers
+              </h2>
+
+              {/* Registry Quick Navigation - Only show if there are multiple registries */}
+              {registryIds.length > 1 && filteredServers.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Jump to:</span>
+                  {registryIds.map(registryId => {
+                    const count = (serversByRegistry[registryId] || []).length;
+                    if (count === 0) return null;
+                    const displayName = registryId === 'local'
+                      ? 'Local'
+                      : registryId.replace('peer-registry-', '').replace('peer-', '').toUpperCase();
+                    const isLocal = registryId === 'local';
+
+                    return (
+                      <button
+                        key={registryId}
+                        onClick={() => {
+                          // Expand this registry, collapse others
+                          const newExpanded: Record<string, boolean> = {};
+                          registryIds.forEach(id => {
+                            newExpanded[id] = (id === registryId);
+                          });
+                          setExpandedRegistries(prev => ({ ...prev, ...newExpanded }));
+                          // Scroll to the section
+                          const element = document.getElementById(`server-registry-${registryId}`);
+                          if (element) {
+                            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all hover:scale-105 ${
+                          isLocal
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50 border border-green-200 dark:border-green-700'
+                            : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300 dark:hover:bg-cyan-900/50 border border-cyan-200 dark:border-cyan-700'
+                        }`}
+                      >
+                        {displayName}
+                        <span className="ml-1.5 px-1.5 py-0.5 text-[10px] bg-white/50 dark:bg-black/20 rounded-full">
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {/* Expand All / Collapse All */}
+                  <div className="border-l border-gray-300 dark:border-gray-600 pl-2 ml-1">
+                    <button
+                      onClick={() => {
+                        const allExpanded = registryIds.every(id => expandedRegistries[id] !== false);
+                        const newExpanded: Record<string, boolean> = {};
+                        registryIds.forEach(id => {
+                          newExpanded[id] = !allExpanded;
+                        });
+                        setExpandedRegistries(prev => ({ ...prev, ...newExpanded }));
+                      }}
+                      className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                      title={registryIds.every(id => expandedRegistries[id] !== false) ? 'Collapse all' : 'Expand all'}
+                    >
+                      {registryIds.every(id => expandedRegistries[id] !== false) ? 'Collapse All' : 'Expand All'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {filteredServers.length === 0 ? (
               <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
@@ -774,40 +903,152 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                 )}
               </div>
             ) : (
-              <div
-                className="grid"
-                style={{
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
-                  gap: 'clamp(1.5rem, 3vw, 2.5rem)'
-                }}
-              >
-                {filteredServers.map((server) => (
-                  <ServerCard
-                    key={server.path}
-                    server={server}
-                    onToggle={handleToggleServer}
-                    onEdit={handleEditServer}
-                    canModify={user?.can_modify_servers || false}
-                    canHealthCheck={hasUiPermission('health_check_service', server.path)}
-                    canToggle={hasUiPermission('toggle_service', server.path)}
-                    onRefreshSuccess={refreshData}
-                    onShowToast={showToast}
-                    onServerUpdate={handleServerUpdate}
-                    authToken={agentApiToken}
-                  />
-                ))}
+              <div className="space-y-6">
+                {registryIds.map(registryId => {
+                  const registryServers = serversByRegistry[registryId] || [];
+                  // Apply active filter to registry servers
+                  let filteredRegistryServers = registryServers;
+                  if (activeFilter === 'enabled') filteredRegistryServers = registryServers.filter(s => s.enabled);
+                  else if (activeFilter === 'disabled') filteredRegistryServers = registryServers.filter(s => !s.enabled);
+                  else if (activeFilter === 'unhealthy') filteredRegistryServers = registryServers.filter(s => s.status === 'unhealthy');
+
+                  // Apply search filter
+                  if (searchTerm) {
+                    const query = searchTerm.toLowerCase();
+                    filteredRegistryServers = filteredRegistryServers.filter(server =>
+                      server.name.toLowerCase().includes(query) ||
+                      (server.description || '').toLowerCase().includes(query) ||
+                      server.path.toLowerCase().includes(query) ||
+                      (server.tags || []).some(tag => tag.toLowerCase().includes(query))
+                    );
+                  }
+
+                  if (filteredRegistryServers.length === 0) return null;
+
+                  const isExpanded = expandedRegistries[registryId] !== false;  // Default to expanded
+                  const displayName = registryId === 'local'
+                    ? 'Local Registry'
+                    : registryId.replace('peer-registry-', '').replace('peer-', '').toUpperCase() + ' (Federated)';
+
+                  return (
+                    <div key={registryId} id={`server-registry-${registryId}`} className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden scroll-mt-4">
+                      {/* Collapsible Header */}
+                      <button
+                        onClick={() => toggleRegistryGroup(registryId)}
+                        className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
+                          registryId === 'local'
+                            ? 'bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 hover:from-green-100 hover:to-emerald-100 dark:hover:from-green-900/30 dark:hover:to-emerald-900/30'
+                            : 'bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 hover:from-cyan-100 hover:to-blue-100 dark:hover:from-cyan-900/30 dark:hover:to-blue-900/30'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {isExpanded ? (
+                            <ChevronDownIcon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                          ) : (
+                            <ChevronRightIcon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                          )}
+                          <span className={`font-semibold ${
+                            registryId === 'local'
+                              ? 'text-green-700 dark:text-green-300'
+                              : 'text-cyan-700 dark:text-cyan-300'
+                          }`}>
+                            {displayName}
+                          </span>
+                          <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full">
+                            {filteredRegistryServers.length} server{filteredRegistryServers.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Collapsible Content */}
+                      {isExpanded && (
+                        <div className="p-4 bg-white dark:bg-gray-800">
+                          <div
+                            className="grid"
+                            style={{
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
+                              gap: 'clamp(1.5rem, 3vw, 2.5rem)'
+                            }}
+                          >
+                            {filteredRegistryServers.map((server) => (
+                              <ServerCard
+                                key={server.path}
+                                server={server}
+                                onToggle={handleToggleServer}
+                                onEdit={handleEditServer}
+                                canModify={user?.can_modify_servers || false}
+                                canHealthCheck={hasUiPermission('health_check_service', server.path)}
+                                canToggle={hasUiPermission('toggle_service', server.path)}
+                                onRefreshSuccess={refreshData}
+                                onShowToast={showToast}
+                                onServerUpdate={handleServerUpdate}
+                                authToken={agentApiToken}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         )}
 
-      {/* A2A Agents Section */}
+      {/* A2A Agents Section - Grouped by Registry */}
       {(viewFilter === 'all' || viewFilter === 'agents') &&
         (filteredAgents.length > 0 || (!searchTerm && activeFilter === 'all')) && (
           <div className="mb-8">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-              A2A Agents
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                A2A Agents
+              </h2>
+
+              {/* Registry Quick Navigation for Agents - Only show if there are multiple registries */}
+              {agentRegistryIds.length > 1 && filteredAgents.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Jump to:</span>
+                  {agentRegistryIds.map(registryId => {
+                    const count = (agentsByRegistry[registryId] || []).length;
+                    if (count === 0) return null;
+                    const displayName = registryId === 'local'
+                      ? 'Local'
+                      : registryId.replace('peer-registry-', '').replace('peer-', '').toUpperCase();
+                    const isLocal = registryId === 'local';
+
+                    return (
+                      <button
+                        key={registryId}
+                        onClick={() => {
+                          // Expand this registry, collapse others for agents
+                          const newExpanded: Record<string, boolean> = {};
+                          agentRegistryIds.forEach(id => {
+                            newExpanded[`agents-${id}`] = (id === registryId);
+                          });
+                          setExpandedRegistries(prev => ({ ...prev, ...newExpanded }));
+                          // Scroll to the section
+                          const element = document.getElementById(`agent-registry-${registryId}`);
+                          if (element) {
+                            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all hover:scale-105 ${
+                          isLocal
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50 border border-green-200 dark:border-green-700'
+                            : 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:hover:bg-violet-900/50 border border-violet-200 dark:border-violet-700'
+                        }`}
+                      >
+                        {displayName}
+                        <span className="ml-1.5 px-1.5 py-0.5 text-[10px] bg-white/50 dark:bg-black/20 rounded-full">
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             {agentsError ? (
               <div className="text-center py-12 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
@@ -828,28 +1069,94 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                 </p>
               </div>
             ) : (
-              <div
-                className="grid"
-                style={{
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
-                  gap: 'clamp(1.5rem, 3vw, 2.5rem)'
-                }}
-              >
-                {filteredAgents.map((agent) => (
-                  <AgentCard
-                    key={agent.path}
-                    agent={agent}
-                    onToggle={handleToggleAgent}
-                    onEdit={handleEditAgent}
-                    canModify={user?.can_modify_servers || false}
-                    canHealthCheck={hasUiPermission('health_check_agent', agent.path)}
-                    canToggle={hasUiPermission('toggle_agent', agent.path)}
-                    onRefreshSuccess={refreshData}
-                    onShowToast={showToast}
-                    onAgentUpdate={handleAgentUpdate}
-                    authToken={agentApiToken}
-                  />
-                ))}
+              <div className="space-y-6">
+                {agentRegistryIds.map(registryId => {
+                  const registryAgents = agentsByRegistry[registryId] || [];
+                  // Apply active filter to registry agents
+                  let filteredRegistryAgents = registryAgents;
+                  if (activeFilter === 'enabled') filteredRegistryAgents = registryAgents.filter(a => a.enabled);
+                  else if (activeFilter === 'disabled') filteredRegistryAgents = registryAgents.filter(a => !a.enabled);
+                  else if (activeFilter === 'unhealthy') filteredRegistryAgents = registryAgents.filter(a => a.status === 'unhealthy');
+
+                  // Apply search filter
+                  if (searchTerm) {
+                    const query = searchTerm.toLowerCase();
+                    filteredRegistryAgents = filteredRegistryAgents.filter(agent =>
+                      agent.name.toLowerCase().includes(query) ||
+                      (agent.description || '').toLowerCase().includes(query) ||
+                      agent.path.toLowerCase().includes(query) ||
+                      (agent.tags || []).some(tag => tag.toLowerCase().includes(query))
+                    );
+                  }
+
+                  if (filteredRegistryAgents.length === 0) return null;
+
+                  const isExpanded = expandedRegistries[`agents-${registryId}`] !== false;  // Default to expanded
+                  const displayName = registryId === 'local'
+                    ? 'Local Registry'
+                    : registryId.replace('peer-registry-', '').replace('peer-', '').toUpperCase() + ' (Federated)';
+
+                  return (
+                    <div key={registryId} id={`agent-registry-${registryId}`} className="border border-cyan-200 dark:border-cyan-700 rounded-xl overflow-hidden scroll-mt-4">
+                      {/* Collapsible Header */}
+                      <button
+                        onClick={() => toggleRegistryGroup(`agents-${registryId}`)}
+                        className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
+                          registryId === 'local'
+                            ? 'bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 hover:from-green-100 hover:to-emerald-100 dark:hover:from-green-900/30 dark:hover:to-emerald-900/30'
+                            : 'bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-900/20 dark:to-purple-900/20 hover:from-violet-100 hover:to-purple-100 dark:hover:from-violet-900/30 dark:hover:to-purple-900/30'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {isExpanded ? (
+                            <ChevronDownIcon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                          ) : (
+                            <ChevronRightIcon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                          )}
+                          <span className={`font-semibold ${
+                            registryId === 'local'
+                              ? 'text-green-700 dark:text-green-300'
+                              : 'text-violet-700 dark:text-violet-300'
+                          }`}>
+                            {displayName}
+                          </span>
+                          <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full">
+                            {filteredRegistryAgents.length} agent{filteredRegistryAgents.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Collapsible Content */}
+                      {isExpanded && (
+                        <div className="p-4 bg-white dark:bg-gray-800">
+                          <div
+                            className="grid"
+                            style={{
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
+                              gap: 'clamp(1.5rem, 3vw, 2.5rem)'
+                            }}
+                          >
+                            {filteredRegistryAgents.map((agent) => (
+                              <AgentCard
+                                key={agent.path}
+                                agent={agent}
+                                onToggle={handleToggleAgent}
+                                onEdit={handleEditAgent}
+                                canModify={user?.can_modify_servers || false}
+                                canHealthCheck={hasUiPermission('health_check_agent', agent.path)}
+                                canToggle={hasUiPermission('toggle_agent', agent.path)}
+                                onRefreshSuccess={refreshData}
+                                onShowToast={showToast}
+                                onAgentUpdate={handleAgentUpdate}
+                                authToken={agentApiToken}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

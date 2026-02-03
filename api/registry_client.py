@@ -2689,6 +2689,11 @@ class RegistryClient:
             endpoint=f"/api/peers/{peer_id}"
         )
 
+        # Handle 204 No Content response
+        if response.status_code == 204:
+            logger.info(f"Peer registry removed successfully: {peer_id}")
+            return {"status": "deleted", "peer_id": peer_id}
+
         result = response.json()
         logger.info(f"Peer registry removed successfully: {peer_id}")
         return result

@@ -324,6 +324,13 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
   // Check if this server has security pending
   const isSecurityPending = server.tags?.includes('security-pending');
 
+  // Check if this is a federated server from a peer registry
+  // Federated servers have paths like /peer-registry-name/server-path
+  const isFederatedServer = server.path?.startsWith('/peer-');
+  const peerRegistryId = isFederatedServer
+    ? server.path.split('/')[1]  // Extract "peer-registry-name" from "/peer-registry-name/server-path"
+    : null;
+
   return (
     <>
       <div className={`group rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 h-full flex flex-col ${
@@ -358,6 +365,16 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
                 {isSecurityPending && (
                   <span className="px-2 py-0.5 text-xs font-semibold bg-gradient-to-r from-amber-100 to-orange-100 text-amber-700 dark:from-amber-900/30 dark:to-orange-900/30 dark:text-amber-300 rounded-full flex-shrink-0 border border-amber-200 dark:border-amber-600">
                     SECURITY PENDING
+                  </span>
+                )}
+                {/* Registry source badge - show LOCAL or peer registry name */}
+                {isFederatedServer ? (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-gradient-to-r from-cyan-100 to-blue-100 text-cyan-700 dark:from-cyan-900/30 dark:to-blue-900/30 dark:text-cyan-300 rounded-full flex-shrink-0 border border-cyan-200 dark:border-cyan-600" title={`Synced from ${peerRegistryId}`}>
+                    {peerRegistryId?.toUpperCase().replace('PEER-REGISTRY-', '')}
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 dark:from-green-900/30 dark:to-emerald-900/30 dark:text-green-300 rounded-full flex-shrink-0 border border-green-200 dark:border-green-600">
+                    LOCAL
                   </span>
                 )}
               </div>
