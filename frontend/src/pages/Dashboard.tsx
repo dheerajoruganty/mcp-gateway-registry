@@ -159,6 +159,36 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
     }));
   }, []);
 
+  // Store peer registry endpoints for display
+  // Maps peer_id to endpoint URL: { 'peer-registry-lob-1': 'https://mcpregistry.ddns.net', ... }
+  const [peerRegistryEndpoints, setPeerRegistryEndpoints] = useState<Record<string, string>>({});
+
+  // Fetch peer registry configs to get their endpoints
+  useEffect(() => {
+    const fetchPeerEndpoints = async () => {
+      try {
+        const response = await axios.get('/api/peers');
+        const peers = response.data?.peers || response.data || [];
+        const endpoints: Record<string, string> = {};
+        peers.forEach((peer: { peer_id: string; endpoint: string }) => {
+          if (peer.peer_id && peer.endpoint) {
+            endpoints[peer.peer_id] = peer.endpoint;
+          }
+        });
+        setPeerRegistryEndpoints(endpoints);
+      } catch (error) {
+        // Silently fail - peer endpoints are optional display info
+        console.debug('Could not fetch peer registry endpoints:', error);
+      }
+    };
+    fetchPeerEndpoints();
+  }, []);
+
+  // Get the local registry URL
+  const localRegistryUrl = useMemo(() => {
+    return window.location.origin;
+  }, []);
+
   const [editAgentForm, setEditAgentForm] = useState({
     name: '',
     path: '',
@@ -954,6 +984,10 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                           }`}>
                             {displayName}
                           </span>
+                          {/* Registry URL */}
+                          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate max-w-[200px] lg:max-w-[300px]" title={registryId === 'local' ? localRegistryUrl : peerRegistryEndpoints[registryId]}>
+                            | {registryId === 'local' ? localRegistryUrl : (peerRegistryEndpoints[registryId] || 'Loading...')}
+                          </span>
                           <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full">
                             {filteredRegistryServers.length} server{filteredRegistryServers.length !== 1 ? 's' : ''}
                           </span>
@@ -1119,6 +1153,10 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                               : 'text-violet-700 dark:text-violet-300'
                           }`}>
                             {displayName}
+                          </span>
+                          {/* Registry URL */}
+                          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate max-w-[200px] lg:max-w-[300px]" title={registryId === 'local' ? localRegistryUrl : peerRegistryEndpoints[registryId]}>
+                            | {registryId === 'local' ? localRegistryUrl : (peerRegistryEndpoints[registryId] || 'Loading...')}
                           </span>
                           <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full">
                             {filteredRegistryAgents.length} agent{filteredRegistryAgents.length !== 1 ? 's' : ''}
