@@ -263,6 +263,41 @@ def _get_registry_url(
     return registry_url
 
 
+def _mask_sensitive_fields(
+    data: Any,
+    fields_to_mask: Optional[List[str]] = None,
+) -> Any:
+    """
+    Mask sensitive fields in response data for safe logging/printing.
+
+    Args:
+        data: Response data (dict, list, or other)
+        fields_to_mask: List of field names to mask (default: federation_token)
+
+    Returns:
+        Data with sensitive fields masked
+    """
+    if fields_to_mask is None:
+        fields_to_mask = ["federation_token"]
+
+    if isinstance(data, dict):
+        masked = {}
+        for key, value in data.items():
+            if key in fields_to_mask and value:
+                # Show first 3 chars followed by ...
+                if isinstance(value, str) and len(value) > 3:
+                    masked[key] = f"{value[:3]}..."
+                else:
+                    masked[key] = "***"
+            else:
+                masked[key] = _mask_sensitive_fields(value, fields_to_mask)
+        return masked
+    elif isinstance(data, list):
+        return [_mask_sensitive_fields(item, fields_to_mask) for item in data]
+    else:
+        return data
+
+
 def _get_client_name() -> str:
     """
     Get Keycloak client name from environment variable or default.
@@ -2494,7 +2529,8 @@ def cmd_peer_list(args: argparse.Namespace) -> int:
         response = client.list_peers(enabled=enabled_filter)
 
         if args.json:
-            print(json.dumps(response, indent=2, default=str))
+            masked_response = _mask_sensitive_fields(response)
+            print(json.dumps(masked_response, indent=2, default=str))
             return 0
 
         peers = response if isinstance(response, list) else response.get('peers', [])
@@ -2544,7 +2580,8 @@ def cmd_peer_add(args: argparse.Namespace) -> int:
         response = client.add_peer(config=config_data)
 
         logger.info(f"Peer registry added successfully: {config_data.get('peer_id')}")
-        print(json.dumps(response, indent=2, default=str))
+        masked_response = _mask_sensitive_fields(response)
+        print(json.dumps(masked_response, indent=2, default=str))
         return 0
 
     except FileNotFoundError:
@@ -2570,7 +2607,8 @@ def cmd_peer_get(args: argparse.Namespace) -> int:
         response = client.get_peer(peer_id=args.peer_id)
 
         if args.json:
-            print(json.dumps(response, indent=2, default=str))
+            masked_response = _mask_sensitive_fields(response)
+            print(json.dumps(masked_response, indent=2, default=str))
             return 0
 
         print(f"Peer ID:      {response.get('peer_id')}")
@@ -2580,6 +2618,12 @@ def cmd_peer_get(args: argparse.Namespace) -> int:
         print(f"Sync Mode:    {response.get('sync_mode', 'all')}")
         print(f"Created:      {response.get('created_at')}")
         print(f"Updated:      {response.get('updated_at')}")
+
+        # Mask federation token in non-JSON output
+        fed_token = response.get('federation_token')
+        if fed_token:
+            masked_token = f"{fed_token[:3]}..." if len(fed_token) > 3 else "***"
+            print(f"Fed Token:    {masked_token}")
 
         whitelist_servers = response.get('whitelist_servers', [])
         if whitelist_servers:
@@ -2622,7 +2666,8 @@ def cmd_peer_update(args: argparse.Namespace) -> int:
         )
 
         logger.info(f"Peer registry updated successfully: {args.peer_id}")
-        print(json.dumps(response, indent=2, default=str))
+        masked_response = _mask_sensitive_fields(response)
+        print(json.dumps(masked_response, indent=2, default=str))
         return 0
 
     except FileNotFoundError:
@@ -2654,7 +2699,8 @@ def cmd_peer_remove(args: argparse.Namespace) -> int:
         response = client.remove_peer(peer_id=args.peer_id)
 
         logger.info(f"Peer registry removed: {args.peer_id}")
-        print(json.dumps(response, indent=2, default=str))
+        masked_response = _mask_sensitive_fields(response)
+        print(json.dumps(masked_response, indent=2, default=str))
         return 0
 
     except Exception as e:
@@ -2791,7 +2837,8 @@ def cmd_peer_enable(args: argparse.Namespace) -> int:
         response = client.enable_peer(peer_id=args.peer_id)
 
         logger.info(f"Peer registry enabled: {args.peer_id}")
-        print(json.dumps(response, indent=2, default=str))
+        masked_response = _mask_sensitive_fields(response)
+        print(json.dumps(masked_response, indent=2, default=str))
         return 0
 
     except Exception as e:
@@ -2814,7 +2861,8 @@ def cmd_peer_disable(args: argparse.Namespace) -> int:
         response = client.disable_peer(peer_id=args.peer_id)
 
         logger.info(f"Peer registry disabled: {args.peer_id}")
-        print(json.dumps(response, indent=2, default=str))
+        masked_response = _mask_sensitive_fields(response)
+        print(json.dumps(masked_response, indent=2, default=str))
         return 0
 
     except Exception as e:
