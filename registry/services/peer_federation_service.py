@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from threading import Lock as ThreadingLock
 from typing import Any, Literal, Optional
 
-from ..repositories.factory import get_peer_federation_repository
+from ..repositories.factory import get_peer_federation_repository, get_security_scan_repository
 from ..repositories.interfaces import PeerFederationRepositoryBase
 from ..schemas.agent_models import AgentCard
 from ..schemas.peer_federation_schema import (
@@ -410,8 +410,14 @@ class PeerFederationService:
             if agents is None:
                 agents = []
 
+            # Fetch security scans using client
+            security_scans = client.fetch_security_scans()
+            if security_scans is None:
+                security_scans = []
+
             logger.info(
-                f"Fetched {len(servers)} servers and {len(agents)} agents from peer '{peer_id}'"
+                f"Fetched {len(servers)} servers, {len(agents)} agents, and "
+                f"{len(security_scans)} security scans from peer '{peer_id}'"
             )
 
             # Apply filters based on peer config
@@ -426,6 +432,7 @@ class PeerFederationService:
             # Store fetched items
             servers_stored = await self._store_synced_servers(peer_id, servers)
             agents_stored = await self._store_synced_agents(peer_id, agents)
+            scans_stored = await self._store_synced_security_scans(peer_id, security_scans)
 
             # Extract paths from fetched items for orphan detection
             fetched_server_paths = [s.get("path", "") for s in servers]
@@ -479,7 +486,7 @@ class PeerFederationService:
 
             logger.info(
                 f"Successfully synced peer '{peer_id}': "
-                f"{servers_stored} servers, {agents_stored} agents, "
+                f"{servers_stored} servers, {agents_stored} agents, {scans_stored} security scans, "
                 f"{len(orphaned_servers)} orphaned servers, {len(orphaned_agents)} orphaned agents "
                 f"in {duration_seconds:.2f} seconds"
             )
@@ -1256,6 +1263,88 @@ class PeerFederationService:
                 logger.error(f"Failed to process agent from peer '{peer_id}': {e}", exc_info=True)
 
         logger.info(f"Stored {stored_count}/{len(agents)} agents from peer '{peer_id}'")
+        return stored_count
+
+    async def _store_synced_security_scans(
+        self,
+        peer_id: str,
+        security_scans: list[dict[str, Any]],
+    ) -> int:
+        """
+        Store security scan results fetched from a peer.
+
+        Args:
+            peer_id: Source peer identifier
+            security_scans: List of security scan dictionaries
+
+        Returns:
+            Number of scans stored/updated
+        """
+        stored_count = 0
+
+        if not security_scans:
+            logger.debug(f"No security scans to store from peer '{peer_id}'")
+            return 0
+
+        # Get security scan repository
+        scan_repo = get_security_scan_repository()
+
+        for scan in security_scans:
+            try:
+                # Extract original server path
+                original_server_path = scan.get("server_path", "")
+
+                if not original_server_path:
+                    logger.warning(f"Security scan missing 'server_path' field, skipping")
+                    continue
+
+                # Normalize path - ensure it starts with /
+                normalized_path = (
+                    original_server_path
+                    if original_server_path.startswith("/")
+                    else f"/{original_server_path}"
+                )
+
+                # Prefix path with peer_id to match synced server paths
+                # e.g., "/my-server" becomes "/peer-central/my-server"
+                prefixed_path = f"/{peer_id}{normalized_path}"
+
+                # Create a copy to avoid modifying original
+                scan_data = scan.copy()
+                scan_data["server_path"] = prefixed_path
+
+                # Add sync_metadata to track origin
+                scan_data["sync_metadata"] = {
+                    "source_peer_id": peer_id,
+                    "synced_at": datetime.now(UTC).isoformat(),
+                    "is_federated": True,
+                    "original_server_path": original_server_path,
+                }
+
+                # Store the scan via repository
+                try:
+                    success = await scan_repo.create(scan_data)
+                    if success:
+                        logger.debug(f"Stored synced security scan for: {prefixed_path}")
+                        stored_count += 1
+                    else:
+                        logger.error(f"Failed to store security scan for: {prefixed_path}")
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to store security scan for '{prefixed_path}': {e}",
+                        exc_info=True,
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to process security scan from peer '{peer_id}': {e}",
+                    exc_info=True,
+                )
+
+        logger.info(
+            f"Stored {stored_count}/{len(security_scans)} security scans from peer '{peer_id}'"
+        )
         return stored_count
 
 

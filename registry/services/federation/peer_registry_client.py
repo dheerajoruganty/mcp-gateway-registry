@@ -152,6 +152,75 @@ class PeerRegistryClient(BaseFederationClient):
             )
             return None
 
+    def fetch_security_scans(self) -> list[dict[str, Any]] | None:
+        """
+        Fetch security scan results from peer registry.
+
+        Security scans are filtered by the peer based on server visibility,
+        so only scans for servers visible to this client are returned.
+
+        Returns:
+            List of security scan dictionaries or None if fetch fails
+        """
+        # Build URL
+        url = f"{self.endpoint}/api/federation/security-scans"
+
+        # Get authentication token
+        try:
+            token = self._get_auth_token()
+        except ValueError as e:
+            logger.error(f"Cannot fetch security scans: {e}")
+            return None
+
+        if not token:
+            logger.error(
+                f"Failed to obtain authentication token for peer '{self.peer_config.peer_id}'"
+            )
+            return None
+
+        # Build headers
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        # Make request
+        logger.info(f"Fetching security scans from peer '{self.peer_config.peer_id}'")
+
+        response = self._make_request(url, headers=headers)
+
+        if not response:
+            logger.error(f"Failed to fetch security scans from peer '{self.peer_config.peer_id}'")
+            return None
+
+        # Extract items from response
+        # Expected format: {"items": [...], "sync_generation": N, ...}
+        if isinstance(response, dict):
+            items = response.get("items", [])
+            total_count = response.get("total_count", len(items))
+
+            logger.info(
+                f"Successfully fetched {len(items)} security scans from peer "
+                f"'{self.peer_config.peer_id}' (total={total_count})"
+            )
+            return items
+
+        elif isinstance(response, list):
+            # Handle direct list response
+            logger.info(
+                f"Successfully fetched {len(response)} security scans from peer "
+                f"'{self.peer_config.peer_id}' (direct list response)"
+            )
+            return response
+
+        else:
+            logger.error(
+                f"Unexpected response format from peer '{self.peer_config.peer_id}': "
+                f"{type(response)}"
+            )
+            return None
+
     def fetch_agents(self, since_generation: int | None = None) -> list[dict[str, Any]] | None:
         """
         Fetch agents from peer registry.

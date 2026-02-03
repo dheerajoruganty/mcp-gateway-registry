@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from ..auth.dependencies import nginx_proxied_auth
 from ..core.config import settings
 from ..schemas.peer_federation_schema import FederationExportResponse
+from ..repositories.factory import get_security_scan_repository
 from ..services.agent_service import agent_service
 from ..services.federation_audit_service import get_federation_audit_service
 from ..services.peer_federation_service import get_peer_federation_service
@@ -203,7 +204,8 @@ def _filter_by_generation(
                           If 0, returns only items with generation > 0.
 
     Returns:
-        Filtered list of items with generation > since_generation
+        Filtered list of items with generation > since_generation,
+        plus all items without sync_metadata (local items never synced).
     """
     # Full sync: return all items if since_generation is None
     if since_generation is None:
@@ -217,16 +219,18 @@ def _filter_by_generation(
                 item_generation = sync_metadata.get("sync_generation", 0)
             else:
                 item_generation = getattr(sync_metadata, "sync_generation", 0)
-        else:
-            # Items without sync_metadata are considered new (generation 0)
-            # and should be included in all syncs
-            item_generation = 0
 
-        if item_generation > since_generation:
+            # Include if item's generation is newer than requested
+            if item_generation > since_generation:
+                filtered.append(item)
+        else:
+            # Items without sync_metadata are local items that have never been
+            # synced - always include them as they're "new" to the peer
             filtered.append(item)
 
     logger.debug(
-        f"Filtered {len(items)} items to {len(filtered)} with generation > {since_generation}"
+        f"Filtered {len(items)} items to {len(filtered)} with generation > {since_generation} "
+        f"(includes items without sync_metadata)"
     )
 
     return filtered
@@ -544,6 +548,137 @@ async def export_agents(
         peer_name=user_context.get("peer_name", ""),
         client_id=user_context.get("client_id", ""),
         endpoint="/api/federation/agents",
+        items_requested=len(items),
+        success=True,
+    )
+
+    return FederationExportResponse(
+        items=items,
+        sync_generation=await _get_current_sync_generation(),
+        total_count=total_count,
+        has_more=has_more,
+        registry_id=_get_registry_id(),
+    )
+
+
+@router.get(
+    "/security-scans",
+    response_model=FederationExportResponse,
+)
+async def export_security_scans(
+    limit: int = Query(
+        DEFAULT_PAGE_LIMIT,
+        ge=1,
+        le=MAX_PAGE_LIMIT,
+        description=f"Maximum items per page (default {DEFAULT_PAGE_LIMIT}, max {MAX_PAGE_LIMIT})",
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Number of items to skip (default 0)",
+    ),
+    user_context: Annotated[dict[str, Any], Depends(federation_auth)] = None,
+):
+    """
+    Export security scan results for federation sync.
+
+    Returns security scan results only for servers that are visible to the peer
+    based on the server's visibility settings. This ensures peers only receive
+    security information for servers they can access.
+
+    **Authentication:** Requires JWT with 'federation-service' or 'federation/read' scope
+
+    **Visibility filtering:**
+    - Only returns scans for servers with visibility=public
+    - Returns scans for group-restricted servers only if peer is in allowed_groups
+    - Never returns scans for internal servers
+
+    **Pagination:**
+    - Use limit and offset for pagination
+    - Check has_more to determine if more pages exist
+
+    Args:
+        limit: Maximum items per page
+        offset: Number of items to skip
+        user_context: Authenticated peer context
+
+    Returns:
+        FederationExportResponse with security scan results
+
+    Raises:
+        HTTPException: 401 if unauthenticated, 403 if missing federation scope
+    """
+    logger.info(
+        f"Federation export request for security scans from peer '{user_context['username']}' "
+        f"(limit={limit}, offset={offset})"
+    )
+
+    # Get all servers to build visibility map
+    all_servers_dict = await server_service.get_all_servers()
+
+    # Build a set of visible server paths for this peer
+    peer_groups = user_context.get("groups", [])
+    peer_group_set = set(peer_groups)
+    visible_server_paths: set[str] = set()
+
+    for path, server_data in all_servers_dict.items():
+        # Check if server is enabled
+        if not await server_service.is_service_enabled(path):
+            continue
+
+        # Check visibility
+        visibility = server_data.get("visibility", "public")
+
+        if visibility == "internal":
+            continue
+
+        if visibility == "public":
+            visible_server_paths.add(path)
+            continue
+
+        if visibility == "group-restricted":
+            allowed_groups = set(server_data.get("allowed_groups", []))
+            if allowed_groups & peer_group_set:
+                visible_server_paths.add(path)
+
+    logger.debug(
+        f"Visible server paths for peer: {len(visible_server_paths)} servers"
+    )
+
+    # Get all security scans from repository
+    scan_repo = get_security_scan_repository()
+    all_scans = await scan_repo.list_all()
+
+    # Filter scans to only include those for visible servers
+    visible_scans = []
+    for scan in all_scans:
+        server_path = scan.get("server_path", "")
+        if server_path in visible_server_paths:
+            visible_scans.append(scan)
+
+    logger.debug(
+        f"Filtered {len(all_scans)} scans to {len(visible_scans)} for visible servers"
+    )
+
+    # Apply pagination
+    total_count = len(visible_scans)
+    paginated_scans, has_more = _paginate(visible_scans, limit, offset)
+
+    # Convert to dict format (scans are already dicts)
+    items = [_item_to_dict(scan) for scan in paginated_scans]
+
+    logger.info(
+        f"Exporting {len(items)} security scans to peer '{user_context['username']}' "
+        f"(total visible: {total_count}, has_more: {has_more})"
+    )
+
+    # Log the connection for audit trail
+    audit_service = get_federation_audit_service()
+    await audit_service.log_connection(
+        peer_id=user_context.get("peer_id", user_context.get("username", "unknown")),
+        peer_name=user_context.get("peer_name", ""),
+        client_id=user_context.get("client_id", ""),
+        endpoint="/api/federation/security-scans",
         items_requested=len(items),
         success=True,
     )
