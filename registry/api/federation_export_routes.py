@@ -25,7 +25,7 @@ from ..services.server_service import server_service
 logger = logging.getLogger(__name__)
 
 
-router = APIRouter(prefix="/api/v1/federation", tags=["federation"])
+router = APIRouter(prefix="/api/federation", tags=["federation"])
 
 
 # Constants
@@ -90,24 +90,31 @@ def _get_registry_id() -> str:
 def _check_federation_scope(
     user_context: dict[str, Any],
 ) -> None:
-    """
-    Check if user has federation-service scope.
+    """Check if user has federation access scope.
+
+    Accepts either:
+    - 'federation-service' scope (OAuth2 JWT from Keycloak service account)
+    - 'federation/read' scope (federation static token)
 
     Args:
         user_context: User context from auth dependency
 
     Raises:
-        HTTPException: 403 if federation-service scope not present
+        HTTPException: 403 if no federation scope is present
     """
     scopes = user_context.get("scopes", [])
-    if "federation-service" not in scopes:
+    has_federation_scope = (
+        "federation-service" in scopes
+        or "federation/read" in scopes
+    )
+    if not has_federation_scope:
         logger.warning(
             f"User {user_context.get('username')} attempted federation access "
-            f"without federation-service scope. Scopes: {scopes}"
+            f"without federation scope. Scopes: {scopes}"
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Federation access requires 'federation-service' scope",
+            detail="Federation access requires 'federation-service' or 'federation/read' scope",
         )
 
 
@@ -426,7 +433,7 @@ async def export_servers(
         peer_id=user_context.get("peer_id", user_context.get("username", "unknown")),
         peer_name=user_context.get("peer_name", ""),
         client_id=user_context.get("client_id", ""),
-        endpoint="/api/v1/federation/servers",
+        endpoint="/api/federation/servers",
         items_requested=len(items),
         success=True,
     )
@@ -535,7 +542,7 @@ async def export_agents(
         peer_id=user_context.get("peer_id", user_context.get("username", "unknown")),
         peer_name=user_context.get("peer_name", ""),
         client_id=user_context.get("client_id", ""),
-        endpoint="/api/v1/federation/agents",
+        endpoint="/api/federation/agents",
         items_requested=len(items),
         success=True,
     )

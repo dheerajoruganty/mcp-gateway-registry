@@ -171,12 +171,12 @@ def sample_agent_group_restricted() -> dict[str, Any]:
 
 @pytest.mark.unit
 class TestFederationHealth:
-    """Test suite for GET /api/v1/federation/health endpoint."""
+    """Test suite for GET /api/federation/health endpoint."""
 
     def test_health_returns_200(self) -> None:
         """Test health endpoint returns 200 when registry is healthy (2.SC9)."""
         client = TestClient(app)
-        response = client.get("/api/v1/federation/health")
+        response = client.get("/api/federation/health")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -189,7 +189,7 @@ class TestFederationHealth:
         """Test health endpoint does NOT require authentication."""
         # Health endpoint should work without any auth
         client = TestClient(app)
-        response = client.get("/api/v1/federation/health")
+        response = client.get("/api/federation/health")
 
         assert response.status_code == status.HTTP_200_OK
 
@@ -199,7 +199,7 @@ class TestFederationAuthRequirements:
     """Test suite for federation authentication requirements."""
 
     def test_export_servers_requires_auth(self) -> None:
-        """Test unauthenticated requests to /api/v1/federation/servers return 401 (2.SC1)."""
+        """Test unauthenticated requests to /api/federation/servers return 401 (2.SC1)."""
         from fastapi import HTTPException
 
         from registry.auth.dependencies import nginx_proxied_auth
@@ -219,14 +219,14 @@ class TestFederationAuthRequirements:
         app.dependency_overrides[nginx_proxied_auth] = _mock_no_auth
 
         client = TestClient(app)
-        response = client.get("/api/v1/federation/servers")
+        response = client.get("/api/federation/servers")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
         app.dependency_overrides.clear()
 
     def test_export_agents_requires_auth(self) -> None:
-        """Test unauthenticated requests to /api/v1/federation/agents return 401 (2.SC1)."""
+        """Test unauthenticated requests to /api/federation/agents return 401 (2.SC1)."""
         from fastapi import HTTPException
 
         from registry.auth.dependencies import nginx_proxied_auth
@@ -246,7 +246,7 @@ class TestFederationAuthRequirements:
         app.dependency_overrides[nginx_proxied_auth] = _mock_no_auth
 
         client = TestClient(app)
-        response = client.get("/api/v1/federation/agents")
+        response = client.get("/api/federation/agents")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -262,7 +262,7 @@ class TestFederationAuthRequirements:
         app.dependency_overrides[nginx_proxied_auth] = mock_federation_auth_missing_scope
 
         client = TestClient(app)
-        response = client.get("/api/v1/federation/servers")
+        response = client.get("/api/federation/servers")
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert "federation-service" in response.json()["detail"]
@@ -300,7 +300,7 @@ class TestVisibilityFiltering:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/servers")
+            response = client.get("/api/federation/servers")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -337,7 +337,7 @@ class TestVisibilityFiltering:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/servers")
+            response = client.get("/api/federation/servers")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -375,7 +375,7 @@ class TestVisibilityFiltering:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/servers")
+            response = client.get("/api/federation/servers")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -410,7 +410,7 @@ class TestVisibilityFiltering:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/servers")
+            response = client.get("/api/federation/servers")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -452,7 +452,7 @@ class TestVisibilityFiltering:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/servers")
+            response = client.get("/api/federation/servers")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -500,19 +500,19 @@ class TestIncrementalSync:
             client = TestClient(app)
 
             # Request with since_generation=5 (should return server with gen 10)
-            response = client.get("/api/v1/federation/servers?since_generation=5")
+            response = client.get("/api/federation/servers?since_generation=5")
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             assert len(data["items"]) == 1
 
             # Request with since_generation=10 (should NOT return server with gen 10)
-            response = client.get("/api/v1/federation/servers?since_generation=10")
+            response = client.get("/api/federation/servers?since_generation=10")
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             assert len(data["items"]) == 0
 
             # Request with since_generation=15 (should NOT return server with gen 10)
-            response = client.get("/api/v1/federation/servers?since_generation=15")
+            response = client.get("/api/federation/servers?since_generation=15")
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             assert len(data["items"]) == 0
@@ -544,7 +544,7 @@ class TestIncrementalSync:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/servers?since_generation=0")
+            response = client.get("/api/federation/servers?since_generation=0")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -579,7 +579,7 @@ class TestIncrementalSync:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/servers")
+            response = client.get("/api/federation/servers")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -629,21 +629,21 @@ class TestPagination:
             client = TestClient(app)
 
             # Test limit
-            response = client.get("/api/v1/federation/servers?limit=2")
+            response = client.get("/api/federation/servers?limit=2")
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             assert len(data["items"]) == 2
             assert data["has_more"] is True
 
             # Test offset
-            response = client.get("/api/v1/federation/servers?limit=2&offset=2")
+            response = client.get("/api/federation/servers?limit=2&offset=2")
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             assert len(data["items"]) == 2
             assert data["has_more"] is True
 
             # Test last page
-            response = client.get("/api/v1/federation/servers?limit=2&offset=4")
+            response = client.get("/api/federation/servers?limit=2&offset=4")
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             assert len(data["items"]) == 1
@@ -667,7 +667,7 @@ class TestPagination:
         ):
             client = TestClient(app)
             # Requesting limit=2000 should be rejected by validation
-            response = client.get("/api/v1/federation/servers?limit=2000")
+            response = client.get("/api/federation/servers?limit=2000")
 
             assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
@@ -698,7 +698,7 @@ class TestPagination:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/servers")
+            response = client.get("/api/federation/servers")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -731,7 +731,7 @@ class TestEmptyRegistry:
             return_value={},
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/servers")
+            response = client.get("/api/federation/servers")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -757,7 +757,7 @@ class TestEmptyRegistry:
             return_value=[],
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/agents")
+            response = client.get("/api/federation/agents")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -771,7 +771,7 @@ class TestEmptyRegistry:
 
 @pytest.mark.unit
 class TestAgentsEndpoint:
-    """Test suite for GET /api/v1/federation/agents endpoint."""
+    """Test suite for GET /api/federation/agents endpoint."""
 
     def test_export_agents_success(
         self,
@@ -805,7 +805,7 @@ class TestAgentsEndpoint:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/agents")
+            response = client.get("/api/federation/agents")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -855,7 +855,7 @@ class TestAgentsEndpoint:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/agents")
+            response = client.get("/api/federation/agents")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -1111,7 +1111,7 @@ class TestDisabledItemsFiltering:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/servers")
+            response = client.get("/api/federation/servers")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
@@ -1149,7 +1149,7 @@ class TestDisabledItemsFiltering:
             ),
         ):
             client = TestClient(app)
-            response = client.get("/api/v1/federation/agents")
+            response = client.get("/api/federation/agents")
 
             assert response.status_code == status.HTTP_200_OK
             data = response.json()

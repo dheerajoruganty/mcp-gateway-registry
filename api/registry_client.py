@@ -832,8 +832,7 @@ class RegistryClient:
             endpoint.startswith("/api/management") or
             endpoint.startswith("/api/search") or
             endpoint.startswith("/api/federation") or
-            endpoint.startswith("/api/v1/federation") or
-            endpoint.startswith("/api/v1/peers") or
+            endpoint.startswith("/api/peers") or
             endpoint == "/api/servers/groups/import" or
             "/versions" in endpoint):
             # Send as JSON for agent, management, search, federation, and import endpoints
@@ -2569,7 +2568,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="GET",
-            endpoint="/api/v1/peers",
+            endpoint="/api/peers",
             params=params if params else None
         )
 
@@ -2599,7 +2598,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="POST",
-            endpoint="/api/v1/peers",
+            endpoint="/api/peers",
             data=config
         )
 
@@ -2628,7 +2627,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="GET",
-            endpoint=f"/api/v1/peers/{peer_id}"
+            endpoint=f"/api/peers/{peer_id}"
         )
 
         result = response.json()
@@ -2658,7 +2657,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="PUT",
-            endpoint=f"/api/v1/peers/{peer_id}",
+            endpoint=f"/api/peers/{peer_id}",
             data=config
         )
 
@@ -2687,7 +2686,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="DELETE",
-            endpoint=f"/api/v1/peers/{peer_id}"
+            endpoint=f"/api/peers/{peer_id}"
         )
 
         result = response.json()
@@ -2715,7 +2714,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="POST",
-            endpoint=f"/api/v1/peers/{peer_id}/sync"
+            endpoint=f"/api/peers/{peer_id}/sync"
         )
 
         result = response.json()
@@ -2737,7 +2736,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="POST",
-            endpoint="/api/v1/peers/sync"
+            endpoint="/api/peers/sync"
         )
 
         result = response.json()
@@ -2765,7 +2764,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="GET",
-            endpoint=f"/api/v1/peers/{peer_id}/status"
+            endpoint=f"/api/peers/{peer_id}/status"
         )
 
         result = response.json()
@@ -2793,7 +2792,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="POST",
-            endpoint=f"/api/v1/peers/{peer_id}/enable"
+            endpoint=f"/api/peers/{peer_id}/enable"
         )
 
         result = response.json()
@@ -2821,7 +2820,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="POST",
-            endpoint=f"/api/v1/peers/{peer_id}/disable"
+            endpoint=f"/api/peers/{peer_id}/disable"
         )
 
         result = response.json()
@@ -2843,7 +2842,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="GET",
-            endpoint="/api/v1/peers/connections/all"
+            endpoint="/api/peers/connections/all"
         )
 
         result = response.json()
@@ -2865,7 +2864,7 @@ class RegistryClient:
 
         response = self._make_request(
             method="GET",
-            endpoint="/api/v1/peers/shared-resources"
+            endpoint="/api/peers/shared-resources"
         )
 
         result = response.json()

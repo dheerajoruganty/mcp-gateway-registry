@@ -31,20 +31,46 @@ class PeerRegistryClient(BaseFederationClient):
         """
         super().__init__(peer_config.endpoint, timeout_seconds, retry_attempts)
         self.peer_config = peer_config
+
+        # Per-peer federation static token takes priority over global OAuth2
+        self._federation_token = peer_config.federation_token
         self._auth_manager = FederationAuthManager()
 
-        # Validate auth is configured
-        if not self._auth_manager.is_configured():
+        # Validate auth is configured (either per-peer token or global OAuth2)
+        if self._federation_token:
+            logger.info(
+                f"Using per-peer federation static token for peer '{peer_config.peer_id}'"
+            )
+        elif not self._auth_manager.is_configured():
             logger.warning(
                 f"Federation authentication not configured for peer '{peer_config.peer_id}'. "
-                "API calls will fail until FEDERATION_TOKEN_ENDPOINT, "
-                "FEDERATION_CLIENT_ID, and FEDERATION_CLIENT_SECRET are set."
+                "Set federation_token in peer config, or set FEDERATION_TOKEN_ENDPOINT, "
+                "FEDERATION_CLIENT_ID, and FEDERATION_CLIENT_SECRET environment variables."
             )
 
         logger.info(
             f"Initialized PeerRegistryClient for peer '{peer_config.peer_id}' "
             f"at {peer_config.endpoint}"
         )
+
+    def _get_auth_token(self) -> str | None:
+        """Get authentication token for this peer.
+
+        Uses per-peer federation static token if configured,
+        otherwise falls back to global OAuth2 FederationAuthManager.
+
+        Returns:
+            Bearer token string, or None if auth fails.
+
+        Raises:
+            ValueError: If no authentication method is configured.
+        """
+        # Per-peer federation static token takes priority
+        if self._federation_token:
+            return self._federation_token
+
+        # Fall back to global OAuth2 auth manager
+        return self._auth_manager.get_token()
 
     def fetch_servers(self, since_generation: int | None = None) -> list[dict[str, Any]] | None:
         """
@@ -58,11 +84,11 @@ class PeerRegistryClient(BaseFederationClient):
             List of server dictionaries or None if fetch fails
         """
         # Build URL
-        url = f"{self.endpoint}/api/v1/federation/servers"
+        url = f"{self.endpoint}/api/federation/servers"
 
         # Get authentication token
         try:
-            token = self._auth_manager.get_token()
+            token = self._get_auth_token()
         except ValueError as e:
             logger.error(f"Cannot fetch servers: {e}")
             return None
@@ -138,11 +164,11 @@ class PeerRegistryClient(BaseFederationClient):
             List of agent dictionaries or None if fetch fails
         """
         # Build URL
-        url = f"{self.endpoint}/api/v1/federation/agents"
+        url = f"{self.endpoint}/api/federation/agents"
 
         # Get authentication token
         try:
-            token = self._auth_manager.get_token()
+            token = self._get_auth_token()
         except ValueError as e:
             logger.error(f"Cannot fetch agents: {e}")
             return None

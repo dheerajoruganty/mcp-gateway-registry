@@ -20,6 +20,10 @@ from ...schemas.peer_federation_schema import (
     PeerRegistryConfig,
     PeerSyncStatus,
 )
+from ...utils.federation_encryption import (
+    decrypt_token_in_peer_dict,
+    encrypt_token_in_peer_dict,
+)
 from ..interfaces import PeerFederationRepositoryBase
 
 logger = logging.getLogger(__name__)
@@ -146,6 +150,9 @@ class FilePeerFederationRepository(PeerFederationRepositoryBase):
                 logger.warning(f"Missing peer_id in {file_path}")
                 return None
 
+            # Decrypt federation token if present
+            decrypt_token_in_peer_dict(peer_data)
+
             peer_config = PeerRegistryConfig(**peer_data)
             return peer_config
 
@@ -168,6 +175,9 @@ class FilePeerFederationRepository(PeerFederationRepositoryBase):
             file_path = _get_safe_file_path(peer_config.peer_id, self._peers_dir)
 
             peer_dict = peer_config.model_dump(mode="json")
+
+            # Encrypt federation token before storage
+            encrypt_token_in_peer_dict(peer_dict)
 
             with open(file_path, "w") as f:
                 json.dump(peer_dict, f, indent=2)

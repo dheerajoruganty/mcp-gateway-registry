@@ -32,8 +32,47 @@ from ..services.peer_federation_service import get_peer_federation_service
 logger = logging.getLogger(__name__)
 
 
+def _check_peer_management_scope(
+    user_context: dict[str, Any],
+) -> None:
+    """Check if user has permission to manage peers.
+
+    Allows access for:
+    - Admin users (network-trusted or mcp-registry-admin group)
+    - Federation-static token users (have federation/peers scope)
+
+    Args:
+        user_context: User context from auth dependency
+
+    Raises:
+        HTTPException: 403 if user lacks peer management permission
+    """
+    # Admins always have access
+    if user_context.get("is_admin", False):
+        return
+
+    # Check for federation/peers scope (federation static token)
+    scopes = user_context.get("scopes", [])
+    if "federation/peers" in scopes:
+        return
+
+    # Check for admin group
+    groups = user_context.get("groups", [])
+    if "mcp-registry-admin" in groups:
+        return
+
+    logger.warning(
+        f"User {user_context.get('username')} attempted peer management "
+        f"without required scope. Scopes: {scopes}, Groups: {groups}"
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Peer management requires admin privileges or federation/peers scope",
+    )
+
+
 router = APIRouter(
-    prefix="/api/v1/peers",
+    prefix="/api/peers",
     tags=["peer-management"],
 )
 
@@ -61,9 +100,10 @@ async def list_peers(
         List of peer registry configurations
 
     Example:
-        GET /api/v1/peers
-        GET /api/v1/peers?enabled=true
+        GET /api/peers
+        GET /api/peers?enabled=true
     """
+    _check_peer_management_scope(user_context)
     logger.info(f"User '{user_context.get('username')}' listing peers (enabled={enabled})")
 
     service = get_peer_federation_service()
@@ -93,7 +133,7 @@ async def create_peer(
         HTTPException: 400 if validation fails
 
     Example:
-        POST /api/v1/peers
+        POST /api/peers
         {
             "peer_id": "central-registry",
             "name": "Central MCP Registry",
@@ -103,6 +143,7 @@ async def create_peer(
             "sync_interval_minutes": 30
         }
     """
+    _check_peer_management_scope(user_context)
     logger.info(f"User '{user_context.get('username')}' creating peer '{config.peer_id}'")
 
     service = get_peer_federation_service()
@@ -143,9 +184,10 @@ async def sync_all_peers(
         Dictionary mapping peer_id to SyncResult
 
     Example:
-        POST /api/v1/peers/sync
-        POST /api/v1/peers/sync?enabled_only=false
+        POST /api/peers/sync
+        POST /api/peers/sync?enabled_only=false
     """
+    _check_peer_management_scope(user_context)
     logger.info(
         f"User '{user_context.get('username')}' triggering sync for all peers "
         f"(enabled_only={enabled_only})"
@@ -190,9 +232,10 @@ async def get_all_connections(
         List of all connection logs
 
     Example:
-        GET /api/v1/peers/connections/all
-        GET /api/v1/peers/connections/all?limit=50
+        GET /api/peers/connections/all
+        GET /api/peers/connections/all?limit=50
     """
+    _check_peer_management_scope(user_context)
     logger.info(f"User '{user_context.get('username')}' retrieving all federation connections")
 
     audit_service = get_federation_audit_service()
@@ -222,8 +265,9 @@ async def get_shared_resources(
         Dictionary mapping peer_id to PeerSyncSummary
 
     Example:
-        GET /api/v1/peers/shared-resources
+        GET /api/peers/shared-resources
     """
+    _check_peer_management_scope(user_context)
     logger.info(f"User '{user_context.get('username')}' retrieving shared resources summary")
 
     audit_service = get_federation_audit_service()
@@ -258,8 +302,9 @@ async def get_peer(
         HTTPException: 404 if peer not found
 
     Example:
-        GET /api/v1/peers/central-registry
+        GET /api/peers/central-registry
     """
+    _check_peer_management_scope(user_context)
     logger.info(f"User '{user_context.get('username')}' retrieving peer '{peer_id}'")
 
     service = get_peer_federation_service()
@@ -297,12 +342,13 @@ async def update_peer(
         HTTPException: 400 if validation fails
 
     Example:
-        PUT /api/v1/peers/central-registry
+        PUT /api/peers/central-registry
         {
             "enabled": false,
             "sync_interval_minutes": 60
         }
     """
+    _check_peer_management_scope(user_context)
     logger.info(
         f"User '{user_context.get('username')}' updating peer '{peer_id}' with updates: {updates}"
     )
@@ -345,8 +391,9 @@ async def delete_peer(
         HTTPException: 404 if peer not found
 
     Example:
-        DELETE /api/v1/peers/central-registry
+        DELETE /api/peers/central-registry
     """
+    _check_peer_management_scope(user_context)
     logger.info(f"User '{user_context.get('username')}' deleting peer '{peer_id}'")
 
     service = get_peer_federation_service()
@@ -384,8 +431,9 @@ async def sync_peer(
         HTTPException: 400 if peer is disabled
 
     Example:
-        POST /api/v1/peers/central-registry/sync
+        POST /api/peers/central-registry/sync
     """
+    _check_peer_management_scope(user_context)
     logger.info(f"User '{user_context.get('username')}' triggering sync for peer '{peer_id}'")
 
     service = get_peer_federation_service()
@@ -433,8 +481,9 @@ async def get_peer_status(
         HTTPException: 404 if peer not found
 
     Example:
-        GET /api/v1/peers/central-registry/status
+        GET /api/peers/central-registry/status
     """
+    _check_peer_management_scope(user_context)
     logger.info(f"User '{user_context.get('username')}' retrieving status for peer '{peer_id}'")
 
     service = get_peer_federation_service()
@@ -470,8 +519,9 @@ async def enable_peer(
         HTTPException: 404 if peer not found
 
     Example:
-        POST /api/v1/peers/central-registry/enable
+        POST /api/peers/central-registry/enable
     """
+    _check_peer_management_scope(user_context)
     logger.info(f"User '{user_context.get('username')}' enabling peer '{peer_id}'")
 
     service = get_peer_federation_service()
@@ -507,8 +557,9 @@ async def disable_peer(
         HTTPException: 404 if peer not found
 
     Example:
-        POST /api/v1/peers/central-registry/disable
+        POST /api/peers/central-registry/disable
     """
+    _check_peer_management_scope(user_context)
     logger.info(f"User '{user_context.get('username')}' disabling peer '{peer_id}'")
 
     service = get_peer_federation_service()
@@ -548,9 +599,10 @@ async def get_peer_connections(
         List of connection logs for the peer
 
     Example:
-        GET /api/v1/peers/central-registry/connections
-        GET /api/v1/peers/central-registry/connections?since=2024-01-01T00:00:00Z
+        GET /api/peers/central-registry/connections
+        GET /api/peers/central-registry/connections?since=2024-01-01T00:00:00Z
     """
+    _check_peer_management_scope(user_context)
     logger.info(
         f"User '{user_context.get('username')}' retrieving connections for peer '{peer_id}'"
     )
@@ -585,8 +637,9 @@ async def get_peer_shared_resources(
         HTTPException: 404 if peer has no connection history
 
     Example:
-        GET /api/v1/peers/central-registry/shared-resources
+        GET /api/peers/central-registry/shared-resources
     """
+    _check_peer_management_scope(user_context)
     logger.info(
         f"User '{user_context.get('username')}' retrieving shared resources for peer '{peer_id}'"
     )

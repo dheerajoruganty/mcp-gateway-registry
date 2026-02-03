@@ -222,6 +222,16 @@ class PeerRegistryConfig(BaseModel):
         description=f"Sync interval in minutes ({MIN_SYNC_INTERVAL_MINUTES}-{MAX_SYNC_INTERVAL_MINUTES})",
     )
 
+    # Federation static token (for peer-to-peer sync without OAuth2)
+    # This is the FEDERATION_STATIC_TOKEN value from the remote peer registry.
+    # When set, the client uses this directly as Bearer token instead of OAuth2.
+    federation_token: str | None = Field(
+        default=None,
+        description="Federation static token from the remote peer registry. "
+        "Used as Bearer token for sync requests when the peer has "
+        "FEDERATION_STATIC_TOKEN_AUTH_ENABLED=true.",
+    )
+
     # Identity binding (for peer identification via OAuth2 tokens)
     expected_client_id: str | None = Field(
         default=None,
@@ -252,6 +262,7 @@ class PeerRegistryConfig(BaseModel):
                 "enabled": True,
                 "sync_mode": "all",
                 "sync_interval_minutes": 30,
+                "federation_token": None,
                 "expected_client_id": "uuid-central-1111-2222-3333",
                 "expected_issuer": "https://login.microsoftonline.com/tenant-id/v2.0",
             }

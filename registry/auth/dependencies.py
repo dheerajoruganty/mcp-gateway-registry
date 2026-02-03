@@ -494,6 +494,9 @@ async def nginx_proxied_auth(
     x_auth_method: Annotated[
         str | None, Header(alias="X-Auth-Method", include_in_schema=False)
     ] = None,
+    x_client_id: Annotated[
+        str | None, Header(alias="X-Client-Id", include_in_schema=False)
+    ] = None,
 ) -> dict[str, Any]:
     """
     Authentication dependency that works with both nginx-proxied requests and direct requests.
@@ -538,7 +541,7 @@ async def nginx_proxied_auth(
 
         # Map scopes to get groups based on auth method
         groups = []
-        if x_auth_method in ["keycloak", "entra", "cognito", "network-trusted"]:
+        if x_auth_method in ["keycloak", "entra", "cognito", "network-trusted", "federation-static"]:
             # User authenticated via OAuth2 JWT (Keycloak, Entra ID, or Cognito)
             # Scopes already contain mapped permissions
             # Check if user has admin scopes
@@ -554,20 +557,10 @@ async def nginx_proxied_auth(
             f"nginx-proxied auth for user: {username}, method: {x_auth_method}, scopes: {scopes}"
         )
 
-        # Get accessible servers based on scopes
-        accessible_servers = await get_user_accessible_servers(scopes)
-
-        # Get UI permissions
-        ui_permissions = await get_ui_permissions_for_user(scopes)
-
-        # Get accessible services
-        accessible_services = get_accessible_services_for_user(ui_permissions)
-
-        # Get accessible agents
-        accessible_agents = get_accessible_agents_for_user(ui_permissions)
-
-        # Network-trusted mode: grant full admin UI permissions
+        # Network-trusted mode: grant full admin access directly
+        # (avoids database lookups that may fail if scope documents are missing)
         if x_auth_method == "network-trusted":
+            accessible_servers = []
             accessible_services = ["all"]
             accessible_agents = ["all"]
             ui_permissions = {
@@ -582,20 +575,38 @@ async def nginx_proxied_auth(
                 "modify_agent": ["all"],
                 "delete_agent": ["all"],
             }
-
-        # Check modification permissions
-        can_modify = user_can_modify_servers(groups, scopes)
-
-        # Network-trusted mode: grant full admin access directly
-        # (avoids database lookup that may fail if scope documents are missing)
-        if x_auth_method == "network-trusted":
-            is_admin = True
             can_modify = True
+            is_admin = True
+        elif x_auth_method == "federation-static":
+            # Federation static token: scoped access to federation/peer endpoints only
+            # No server/agent/service access needed
+            accessible_servers = []
+            accessible_services = []
+            accessible_agents = []
+            ui_permissions = {}
+            can_modify = False
+            is_admin = False
         else:
+            # Get accessible servers based on scopes
+            accessible_servers = await get_user_accessible_servers(scopes)
+
+            # Get UI permissions
+            ui_permissions = await get_ui_permissions_for_user(scopes)
+
+            # Get accessible services
+            accessible_services = get_accessible_services_for_user(ui_permissions)
+
+            # Get accessible agents
+            accessible_agents = get_accessible_agents_for_user(ui_permissions)
+
+            # Check modification permissions
+            can_modify = user_can_modify_servers(groups, scopes)
+
             is_admin = await user_has_wildcard_access(scopes)
 
         user_context = {
             "username": username,
+            "client_id": x_client_id or "",
             "groups": groups,
             "scopes": scopes,
             "auth_method": x_auth_method or "keycloak",

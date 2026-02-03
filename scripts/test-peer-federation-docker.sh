@@ -215,7 +215,7 @@ main() {
 
     # Check federation export endpoint
     print_section "Testing Federation Export (Registry A)"
-    FED_EXPORT=$(curl -s -b "$COOKIE_A" "$REGISTRY_A_URL/api/v1/federation/servers")
+    FED_EXPORT=$(curl -s -b "$COOKIE_A" "$REGISTRY_A_URL/api/federation/servers")
     echo "$FED_EXPORT" | python3 -m json.tool 2>/dev/null || echo "$FED_EXPORT"
 
     EXPORT_COUNT=$(echo "$FED_EXPORT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total_count', 0))" 2>/dev/null || echo "0")
@@ -230,7 +230,7 @@ main() {
     print_info "Adding Registry A as peer..."
 
     # Note: Using internal Docker network hostname
-    PEER_RESULT=$(curl -s -b "$COOKIE_B" -X POST "$REGISTRY_B_URL/api/v1/peers" \
+    PEER_RESULT=$(curl -s -b "$COOKIE_B" -X POST "$REGISTRY_B_URL/api/peers" \
         -H "Content-Type: application/json" \
         -d '{
             "peer_id": "registry-a",
@@ -250,12 +250,12 @@ main() {
 
     # List peers on Registry B
     print_section "Peers on Registry B"
-    curl -s -b "$COOKIE_B" "$REGISTRY_B_URL/api/v1/peers" | python3 -m json.tool 2>/dev/null || true
+    curl -s -b "$COOKIE_B" "$REGISTRY_B_URL/api/peers" | python3 -m json.tool 2>/dev/null || true
 
     # Trigger sync
     print_section "Triggering Sync"
     print_info "Syncing from Registry A to Registry B..."
-    SYNC_RESULT=$(curl -s -b "$COOKIE_B" -X POST "$REGISTRY_B_URL/api/v1/peers/registry-a/sync")
+    SYNC_RESULT=$(curl -s -b "$COOKIE_B" -X POST "$REGISTRY_B_URL/api/peers/registry-a/sync")
     echo "$SYNC_RESULT" | python3 -m json.tool 2>/dev/null || echo "$SYNC_RESULT"
 
     SYNC_SUCCESS=$(echo "$SYNC_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "false")
@@ -271,7 +271,7 @@ main() {
 
     # Check peer status
     print_section "Peer Sync Status"
-    curl -s -b "$COOKIE_B" "$REGISTRY_B_URL/api/v1/peers/registry-a/status" | python3 -m json.tool 2>/dev/null || true
+    curl -s -b "$COOKIE_B" "$REGISTRY_B_URL/api/peers/registry-a/status" | python3 -m json.tool 2>/dev/null || true
 
     # Verify servers on Registry B
     print_section "Servers on Registry B (After Sync)"

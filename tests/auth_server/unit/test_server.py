@@ -1034,8 +1034,7 @@ class TestNetworkTrustedMode:
             )
 
             # Assert - should NOT return network-trusted response
-            if response.status_code == 200:
-                assert response.json().get("method") != "network-trusted"
+            assert response.json().get("method") != "network-trusted"
 
     def test_network_trusted_bypasses_v01_api(self):
         """When enabled, /v0.1/* requests also bypass JWT validation."""
@@ -1136,8 +1135,7 @@ class TestNetworkTrustedMode:
             )
 
             # Assert - should NOT return network-trusted (falls through to JWT validation)
-            if response.status_code == 200:
-                assert response.json().get("method") != "network-trusted"
+            assert response.json().get("method") != "network-trusted"
 
     def test_network_trusted_skips_bypass_when_session_cookie_present(self):
         """When session cookie is present, bypass is skipped for normal cookie auth flow."""
@@ -1163,3 +1161,51 @@ class TestNetworkTrustedMode:
             # It will fail session validation, but not with the bypass 401 message
             if response.status_code == 401:
                 assert "Authorization header required" not in response.json().get("detail", "")
+
+    def test_network_trusted_rejects_non_bearer_scheme(self):
+        """Authorization header with non-Bearer scheme is rejected."""
+        # Arrange
+        import auth_server.server as server_module
+
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", True),
+            patch.object(server_module, "REGISTRY_API_TOKEN", "test-api-key"),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act - send Basic auth instead of Bearer
+            response = client.get(
+                "/validate",
+                headers={
+                    "Authorization": "Basic dXNlcjpwYXNz",
+                    "X-Original-URL": "https://example.com/api/servers",
+                },
+            )
+
+            # Assert
+            assert response.status_code == 401
+            assert "Bearer scheme" in response.json()["detail"]
+
+    def test_network_trusted_rejects_empty_bearer_token(self):
+        """Bearer token with empty value is rejected."""
+        # Arrange
+        import auth_server.server as server_module
+
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", True),
+            patch.object(server_module, "REGISTRY_API_TOKEN", "test-api-key"),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act - send Bearer with empty token
+            response = client.get(
+                "/validate",
+                headers={
+                    "Authorization": "Bearer ",
+                    "X-Original-URL": "https://example.com/api/servers",
+                },
+            )
+
+            # Assert
+            assert response.status_code == 403
+            assert "Invalid API token" in response.json()["detail"]

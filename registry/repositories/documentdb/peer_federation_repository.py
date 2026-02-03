@@ -19,6 +19,10 @@ from ...schemas.peer_federation_schema import (
     PeerRegistryConfig,
     PeerSyncStatus,
 )
+from ...utils.federation_encryption import (
+    decrypt_token_in_peer_dict,
+    encrypt_token_in_peer_dict,
+)
 from ..interfaces import PeerFederationRepositoryBase
 from .client import get_collection_name, get_documentdb_client
 
@@ -76,6 +80,9 @@ class DocumentDBPeerFederationRepository(PeerFederationRepositoryBase):
             # Remove MongoDB _id before creating Pydantic model
             doc.pop("_id", None)
 
+            # Decrypt federation token if present
+            decrypt_token_in_peer_dict(doc)
+
             peer_config = PeerRegistryConfig(**doc)
             logger.debug(f"Retrieved peer config: {peer_id}")
             return peer_config
@@ -102,6 +109,8 @@ class DocumentDBPeerFederationRepository(PeerFederationRepositoryBase):
             peers = []
             async for doc in cursor:
                 doc.pop("_id", None)
+                # Decrypt federation token if present
+                decrypt_token_in_peer_dict(doc)
                 try:
                     peer_config = PeerRegistryConfig(**doc)
                     peers.append(peer_config)
@@ -139,6 +148,9 @@ class DocumentDBPeerFederationRepository(PeerFederationRepositoryBase):
             # Convert to document with _id
             doc = config.model_dump(mode="json")
             doc["_id"] = peer_id
+
+            # Encrypt federation token before storage
+            encrypt_token_in_peer_dict(doc)
 
             await collection.insert_one(doc)
 
@@ -190,6 +202,9 @@ class DocumentDBPeerFederationRepository(PeerFederationRepositoryBase):
             # Save to database
             doc = updated_peer.model_dump(mode="json")
             doc["_id"] = peer_id
+
+            # Encrypt federation token before storage
+            encrypt_token_in_peer_dict(doc)
 
             await collection.replace_one({"_id": peer_id}, doc, upsert=False)
 

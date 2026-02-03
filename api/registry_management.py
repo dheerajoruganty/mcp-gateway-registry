@@ -2537,6 +2537,10 @@ def cmd_peer_add(args: argparse.Namespace) -> int:
         with open(args.config, 'r') as f:
             config_data = json.load(f)
 
+        # Override federation_token from CLI arg if provided
+        if hasattr(args, 'federation_token') and args.federation_token:
+            config_data["federation_token"] = args.federation_token
+
         response = client.add_peer(config=config_data)
 
         logger.info(f"Peer registry added successfully: {config_data.get('peer_id')}")
@@ -2607,6 +2611,10 @@ def cmd_peer_update(args: argparse.Namespace) -> int:
 
         with open(args.config, 'r') as f:
             config_data = json.load(f)
+
+        # Override federation_token from CLI arg if provided
+        if hasattr(args, 'federation_token') and args.federation_token:
+            config_data["federation_token"] = args.federation_token
 
         response = client.update_peer(
             peer_id=args.peer_id,
@@ -3733,6 +3741,12 @@ Examples:
         required=True,
         help="Path to peer configuration JSON file"
     )
+    peer_add_parser.add_argument(
+        "--federation-token",
+        required=False,
+        help="Federation static token from the remote peer registry. "
+        "Overrides federation_token in the JSON config file if both are provided."
+    )
 
     # Get peer command
     peer_get_parser = subparsers.add_parser(
@@ -3764,6 +3778,12 @@ Examples:
         "--config",
         required=True,
         help="Path to updated peer configuration JSON file"
+    )
+    peer_update_parser.add_argument(
+        "--federation-token",
+        required=False,
+        help="Federation static token from the remote peer registry. "
+        "Overrides federation_token in the JSON config file if both are provided."
     )
 
     # Remove peer command

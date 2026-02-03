@@ -198,7 +198,7 @@ main() {
 
     # Configure Registry B to peer with Registry A
     print_section "Configuring Peer on Registry B"
-    PEER_RESPONSE=$(curl -s -X POST "http://localhost:$REGISTRY_B_PORT/api/v1/peers" \
+    PEER_RESPONSE=$(curl -s -X POST "http://localhost:$REGISTRY_B_PORT/api/peers" \
         -H "Content-Type: application/json" \
         -H "X-Username: test-admin" \
         -H "X-Scopes: mcp-servers-unrestricted/read mcp-servers-unrestricted/execute federation-service" \
@@ -222,7 +222,7 @@ main() {
 
     # Trigger sync
     print_section "Triggering Sync from Registry A to Registry B"
-    SYNC_RESPONSE=$(curl -s -X POST "http://localhost:$REGISTRY_B_PORT/api/v1/peers/registry-a/sync" \
+    SYNC_RESPONSE=$(curl -s -X POST "http://localhost:$REGISTRY_B_PORT/api/peers/registry-a/sync" \
         -H "X-Username: test-admin" \
         -H "X-Scopes: mcp-servers-unrestricted/read mcp-servers-unrestricted/execute federation-service" \
         -H "X-Auth-Method: keycloak")
@@ -252,15 +252,15 @@ main() {
 
     # Show peer status
     print_section "Peer Sync Status"
-    curl -s "http://localhost:$REGISTRY_B_PORT/api/v1/peers/registry-a/status" \
+    curl -s "http://localhost:$REGISTRY_B_PORT/api/peers/registry-a/status" \
         -H "X-Username: test-admin" \
         -H "X-Scopes: mcp-servers-unrestricted/read mcp-servers-unrestricted/execute federation-service" \
         -H "X-Auth-Method: keycloak" | python3 -m json.tool 2>/dev/null || true
 
     # Test federation export endpoint
     print_section "Testing Federation Export Endpoint (Registry A)"
-    print_info "GET /api/v1/federation/servers"
-    curl -s "http://localhost:$REGISTRY_A_PORT/api/v1/federation/servers" \
+    print_info "GET /api/federation/servers"
+    curl -s "http://localhost:$REGISTRY_A_PORT/api/federation/servers" \
         -H "X-Username: test-admin" \
         -H "X-Scopes: mcp-servers-unrestricted/read mcp-servers-unrestricted/execute federation-service" \
         -H "X-Auth-Method: keycloak" | python3 -m json.tool 2>/dev/null || true
@@ -268,7 +268,7 @@ main() {
     # Test whitelist mode
     print_section "Testing Whitelist Mode"
     print_info "Adding peer with whitelist mode..."
-    curl -s -X POST "http://localhost:$REGISTRY_B_PORT/api/v1/peers" \
+    curl -s -X POST "http://localhost:$REGISTRY_B_PORT/api/peers" \
         -H "Content-Type: application/json" \
         -H "X-Username: test-admin" \
         -H "X-Scopes: mcp-servers-unrestricted/read mcp-servers-unrestricted/execute federation-service" \
@@ -284,7 +284,7 @@ main() {
         }" | python3 -m json.tool 2>/dev/null || true
 
     print_info "Syncing with whitelist mode..."
-    WHITELIST_SYNC=$(curl -s -X POST "http://localhost:$REGISTRY_B_PORT/api/v1/peers/registry-a-whitelist/sync" \
+    WHITELIST_SYNC=$(curl -s -X POST "http://localhost:$REGISTRY_B_PORT/api/peers/registry-a-whitelist/sync" \
         -H "X-Username: test-admin" \
         -H "X-Scopes: mcp-servers-unrestricted/read mcp-servers-unrestricted/execute federation-service" \
         -H "X-Auth-Method: keycloak")
@@ -305,10 +305,10 @@ main() {
     echo '  -H "X-Username: test-admin" -H "X-Scopes: mcp-servers-unrestricted/read mcp-servers-unrestricted/execute federation-service" -H "X-Auth-Method: keycloak"'
     echo ""
     echo "Useful commands (with auth):"
-    echo "  List peers:    curl http://localhost:$REGISTRY_B_PORT/api/v1/peers -H 'X-Username: test-admin' ..."
+    echo "  List peers:    curl http://localhost:$REGISTRY_B_PORT/api/peers -H 'X-Username: test-admin' ..."
     echo "  List servers:  curl http://localhost:$REGISTRY_B_PORT/api/servers -H 'X-Username: test-admin' ..."
-    echo "  Trigger sync:  curl -X POST http://localhost:$REGISTRY_B_PORT/api/v1/peers/registry-a/sync -H 'X-Username: test-admin' ..."
-    echo "  Fed export:    curl http://localhost:$REGISTRY_A_PORT/api/v1/federation/servers"
+    echo "  Trigger sync:  curl -X POST http://localhost:$REGISTRY_B_PORT/api/peers/registry-a/sync -H 'X-Username: test-admin' ..."
+    echo "  Fed export:    curl http://localhost:$REGISTRY_A_PORT/api/federation/servers"
     echo ""
     echo -e "${YELLOW}Press Ctrl+C to stop both registries and clean up${NC}"
 
