@@ -112,8 +112,8 @@ class ServerInfo(BaseModel):
 
     # Federation and access control fields
     visibility: str = Field(
-        default="internal",
-        description="Visibility level: public, group-restricted, or internal (default)"
+        default="public",
+        description="Federation visibility: public (shared with all peers), group-restricted (shared with allowed_groups only), or internal (never shared)"
     )
     allowed_groups: List[str] = Field(
         default_factory=list,
@@ -197,6 +197,14 @@ class ServiceRegistrationRequest(BaseModel):
     metadata: Dict[str, Any] = Field(
         default_factory=dict,
         description="Additional custom metadata for organization, compliance, or integration purposes",
+    )
+    visibility: str = Field(
+        default="public",
+        description="Federation visibility: public (shared with all peers), group-restricted (shared with allowed_groups only), or internal (never shared)"
+    )
+    allowed_groups: List[str] = Field(
+        default_factory=list,
+        description="Groups with access when visibility is group-restricted"
     )
 
 

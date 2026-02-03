@@ -1269,6 +1269,14 @@
         // =====================================================================
         // == Registration Modal Logic
         // =====================================================================
+        function toggleRegAllowedGroups() {
+            var visibility = document.getElementById('reg-visibility').value;
+            var container = document.getElementById('reg-allowed-groups-container');
+            if (container) {
+                container.style.display = visibility === 'group-restricted' ? 'block' : 'none';
+            }
+        }
+
         function showRegisterModal() {
             const modal = document.getElementById('register-server-modal');
             if (modal) {
@@ -1285,6 +1293,9 @@
                 if (pasteArea) pasteArea.value = ''; // Clear text area
                 const regForm = document.getElementById('register-server-form');
                 if (regForm) regForm.reset(); // Reset the form
+
+                // Reset visibility field
+                toggleRegAllowedGroups();
             }
         }
 
@@ -1436,6 +1447,11 @@
             // Custom metadata field (optional) - send as JSON string
             if (jsonData.metadata && Object.keys(jsonData.metadata).length > 0) {
                 formData.append('metadata', JSON.stringify(jsonData.metadata));
+            }
+            // Federation visibility fields (optional)
+            formData.append('visibility', jsonData.visibility || 'public');
+            if (jsonData.allowed_groups) {
+                formData.append('allowed_groups', Array.isArray(jsonData.allowed_groups) ? jsonData.allowed_groups.join(',') : (jsonData.allowed_groups || ''));
             }
 
             handleRegistrationSubmit(formData);
@@ -2462,6 +2478,20 @@
                         <textarea id="reg-metadata" name="metadata" class="form-input" rows="4" placeholder='{"team": "platform", "owner": "alice@example.com", "cost_center": "CC-1001"}'></textarea>
                         <small style="color: #666;">Custom key-value pairs for organization, compliance, or integration purposes</small>
                     </div>
+                    <div class="form-group">
+                        <label for="reg-visibility">Federation Visibility</label>
+                        <select id="reg-visibility" name="visibility" class="form-input" onchange="toggleRegAllowedGroups()">
+                            <option value="public" selected>Public (shared with all peers)</option>
+                            <option value="group-restricted">Group Restricted (shared with specific groups)</option>
+                            <option value="internal">Internal (never shared)</option>
+                        </select>
+                        <small style="color: #666;">Controls whether this server is shared with peer registries via federation</small>
+                    </div>
+                    <div class="form-group" id="reg-allowed-groups-container" style="display: none;">
+                        <label for="reg-allowed-groups">Allowed Groups (comma-separated)</label>
+                        <input type="text" id="reg-allowed-groups" name="allowed_groups" class="form-input" placeholder="e.g., engineering, devops">
+                        <small style="color: #666;">Groups that can access this server when visibility is group-restricted</small>
+                    </div>
                     <button type="submit" class="edit-button">Register Server</button>
                 </form>
             </div>
@@ -2499,9 +2529,11 @@
         "team": "platform",
         "owner": "alice@example.com",
         "cost_center": "CC-1001"
-    }
+    },
+    "visibility": "public",
+    "allowed_groups": []
 }'''></textarea>
-                        <small style="color: #666;">Note: mcp_endpoint, sse_endpoint, and metadata are optional.</small>
+                        <small style="color: #666;">Note: mcp_endpoint, sse_endpoint, metadata, visibility, and allowed_groups are optional.</small>
                     </div>
                     <button type="submit" class="edit-button">Paste and Register</button>
                 </form>

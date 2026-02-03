@@ -508,6 +508,8 @@ async def register_service(
     mcp_endpoint: Annotated[str | None, Form()] = None,
     sse_endpoint: Annotated[str | None, Form()] = None,
     metadata: Annotated[str | None, Form()] = None,
+    visibility: Annotated[str, Form()] = "public",
+    allowed_groups: Annotated[str | None, Form()] = None,
     user_context: Annotated[dict, Depends(enhanced_auth)] = None,
 ):
     """Register a new service (requires register_service UI permission)."""
@@ -538,6 +540,26 @@ async def register_service(
     # Process tags
     tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
 
+    # Validate visibility value
+    valid_visibility = ["public", "group-restricted", "internal"]
+    if visibility not in valid_visibility:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid visibility value. Must be one of: {', '.join(valid_visibility)}",
+        )
+
+    # Process allowed_groups (comma-separated string to list)
+    allowed_groups_list = []
+    if allowed_groups:
+        allowed_groups_list = [g.strip() for g in allowed_groups.split(",") if g.strip()]
+
+    # Validate group-restricted requires allowed_groups
+    if visibility == "group-restricted" and not allowed_groups_list:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="group-restricted visibility requires at least one allowed_group",
+        )
+
     # Create server entry
     server_entry = {
         "server_name": name,
@@ -550,6 +572,8 @@ async def register_service(
         "is_python": is_python,
         "license": license_str,
         "tool_list": [],
+        "visibility": visibility,
+        "allowed_groups": allowed_groups_list,
     }
 
     # Add custom endpoint fields if provided
@@ -653,6 +677,8 @@ async def internal_register_service(
     supported_transports: Annotated[str | None, Form()] = None,
     headers: Annotated[str | None, Form()] = None,
     tool_list_json: Annotated[str | None, Form()] = None,
+    visibility: Annotated[str, Form()] = "public",
+    allowed_groups: Annotated[str | None, Form()] = None,
 ):
     """Internal service registration endpoint for mcpgw-server (requires HTTP Basic Authentication with admin credentials)."""
     logger.warning(
@@ -790,6 +816,16 @@ async def internal_register_service(
         except Exception as e:
             logger.warning(f"INTERNAL REGISTER: Failed to parse tool_list_json: {e}")
 
+    # Process allowed_groups (comma-separated string to list)
+    allowed_groups_list = []
+    if allowed_groups:
+        allowed_groups_list = [g.strip() for g in allowed_groups.split(",") if g.strip()]
+
+    # Validate visibility value
+    valid_visibility = ["public", "group-restricted", "internal"]
+    if visibility not in valid_visibility:
+        visibility = "public"  # Default to public for internal registration
+
     # Create server entry
     server_entry = {
         "server_name": name,
@@ -804,6 +840,8 @@ async def internal_register_service(
         "is_python": is_python,
         "license": license_str,
         "tool_list": tool_list,
+        "visibility": visibility,
+        "allowed_groups": allowed_groups_list,
     }
 
     # Add optional fields if provided
@@ -1473,6 +1511,8 @@ async def edit_server_submit(
     license_str: Annotated[str, Form(alias="license")] = "N/A",
     mcp_endpoint: Annotated[str | None, Form()] = None,
     metadata: Annotated[str | None, Form()] = None,
+    visibility: Annotated[str, Form()] = "public",
+    allowed_groups: Annotated[str | None, Form()] = None,
 ):
     """Handle server edit form submission (requires modify_service UI permission)."""
     from ..search.service import faiss_service
@@ -1517,6 +1557,26 @@ async def edit_server_submit(
     # Process tags
     tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
 
+    # Validate visibility value
+    valid_visibility = ["public", "group-restricted", "internal"]
+    if visibility not in valid_visibility:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid visibility value. Must be one of: {', '.join(valid_visibility)}",
+        )
+
+    # Process allowed_groups (comma-separated string to list)
+    allowed_groups_list = []
+    if allowed_groups:
+        allowed_groups_list = [g.strip() for g in allowed_groups.split(",") if g.strip()]
+
+    # Validate group-restricted requires allowed_groups
+    if visibility == "group-restricted" and not allowed_groups_list:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="group-restricted visibility requires at least one allowed_group",
+        )
+
     # Prepare updated server data
     updated_server_entry = {
         "server_name": name,
@@ -1529,6 +1589,8 @@ async def edit_server_submit(
         "is_python": bool(is_python),
         "license": license_str,
         "tool_list": [],  # Keep existing or initialize
+        "visibility": visibility,
+        "allowed_groups": allowed_groups_list,
     }
 
     # Add optional mcp_endpoint if provided

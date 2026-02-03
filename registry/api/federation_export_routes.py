@@ -147,7 +147,7 @@ def _filter_by_visibility(
     Filter items based on visibility and peer's group membership.
 
     Filtering rules:
-    - visibility=public: Always included
+    - visibility=public: Always included (default if not specified)
     - visibility=group-restricted: Include only if peer is in allowed_groups
     - visibility=internal: NEVER included
 
@@ -162,7 +162,8 @@ def _filter_by_visibility(
     peer_group_set = set(peer_groups)
 
     for item in items:
-        visibility = _get_item_attr(item, "visibility", "internal")
+        # Default to "public" if visibility not specified (backwards compatibility)
+        visibility = _get_item_attr(item, "visibility", "public")
 
         # Never export internal items
         if visibility == "internal":
