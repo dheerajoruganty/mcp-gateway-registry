@@ -150,7 +150,7 @@ async def _user_can_access_agent(agent_path: str, user_context: dict) -> bool:
     if agent_card.visibility == "public":
         return True
 
-    if agent_card.visibility == "private":
+    if agent_card.visibility == "internal":
         return agent_card.registered_by == user_context.get("username")
 
     if agent_card.visibility == "group-restricted":

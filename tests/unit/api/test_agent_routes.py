@@ -186,13 +186,13 @@ def sample_agent_card() -> AgentCard:
 
 
 @pytest.fixture
-def sample_private_agent_card() -> AgentCard:
-    """Create a private agent card for testing."""
+def sample_internal_agent_card() -> AgentCard:
+    """Create an internal agent card for testing."""
     return AgentCardFactory(
-        name="private-agent",
-        path="/agents/private-agent",
-        url="http://localhost:9000/private-agent",
-        visibility="private",
+        name="internal-agent",
+        path="/agents/internal-agent",
+        url="http://localhost:9000/internal-agent",
+        visibility="internal",
         registered_by="testuser",
         is_enabled=True,
     )
@@ -340,12 +340,12 @@ class TestFilterAgentsByAccess:
         self,
         mock_admin_context,
         sample_agent_card,
-        sample_private_agent_card,
+        sample_internal_agent_card,
         sample_group_restricted_agent_card,
     ):
         """Test admin user can see all agents."""
         # Arrange
-        agents = [sample_agent_card, sample_private_agent_card, sample_group_restricted_agent_card]
+        agents = [sample_agent_card, sample_internal_agent_card, sample_group_restricted_agent_card]
 
         # Act
         result = _filter_agents_by_access(agents, mock_admin_context)
@@ -365,12 +365,12 @@ class TestFilterAgentsByAccess:
         assert len(result) == 1
         assert result[0].path == sample_agent_card.path
 
-    def test_filter_agents_private_only_visible_to_owner(
-        self, mock_user_context, sample_private_agent_card
+    def test_filter_agents_internal_only_visible_to_owner(
+        self, mock_user_context, sample_internal_agent_card
     ):
-        """Test private agents only visible to owner."""
+        """Test internal agents only visible to owner."""
         # Arrange
-        agents = [sample_private_agent_card]
+        agents = [sample_internal_agent_card]
 
         # Act (user is the owner)
         result = _filter_agents_by_access(agents, mock_user_context)
@@ -378,15 +378,15 @@ class TestFilterAgentsByAccess:
         # Assert
         assert len(result) == 1
 
-    def test_filter_agents_private_not_visible_to_others(self, mock_limited_user_context):
-        """Test private agents not visible to other users."""
+    def test_filter_agents_internal_not_visible_to_others(self, mock_limited_user_context):
+        """Test internal agents not visible to other users."""
         # Arrange
-        private_agent = AgentCardFactory(
-            visibility="private",
+        internal_agent = AgentCardFactory(
+            visibility="internal",
             registered_by="differentuser",
-            path="/agents/private-agent",
+            path="/agents/internal-agent",
         )
-        agents = [private_agent]
+        agents = [internal_agent]
 
         # Act
         result = _filter_agents_by_access(agents, mock_limited_user_context)
@@ -617,11 +617,11 @@ class TestListAgents:
         """Test filtering agents by visibility."""
         # Arrange
         public_agent = AgentCardFactory(visibility="public", path="/agents/public")
-        private_agent = AgentCardFactory(visibility="private", path="/agents/private")
+        internal_agent = AgentCardFactory(visibility="internal", path="/agents/internal")
 
         with patch("registry.api.agent_routes.agent_service") as mock_agent_service:
 
-            mock_agent_service.get_all_agents = AsyncMock(return_value=[public_agent, private_agent])
+            mock_agent_service.get_all_agents = AsyncMock(return_value=[public_agent, internal_agent])
             mock_agent_service.is_agent_enabled.return_value = True
 
             # Act
@@ -818,16 +818,16 @@ class TestRateAgent:
             assert response.status_code == status.HTTP_404_NOT_FOUND
 
     @pytest.mark.asyncio
-    async def test_rate_agent_no_access(self, test_app, mock_limited_user_context, sample_private_agent_card):
+    async def test_rate_agent_no_access(self, test_app, mock_limited_user_context, sample_internal_agent_card):
         """Test rating agent without access (403)."""
         # Arrange
         rating_request = {"rating": 5}
         # Update agent to be owned by different user
-        sample_private_agent_card.registered_by = "differentuser"
+        sample_internal_agent_card.registered_by = "differentuser"
 
         with patch("registry.api.agent_routes.agent_service") as mock_agent_service:
 
-            mock_agent_service.get_agent_info = AsyncMock(return_value=sample_private_agent_card)
+            mock_agent_service.get_agent_info = AsyncMock(return_value=sample_internal_agent_card)
 
             # Act
             response = test_app.post("/agents/private-agent/rate", json=rating_request)
@@ -970,14 +970,14 @@ class TestGetAgent:
             assert response.status_code == status.HTTP_404_NOT_FOUND
 
     @pytest.mark.asyncio
-    async def test_get_agent_no_access(self, test_app, mock_limited_user_context, sample_private_agent_card):
+    async def test_get_agent_no_access(self, test_app, mock_limited_user_context, sample_internal_agent_card):
         """Test getting agent without access (403)."""
         # Arrange
-        sample_private_agent_card.registered_by = "differentuser"
+        sample_internal_agent_card.registered_by = "differentuser"
 
         with patch("registry.api.agent_routes.agent_service") as mock_agent_service:
 
-            mock_agent_service.get_agent_info = AsyncMock(return_value=sample_private_agent_card)
+            mock_agent_service.get_agent_info = AsyncMock(return_value=sample_internal_agent_card)
 
             # Act
             response = test_app.get("/agents/private-agent")
