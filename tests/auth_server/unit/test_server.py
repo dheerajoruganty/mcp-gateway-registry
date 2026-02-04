@@ -654,13 +654,7 @@ class TestValidateEndpoint:
 
     @patch("auth_server.server.get_auth_provider")
     def test_validate_missing_auth_header(self, mock_get_provider, auth_env_vars):
-        """Test validation without Authorization header.
-
-        Note: Due to a bug in server.py lines 1121-1131, HTTPException(401) is
-        caught and converted to 500. See .scratchpad/fixes/auth_server/fix-http-exception-handling.md
-        This test verifies the actual (buggy) behavior. When the bug is fixed,
-        this test should expect 401 and check for "Missing or invalid Authorization header".
-        """
+        """Test validation without Authorization header returns 401."""
         # Arrange
         import auth_server.server as server_module
 
@@ -669,12 +663,9 @@ class TestValidateEndpoint:
         # Act
         response = client.get("/validate")
 
-        # Assert - actual behavior is 500 due to HTTPException handling bug
-        # Expected behavior (when bug is fixed) would be:
-        # assert response.status_code == 401
-        # assert "Missing or invalid Authorization header" in response.json()["detail"]
-        assert response.status_code == 500
-        assert "Internal validation error" in response.json()["detail"]
+        # Assert
+        assert response.status_code == 401
+        assert "Missing or invalid Authorization header" in response.json()["detail"]
 
     @patch("auth_server.server.get_auth_provider")
     def test_validate_with_session_cookie(
@@ -1172,3 +1163,51 @@ class TestNetworkTrustedMode:
             # It will fail session validation, but not with the bypass 401 message
             if response.status_code == 401:
                 assert "Authorization header required" not in response.json().get("detail", "")
+
+    def test_network_trusted_rejects_non_bearer_scheme(self):
+        """Authorization header with non-Bearer scheme is rejected."""
+        # Arrange
+        import auth_server.server as server_module
+
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", True),
+            patch.object(server_module, "REGISTRY_API_TOKEN", "test-api-key"),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act - send Basic auth instead of Bearer
+            response = client.get(
+                "/validate",
+                headers={
+                    "Authorization": "Basic dXNlcjpwYXNz",
+                    "X-Original-URL": "https://example.com/api/servers",
+                },
+            )
+
+            # Assert
+            assert response.status_code == 401
+            assert "Bearer scheme" in response.json()["detail"]
+
+    def test_network_trusted_rejects_empty_bearer_token(self):
+        """Bearer token with empty value is rejected."""
+        # Arrange
+        import auth_server.server as server_module
+
+        with (
+            patch.object(server_module, "REGISTRY_STATIC_TOKEN_AUTH_ENABLED", True),
+            patch.object(server_module, "REGISTRY_API_TOKEN", "test-api-key"),
+        ):
+            client = TestClient(server_module.app)
+
+            # Act - send Bearer with empty token
+            response = client.get(
+                "/validate",
+                headers={
+                    "Authorization": "Bearer ",
+                    "X-Original-URL": "https://example.com/api/servers",
+                },
+            )
+
+            # Assert
+            assert response.status_code == 403
+            assert "Invalid API token" in response.json()["detail"]

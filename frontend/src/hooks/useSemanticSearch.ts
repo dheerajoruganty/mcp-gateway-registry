@@ -13,6 +13,16 @@ export interface MatchingToolHit {
   match_context?: string;
 }
 
+export interface SyncMetadata {
+  is_federated?: boolean;
+  source_peer_id?: string;
+  upstream_path?: string;
+  last_synced_at?: string;
+  is_read_only?: boolean;
+  is_orphaned?: boolean;
+  orphaned_at?: string;
+}
+
 export interface SemanticServerHit {
   path: string;
   server_name: string;
@@ -23,6 +33,7 @@ export interface SemanticServerHit {
   relevance_score: number;
   match_context?: string;
   matching_tools: MatchingToolHit[];
+  sync_metadata?: SyncMetadata;
 }
 
 export interface SemanticToolHit {
@@ -44,10 +55,11 @@ export interface SemanticAgentHit {
   trust_level?: string;
   visibility?: string;
   is_enabled?: boolean;
-   url?: string;
-   agent_card?: Record<string, any>;
+  url?: string;
+  agent_card?: Record<string, any>;
   relevance_score: number;
   match_context?: string;
+  sync_metadata?: SyncMetadata;
 }
 
 export interface SemanticSearchResponse {

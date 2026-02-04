@@ -119,6 +119,26 @@
                 <label for="license">License</label>
                 <input type="text" id="license" name="license" value="{{ server.license | default('N/A') }}">
             </div>
+            <div class="form-group">
+                <label for="visibility">Federation Visibility</label>
+                <select id="visibility" name="visibility" onchange="toggleAllowedGroups()">
+                    <option value="public" {% if server.visibility == 'public' or not server.visibility %}selected{% endif %}>Public (shared with all peers)</option>
+                    <option value="group-restricted" {% if server.visibility == 'group-restricted' %}selected{% endif %}>Group Restricted (shared with specific groups)</option>
+                    <option value="internal" {% if server.visibility == 'internal' %}selected{% endif %}>Internal (never shared)</option>
+                </select>
+            </div>
+            <div class="form-group" id="allowed-groups-container" style="{% if server.visibility != 'group-restricted' %}display: none;{% endif %}">
+                <label for="allowed_groups">Allowed Groups (comma-separated)</label>
+                <input type="text" id="allowed_groups" name="allowed_groups" value="{{ server.allowed_groups | default([]) | join(', ') }}" placeholder="e.g., engineering, devops">
+                <small style="color: #666;">Groups that can access this server when visibility is group-restricted</small>
+            </div>
+            <script>
+                function toggleAllowedGroups() {
+                    var visibility = document.getElementById('visibility').value;
+                    var container = document.getElementById('allowed-groups-container');
+                    container.style.display = visibility === 'group-restricted' ? 'block' : 'none';
+                }
+            </script>
             <div class="form-actions">
                 <a href="{{ url_for('read_root') }}">Cancel</a>
                 <button type="submit">Save Changes</button>

@@ -5,6 +5,7 @@ Configuration is passed via headers instead of environment variables.
 
 import argparse
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -19,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from string import Template
 from typing import Any
+from urllib.parse import urlparse
 
 import boto3
 import httpx
@@ -87,6 +89,39 @@ else:
 REGISTRY_API_PATTERNS: list = [
     "/api/",
     "/v0.1/",
+]
+
+# Federation static token auth: scoped token for federation endpoints only
+_federation_static_token_requested: bool = (
+    os.environ.get("FEDERATION_STATIC_TOKEN_AUTH_ENABLED", "false").lower() == "true"
+)
+
+FEDERATION_STATIC_TOKEN: str = os.environ.get("FEDERATION_STATIC_TOKEN", "")
+
+if _federation_static_token_requested and not FEDERATION_STATIC_TOKEN:
+    logging.error(
+        "FEDERATION_STATIC_TOKEN_AUTH_ENABLED=true but FEDERATION_STATIC_TOKEN is not set. "
+        "Federation static token auth is DISABLED. Set FEDERATION_STATIC_TOKEN or disable the feature. "
+        "Falling back to standard IdP JWT validation."
+    )
+    FEDERATION_STATIC_TOKEN_AUTH_ENABLED: bool = False
+else:
+    FEDERATION_STATIC_TOKEN_AUTH_ENABLED: bool = _federation_static_token_requested
+
+# Warn if token is too short (weak entropy)
+MIN_FEDERATION_TOKEN_LENGTH: int = 32
+if FEDERATION_STATIC_TOKEN_AUTH_ENABLED and len(FEDERATION_STATIC_TOKEN) < MIN_FEDERATION_TOKEN_LENGTH:
+    logging.warning(
+        f"FEDERATION_STATIC_TOKEN is only {len(FEDERATION_STATIC_TOKEN)} characters. "
+        f"Recommended minimum is {MIN_FEDERATION_TOKEN_LENGTH} characters. "
+        "Generate a stronger token with: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\""
+    )
+
+# Federation endpoint path patterns (scoped access for federation static token)
+FEDERATION_API_PATTERNS: list = [
+    "/api/federation/",
+    "/api/peers/",
+    "/api/peers",  # exact match for list peers (no trailing slash)
 ]
 
 # Utility functions for GDPR/SOX compliance
@@ -1001,12 +1036,34 @@ def _is_registry_api_request(
     if not original_url:
         return False
 
-    from urllib.parse import urlparse
-
     parsed = urlparse(original_url)
     path = parsed.path
 
     for pattern in REGISTRY_API_PATTERNS:
+        if path.startswith(pattern):
+            return True
+
+    return False
+
+
+def _is_federation_api_request(
+    original_url: str,
+) -> bool:
+    """Check if the request is for federation or peer management APIs.
+
+    Args:
+        original_url: The X-Original-URL header value from nginx.
+
+    Returns:
+        True if this is a federation/peer API request.
+    """
+    if not original_url:
+        return False
+
+    parsed = urlparse(original_url)
+    path = parsed.path
+
+    for pattern in FEDERATION_API_PATTERNS:
         if path.startswith(pattern):
             return True
 
@@ -1057,8 +1114,6 @@ async def validate_request(request: Request):
         endpoint_from_url = None
         if original_url:
             try:
-                from urllib.parse import urlparse
-
                 parsed_url = urlparse(original_url)
                 path = parsed_url.path.strip("/")
                 path_parts = path.split("/") if path else []
@@ -1111,9 +1166,78 @@ async def validate_request(request: Request):
         )
         logger.info(f"Server Name from URL: {server_name_from_url}")
 
-        # Static token auth: validate Registry API requests with static API key
-        # Only activate when there is no session cookie (UI uses cookies, CLI uses Bearer)
+        # Only activate static token auth when there is no session cookie
+        # (UI uses cookies, CLI uses Bearer)
         has_session_cookie = cookie_header and "mcp_gateway_session=" in cookie_header
+
+        # Federation static token auth: scoped access to federation/peer endpoints only
+        # Check this BEFORE the full admin static token
+        if (
+            FEDERATION_STATIC_TOKEN_AUTH_ENABLED
+            and _is_federation_api_request(original_url)
+            and not has_session_cookie
+        ):
+            if not authorization:
+                logger.warning(
+                    "Federation static token: Authorization header missing. "
+                    "Hint: Use 'Authorization: Bearer <FEDERATION_STATIC_TOKEN>'."
+                )
+                return JSONResponse(
+                    content={"detail": "Authorization header required"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Bearer", "Connection": "close"},
+                )
+
+            if not authorization.startswith("Bearer "):
+                logger.warning(
+                    "Federation static token: Authorization header must use Bearer scheme"
+                )
+                return JSONResponse(
+                    content={"detail": "Authorization header must use Bearer scheme"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Bearer", "Connection": "close"},
+                )
+
+            bearer_token = authorization[len("Bearer "):].strip()
+
+            # Check federation token first, then fall through to admin token check
+            if hmac.compare_digest(bearer_token, FEDERATION_STATIC_TOKEN):
+                logger.info(
+                    f"Federation static token: Authenticated for {original_url}"
+                )
+
+                federation_scopes = [
+                    "federation/read",
+                    "federation/peers",
+                ]
+                response_data = {
+                    "valid": True,
+                    "username": "federation-peer",
+                    "client_id": "federation-static",
+                    "scopes": federation_scopes,
+                    "method": "federation-static",
+                    "groups": [],
+                    "server_name": None,
+                    "tool_name": None,
+                }
+
+                response = JSONResponse(content=response_data, status_code=200)
+                response.headers["X-User"] = "federation-peer"
+                response.headers["X-Username"] = "federation-peer"
+                response.headers["X-Client-Id"] = "federation-static"
+                response.headers["X-Scopes"] = " ".join(federation_scopes)
+                response.headers["X-Auth-Method"] = "federation-static"
+                response.headers["X-Server-Name"] = ""
+                response.headers["X-Tool-Name"] = ""
+
+                return response
+
+            # If federation token didn't match, DON'T return 403 here.
+            # Fall through to the admin static token check below (if enabled).
+            # If admin token also doesn't match, that block will return 403.
+            # If admin token is NOT enabled, fall through to JWT validation.
+
+        # Static token auth: validate Registry API requests with static API key
         if (
             REGISTRY_STATIC_TOKEN_AUTH_ENABLED
             and _is_registry_api_request(original_url)
@@ -1131,8 +1255,18 @@ async def validate_request(request: Request):
                 )
 
             # Validate static API key (REGISTRY_API_TOKEN is guaranteed to be set here)
-            bearer_token = authorization.replace("Bearer ", "").strip()
-            if bearer_token != REGISTRY_API_TOKEN:
+            if not authorization.startswith("Bearer "):
+                logger.warning(
+                    "Static token auth: Authorization header must use Bearer scheme"
+                )
+                return JSONResponse(
+                    content={"detail": "Authorization header must use Bearer scheme"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Bearer", "Connection": "close"},
+                )
+
+            bearer_token = authorization[len("Bearer "):].strip()
+            if not hmac.compare_digest(bearer_token, REGISTRY_API_TOKEN):
                 logger.warning("Static token auth: Invalid API token provided")
                 return JSONResponse(
                     content={"detail": "Invalid API token"},
@@ -1395,10 +1529,10 @@ async def validate_request(request: Request):
             headers={"WWW-Authenticate": "Bearer", "Connection": "close"},
         )
     except HTTPException as e:
-        # If it's a 403 HTTPException, re-raise it as is
-        if e.status_code == 403:
+        # Re-raise client error HTTPExceptions (4xx) as-is
+        if 400 <= e.status_code < 500:
             raise
-        # For other HTTPExceptions, let them fall through to general handler
+        # For non-client HTTPExceptions, convert to 500
         logger.error(f"HTTP error during validation: {e}")
         raise HTTPException(
             status_code=500,
@@ -1449,6 +1583,71 @@ async def get_auth_config():
             "auth_type": "unknown",
             "description": f"Error getting provider config: {e}",
             "error": str(e),
+        }
+
+
+@app.post("/admin/federation-token")
+async def manage_federation_token(request: Request):
+    """Revoke or rotate federation static token at runtime.
+
+    Requires the admin static token (REGISTRY_API_TOKEN) for authentication.
+    """
+    global FEDERATION_STATIC_TOKEN, FEDERATION_STATIC_TOKEN_AUTH_ENABLED
+
+    # Authenticate with admin token
+    authorization = request.headers.get("Authorization", "")
+    if not authorization.startswith("Bearer "):
+        return JSONResponse(
+            content={"detail": "Bearer token required"},
+            status_code=401,
+        )
+
+    bearer_token = authorization[len("Bearer "):].strip()
+    if not REGISTRY_API_TOKEN or not hmac.compare_digest(bearer_token, REGISTRY_API_TOKEN):
+        return JSONResponse(
+            content={"detail": "Admin token required"},
+            status_code=403,
+        )
+
+    body = await request.json()
+    new_token = body.get("new_token")
+
+    # Validate minimum token length if a new token is provided
+    if new_token and len(new_token) < MIN_FEDERATION_TOKEN_LENGTH:
+        return JSONResponse(
+            content={
+                "detail": (
+                    f"Token must be at least {MIN_FEDERATION_TOKEN_LENGTH} characters. "
+                    "Generate with: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                )
+            },
+            status_code=400,
+        )
+
+    if new_token:
+        FEDERATION_STATIC_TOKEN = new_token
+        FEDERATION_STATIC_TOKEN_AUTH_ENABLED = True
+        logger.info("Federation static token rotated via admin API")
+        return {
+            "action": "rotated",
+            "message": (
+                "Federation static token rotated. "
+                "WARNING: This is an in-memory change only. Update FEDERATION_STATIC_TOKEN "
+                "in your .env file or container environment for persistence across restarts."
+            ),
+        }
+    else:
+        FEDERATION_STATIC_TOKEN = ""
+        FEDERATION_STATIC_TOKEN_AUTH_ENABLED = False
+        logger.info("Federation static token revoked via admin API")
+        return {
+            "action": "revoked",
+            "message": (
+                "Federation static token revoked. Federation endpoints now require OAuth2 JWT. "
+                "WARNING: This is an in-memory change only. Update your .env file or container "
+                "environment to set FEDERATION_STATIC_TOKEN_AUTH_ENABLED=false for persistence "
+                "across restarts."
+            ),
         }
 
 

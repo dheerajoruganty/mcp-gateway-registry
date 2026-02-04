@@ -1,6 +1,5 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Dict, Any, Optional
-from datetime import datetime
 
 
 class ServerVersion(BaseModel):
@@ -111,6 +110,34 @@ class ServerInfo(BaseModel):
         """Check if server has multiple versions configured."""
         return self.versions is not None and len(self.versions) > 1
 
+    # Federation and access control fields
+    visibility: str = Field(
+        default="public",
+        description="Federation visibility: public (shared with all peers), group-restricted (shared with allowed_groups only), or internal (never shared)"
+    )
+    allowed_groups: List[str] = Field(
+        default_factory=list,
+        description="Groups with access when visibility is group-restricted"
+    )
+    sync_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Metadata for items synced from peer registries"
+    )
+
+    @field_validator("visibility")
+    @classmethod
+    def _validate_visibility(
+        cls,
+        v: str,
+    ) -> str:
+        """Validate visibility value."""
+        valid_values = ["public", "group-restricted", "internal"]
+        if v not in valid_values:
+            raise ValueError(
+                f"Visibility must be one of: {', '.join(valid_values)}"
+            )
+        return v
+
 
 class ToolDescription(BaseModel):
     """Parsed tool description sections."""
@@ -170,6 +197,14 @@ class ServiceRegistrationRequest(BaseModel):
     metadata: Dict[str, Any] = Field(
         default_factory=dict,
         description="Additional custom metadata for organization, compliance, or integration purposes",
+    )
+    visibility: str = Field(
+        default="public",
+        description="Federation visibility: public (shared with all peers), group-restricted (shared with allowed_groups only), or internal (never shared)"
+    )
+    allowed_groups: List[str] = Field(
+        default_factory=list,
+        description="Groups with access when visibility is group-restricted"
     )
 
 

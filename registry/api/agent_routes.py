@@ -249,7 +249,7 @@ def _filter_agents_by_access(
             accessible.append(agent)
             continue
 
-        if agent.visibility == "private":
+        if agent.visibility == "internal":
             if agent.registered_by == username:
                 accessible.append(agent)
             continue
@@ -487,6 +487,7 @@ async def list_agents(
                 provider=provider_name,
                 streaming=streaming,
                 trust_level=agent.trust_level,
+                sync_metadata=agent.sync_metadata,
             )
             filtered_agents.append(agent_info)
 

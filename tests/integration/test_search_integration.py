@@ -365,11 +365,11 @@ def search_test_agents() -> list[dict[str, Any]]:
 
     agent4 = AgentCardFactory(
         name="private-agent",
-        description="Private agent for internal use only",
-        path="/agents/private-agent",
-        tags=["private", "internal"],
+        description="Internal agent for internal use only",
+        path="/agents/internal-agent",
+        tags=["internal"],
         skills=[],
-        visibility="private",
+        visibility="internal",
         registered_by="testuser"
     )
 

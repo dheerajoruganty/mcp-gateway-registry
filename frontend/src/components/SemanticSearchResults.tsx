@@ -189,16 +189,38 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
             className="grid"
             style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}
           >
-            {servers.map((server) => (
+            {servers.map((server) => {
+              // Detect if server is from a peer registry using sync_metadata
+              const isFederatedServer = server.sync_metadata?.is_federated === true;
+              const peerRegistryId = isFederatedServer && server.sync_metadata?.source_peer_id
+                ? server.sync_metadata.source_peer_id.replace('peer-registry-', '').replace('peer-', '').toUpperCase()
+                : null;
+              const isOrphanedServer = server.sync_metadata?.is_orphaned === true;
+
+              return (
               <div
                 key={server.path}
                 className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm hover:shadow-md transition-shadow"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-base font-semibold text-gray-900 dark:text-white">
-                      {server.server_name}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-base font-semibold text-gray-900 dark:text-white">
+                        {server.server_name}
+                      </p>
+                      {/* Registry source badge - only show for federated (peer registry) items */}
+                      {isFederatedServer && (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200 border border-cyan-200 dark:border-cyan-700">
+                          {peerRegistryId}
+                        </span>
+                      )}
+                      {/* Orphaned badge */}
+                      {isOrphanedServer && (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200 border border-red-200 dark:border-red-700" title="No longer exists on peer registry">
+                          ORPHANED
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500 dark:text-gray-300">{server.path}</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -261,7 +283,8 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
                   </div>
                 )}
               </div>
-            ))}
+            );
+            })}
           </div>
         </section>
       )}
@@ -327,16 +350,38 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
             className="grid"
             style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}
           >
-            {agents.map((agent) => (
+            {agents.map((agent) => {
+              // Detect if agent is from a peer registry using sync_metadata
+              const isFederatedAgent = agent.sync_metadata?.is_federated === true;
+              const peerRegistryId = isFederatedAgent && agent.sync_metadata?.source_peer_id
+                ? agent.sync_metadata.source_peer_id.replace('peer-registry-', '').replace('peer-', '').toUpperCase()
+                : null;
+              const isOrphanedAgent = agent.sync_metadata?.is_orphaned === true;
+
+              return (
               <div
                 key={agent.path}
                 className="rounded-2xl border border-cyan-200 dark:border-cyan-900/40 bg-white dark:bg-gray-800 p-5 shadow-sm hover:shadow-md transition-shadow"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-base font-semibold text-gray-900 dark:text-white">
-                      {agent.agent_name}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-base font-semibold text-gray-900 dark:text-white">
+                        {agent.agent_name}
+                      </p>
+                      {/* Registry source badge - only show for federated (peer registry) items */}
+                      {isFederatedAgent && (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200 border border-violet-200 dark:border-violet-700">
+                          {peerRegistryId}
+                        </span>
+                      )}
+                      {/* Orphaned badge */}
+                      {isOrphanedAgent && (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200 border border-red-200 dark:border-red-700" title="No longer exists on peer registry">
+                          ORPHANED
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
                       {agent.visibility || 'public'}
                     </p>
@@ -392,7 +437,8 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
                   <span>{agent.is_enabled ? 'Enabled' : 'Disabled'}</span>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </section>
       )}

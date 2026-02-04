@@ -263,6 +263,41 @@ def _get_registry_url(
     return registry_url
 
 
+def _mask_sensitive_fields(
+    data: Any,
+    fields_to_mask: Optional[List[str]] = None,
+) -> Any:
+    """
+    Mask sensitive fields in response data for safe logging/printing.
+
+    Args:
+        data: Response data (dict, list, or other)
+        fields_to_mask: List of field names to mask (default: federation_token)
+
+    Returns:
+        Data with sensitive fields masked
+    """
+    if fields_to_mask is None:
+        fields_to_mask = ["federation_token"]
+
+    if isinstance(data, dict):
+        masked = {}
+        for key, value in data.items():
+            if key in fields_to_mask and value:
+                # Show first 3 chars followed by ...
+                if isinstance(value, str) and len(value) > 3:
+                    masked[key] = f"{value[:3]}..."
+                else:
+                    masked[key] = "***"
+            else:
+                masked[key] = _mask_sensitive_fields(value, fields_to_mask)
+        return masked
+    elif isinstance(data, list):
+        return [_mask_sensitive_fields(item, fields_to_mask) for item in data]
+    else:
+        return data
+
+
 def _get_client_name() -> str:
     """
     Get Keycloak client name from environment variable or default.
@@ -2474,6 +2509,445 @@ def cmd_federation_sync(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_peer_list(args: argparse.Namespace) -> int:
+    """
+    List all configured peer registries.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+
+        enabled_filter = None
+        if hasattr(args, 'enabled_only') and args.enabled_only:
+            enabled_filter = True
+
+        response = client.list_peers(enabled=enabled_filter)
+
+        if args.json:
+            masked_response = _mask_sensitive_fields(response)
+            print(json.dumps(masked_response, indent=2, default=str))
+            return 0
+
+        peers = response if isinstance(response, list) else response.get('peers', [])
+
+        if not peers:
+            logger.info("No peer registries configured")
+            return 0
+
+        logger.info(f"Found {len(peers)} peer registries:\n")
+
+        for peer in peers:
+            status = "enabled" if peer.get('enabled') else "disabled"
+            print(f"  Peer ID:   {peer.get('peer_id')}")
+            print(f"  Name:      {peer.get('name')}")
+            print(f"  Endpoint:  {peer.get('endpoint')}")
+            print(f"  Status:    {status}")
+            print(f"  Sync Mode: {peer.get('sync_mode', 'all')}")
+            print()
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"List peers failed: {e}")
+        return 1
+
+
+def cmd_peer_add(args: argparse.Namespace) -> int:
+    """
+    Add a new peer registry from a JSON config file.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+
+        with open(args.config, 'r') as f:
+            config_data = json.load(f)
+
+        # Override federation_token from CLI arg if provided
+        if hasattr(args, 'federation_token') and args.federation_token:
+            config_data["federation_token"] = args.federation_token
+
+        response = client.add_peer(config=config_data)
+
+        logger.info(f"Peer registry added successfully: {config_data.get('peer_id')}")
+        masked_response = _mask_sensitive_fields(response)
+        print(json.dumps(masked_response, indent=2, default=str))
+        return 0
+
+    except FileNotFoundError:
+        logger.error(f"Config file not found: {args.config}")
+        return 1
+    except Exception as e:
+        logger.error(f"Add peer failed: {e}")
+        return 1
+
+
+def cmd_peer_get(args: argparse.Namespace) -> int:
+    """
+    Get details of a specific peer registry.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.get_peer(peer_id=args.peer_id)
+
+        if args.json:
+            masked_response = _mask_sensitive_fields(response)
+            print(json.dumps(masked_response, indent=2, default=str))
+            return 0
+
+        print(f"Peer ID:      {response.get('peer_id')}")
+        print(f"Name:         {response.get('name')}")
+        print(f"Endpoint:     {response.get('endpoint')}")
+        print(f"Enabled:      {response.get('enabled')}")
+        print(f"Sync Mode:    {response.get('sync_mode', 'all')}")
+        print(f"Created:      {response.get('created_at')}")
+        print(f"Updated:      {response.get('updated_at')}")
+
+        # Mask federation token in non-JSON output
+        fed_token = response.get('federation_token')
+        if fed_token:
+            masked_token = f"{fed_token[:3]}..." if len(fed_token) > 3 else "***"
+            print(f"Fed Token:    {masked_token}")
+
+        whitelist_servers = response.get('whitelist_servers', [])
+        if whitelist_servers:
+            print(f"Whitelist:    {', '.join(whitelist_servers)}")
+
+        tag_filter = response.get('tag_filter', [])
+        if tag_filter:
+            print(f"Tag Filter:   {', '.join(tag_filter)}")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Get peer failed: {e}")
+        return 1
+
+
+def cmd_peer_update(args: argparse.Namespace) -> int:
+    """
+    Update an existing peer registry from a JSON config file.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+
+        with open(args.config, 'r') as f:
+            config_data = json.load(f)
+
+        # Override federation_token from CLI arg if provided
+        if hasattr(args, 'federation_token') and args.federation_token:
+            config_data["federation_token"] = args.federation_token
+
+        response = client.update_peer(
+            peer_id=args.peer_id,
+            config=config_data
+        )
+
+        logger.info(f"Peer registry updated successfully: {args.peer_id}")
+        masked_response = _mask_sensitive_fields(response)
+        print(json.dumps(masked_response, indent=2, default=str))
+        return 0
+
+    except FileNotFoundError:
+        logger.error(f"Config file not found: {args.config}")
+        return 1
+    except Exception as e:
+        logger.error(f"Update peer failed: {e}")
+        return 1
+
+
+def cmd_peer_remove(args: argparse.Namespace) -> int:
+    """
+    Remove a peer registry.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        if not args.force:
+            confirm = input(f"Remove peer registry '{args.peer_id}'? (y/N): ")
+            if confirm.lower() != 'y':
+                logger.info("Cancelled")
+                return 0
+
+        client = _create_client(args)
+        response = client.remove_peer(peer_id=args.peer_id)
+
+        logger.info(f"Peer registry removed: {args.peer_id}")
+        masked_response = _mask_sensitive_fields(response)
+        print(json.dumps(masked_response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Remove peer failed: {e}")
+        return 1
+
+
+def cmd_peer_sync(args: argparse.Namespace) -> int:
+    """
+    Trigger sync from a specific peer registry.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.sync_peer(peer_id=args.peer_id)
+
+        if args.json:
+            print(json.dumps(response, indent=2, default=str))
+            return 0
+
+        print(f"\nSync Results for peer '{args.peer_id}':")
+        print(f"  Status:          {response.get('status', 'unknown')}")
+        print(f"  Servers Synced:  {response.get('servers_synced', 0)}")
+        print(f"  Agents Synced:   {response.get('agents_synced', 0)}")
+        print(f"  Servers Orphaned: {response.get('servers_orphaned', 0)}")
+        print(f"  Agents Orphaned:  {response.get('agents_orphaned', 0)}")
+
+        errors = response.get('errors', [])
+        if errors:
+            print(f"\n  Errors ({len(errors)}):")
+            for error in errors:
+                print(f"    - {error}")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Peer sync failed: {e}")
+        return 1
+
+
+def cmd_peer_sync_all(args: argparse.Namespace) -> int:
+    """
+    Trigger sync from all enabled peer registries.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.sync_all_peers()
+
+        if args.json:
+            print(json.dumps(response, indent=2, default=str))
+            return 0
+
+        results = response if isinstance(response, list) else response.get('results', [])
+        print(f"\nSync All Peers Results:")
+        print(f"  Total peers synced: {len(results)}")
+
+        for result in results:
+            peer_id = result.get('peer_id', 'unknown')
+            status = result.get('status', 'unknown')
+            print(f"\n  {peer_id}: {status}")
+            print(f"    Servers: {result.get('servers_synced', 0)}")
+            print(f"    Agents:  {result.get('agents_synced', 0)}")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Sync all peers failed: {e}")
+        return 1
+
+
+def cmd_peer_status(args: argparse.Namespace) -> int:
+    """
+    Get sync status for a specific peer registry.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.get_peer_status(peer_id=args.peer_id)
+
+        if args.json:
+            print(json.dumps(response, indent=2, default=str))
+            return 0
+
+        print(f"\nSync Status for peer '{args.peer_id}':")
+
+        # Determine last sync status from history or health
+        history = response.get('sync_history', [])
+        if history:
+            last_entry = history[0]
+            last_status = "success" if last_entry.get('success') else "failed"
+            last_time = last_entry.get('completed_at') or last_entry.get('started_at')
+        else:
+            last_status = "never"
+            last_time = response.get('last_successful_sync') or response.get('last_sync_attempt')
+
+        print(f"  Last Sync Status:  {last_status}")
+        print(f"  Last Sync Time:    {last_time or 'never'}")
+        print(f"  Last Generation:   {response.get('current_generation', 0)}")
+        print(f"  Servers Synced:    {response.get('total_servers_synced', 0)}")
+        print(f"  Agents Synced:     {response.get('total_agents_synced', 0)}")
+        print(f"  Is Healthy:        {response.get('is_healthy', False)}")
+
+        if history:
+            print(f"\n  Recent Sync History ({len(history)} entries):")
+            for entry in history[:5]:
+                entry_status = "success" if entry.get('success') else "failed"
+                entry_time = entry.get('completed_at') or entry.get('started_at')
+                print(f"    {entry_time} - {entry_status}")
+                print(f"      Servers: {entry.get('servers_synced', 0)}, "
+                      f"Agents: {entry.get('agents_synced', 0)}")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Get peer status failed: {e}")
+        return 1
+
+
+def cmd_peer_enable(args: argparse.Namespace) -> int:
+    """
+    Enable a peer registry.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.enable_peer(peer_id=args.peer_id)
+
+        logger.info(f"Peer registry enabled: {args.peer_id}")
+        masked_response = _mask_sensitive_fields(response)
+        print(json.dumps(masked_response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Enable peer failed: {e}")
+        return 1
+
+
+def cmd_peer_disable(args: argparse.Namespace) -> int:
+    """
+    Disable a peer registry.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.disable_peer(peer_id=args.peer_id)
+
+        logger.info(f"Peer registry disabled: {args.peer_id}")
+        masked_response = _mask_sensitive_fields(response)
+        print(json.dumps(masked_response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Disable peer failed: {e}")
+        return 1
+
+
+def cmd_peer_connections(args: argparse.Namespace) -> int:
+    """
+    Get all federation connections across all peers.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.get_peer_connections()
+
+        if args.json:
+            print(json.dumps(response, indent=2, default=str))
+            return 0
+
+        connections = response if isinstance(response, list) else response.get('connections', [])
+
+        if not connections:
+            logger.info("No federation connections found")
+            return 0
+
+        logger.info(f"Found {len(connections)} federation connections:\n")
+        for conn in connections:
+            print(f"  Peer: {conn.get('peer_id')}")
+            print(f"  Direction: {conn.get('direction', 'unknown')}")
+            print(f"  Status: {conn.get('status', 'unknown')}")
+            print()
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Get peer connections failed: {e}")
+        return 1
+
+
+def cmd_peer_shared_resources(args: argparse.Namespace) -> int:
+    """
+    Get resource sharing summary across all peers.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.get_shared_resources()
+
+        if args.json:
+            print(json.dumps(response, indent=2, default=str))
+            return 0
+
+        print("\nShared Resources Summary:")
+        print(json.dumps(response, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Get shared resources failed: {e}")
+        return 1
+
+
 def main() -> int:
     """
     Main entry point for the CLI.
@@ -3298,6 +3772,184 @@ Examples:
         help="Output raw JSON instead of formatted text"
     )
 
+    # ==========================================
+    # Peer Registry Management Commands
+    # ==========================================
+
+    # List peers command
+    peer_list_parser = subparsers.add_parser(
+        "peer-list",
+        help="List all configured peer registries"
+    )
+    peer_list_parser.add_argument(
+        "--enabled-only",
+        action="store_true",
+        help="Show only enabled peers"
+    )
+    peer_list_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
+    # Add peer command
+    peer_add_parser = subparsers.add_parser(
+        "peer-add",
+        help="Add a new peer registry from JSON config"
+    )
+    peer_add_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to peer configuration JSON file"
+    )
+    peer_add_parser.add_argument(
+        "--federation-token",
+        required=False,
+        help="Federation static token from the remote peer registry. "
+        "Overrides federation_token in the JSON config file if both are provided."
+    )
+
+    # Get peer command
+    peer_get_parser = subparsers.add_parser(
+        "peer-get",
+        help="Get details of a specific peer registry"
+    )
+    peer_get_parser.add_argument(
+        "--peer-id",
+        required=True,
+        help="Peer registry identifier"
+    )
+    peer_get_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
+    # Update peer command
+    peer_update_parser = subparsers.add_parser(
+        "peer-update",
+        help="Update an existing peer registry"
+    )
+    peer_update_parser.add_argument(
+        "--peer-id",
+        required=True,
+        help="Peer registry identifier"
+    )
+    peer_update_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to updated peer configuration JSON file"
+    )
+    peer_update_parser.add_argument(
+        "--federation-token",
+        required=False,
+        help="Federation static token from the remote peer registry. "
+        "Overrides federation_token in the JSON config file if both are provided."
+    )
+
+    # Remove peer command
+    peer_remove_parser = subparsers.add_parser(
+        "peer-remove",
+        help="Remove a peer registry"
+    )
+    peer_remove_parser.add_argument(
+        "--peer-id",
+        required=True,
+        help="Peer registry identifier"
+    )
+    peer_remove_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Skip confirmation prompt"
+    )
+
+    # Sync from specific peer command
+    peer_sync_parser = subparsers.add_parser(
+        "peer-sync",
+        help="Trigger sync from a specific peer registry"
+    )
+    peer_sync_parser.add_argument(
+        "--peer-id",
+        required=True,
+        help="Peer registry identifier to sync from"
+    )
+    peer_sync_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
+    # Sync from all peers command
+    peer_sync_all_parser = subparsers.add_parser(
+        "peer-sync-all",
+        help="Trigger sync from all enabled peer registries"
+    )
+    peer_sync_all_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
+    # Get peer sync status command
+    peer_status_parser = subparsers.add_parser(
+        "peer-status",
+        help="Get sync status for a specific peer registry"
+    )
+    peer_status_parser.add_argument(
+        "--peer-id",
+        required=True,
+        help="Peer registry identifier"
+    )
+    peer_status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
+    # Enable peer command
+    peer_enable_parser = subparsers.add_parser(
+        "peer-enable",
+        help="Enable a peer registry"
+    )
+    peer_enable_parser.add_argument(
+        "--peer-id",
+        required=True,
+        help="Peer registry identifier"
+    )
+
+    # Disable peer command
+    peer_disable_parser = subparsers.add_parser(
+        "peer-disable",
+        help="Disable a peer registry"
+    )
+    peer_disable_parser.add_argument(
+        "--peer-id",
+        required=True,
+        help="Peer registry identifier"
+    )
+
+    # Get peer connections command
+    peer_connections_parser = subparsers.add_parser(
+        "peer-connections",
+        help="Get all federation connections across all peers"
+    )
+    peer_connections_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
+    # Get shared resources command
+    peer_shared_resources_parser = subparsers.add_parser(
+        "peer-shared-resources",
+        help="Get resource sharing summary across all peers"
+    )
+    peer_shared_resources_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output raw JSON instead of formatted text"
+    )
+
     args = parser.parse_args()
 
     # Enable debug logging if requested
@@ -3361,6 +4013,18 @@ Examples:
         "federation-add-asor-agent": cmd_federation_add_asor_agent,
         "federation-remove-asor-agent": cmd_federation_remove_asor_agent,
         "federation-sync": cmd_federation_sync,
+        "peer-list": cmd_peer_list,
+        "peer-add": cmd_peer_add,
+        "peer-get": cmd_peer_get,
+        "peer-update": cmd_peer_update,
+        "peer-remove": cmd_peer_remove,
+        "peer-sync": cmd_peer_sync,
+        "peer-sync-all": cmd_peer_sync_all,
+        "peer-status": cmd_peer_status,
+        "peer-enable": cmd_peer_enable,
+        "peer-disable": cmd_peer_disable,
+        "peer-connections": cmd_peer_connections,
+        "peer-shared-resources": cmd_peer_shared_resources,
     }
 
     handler = command_handlers.get(args.command)

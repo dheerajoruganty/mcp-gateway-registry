@@ -662,6 +662,78 @@ class SearchRepositoryBase(ABC):
         pass
 
 
+class PeerFederationRepositoryBase(ABC):
+    """Abstract base class for peer federation storage."""
+
+    @abstractmethod
+    async def load_all(self) -> None:
+        """Load/reload all peers and sync states from storage."""
+        pass
+
+    @abstractmethod
+    async def get_peer(
+        self,
+        peer_id: str,
+    ) -> Optional[Any]:
+        """Get peer configuration by ID."""
+        pass
+
+    @abstractmethod
+    async def list_peers(
+        self,
+        enabled: Optional[bool] = None,
+    ) -> List[Any]:
+        """List all peer configurations with optional filtering."""
+        pass
+
+    @abstractmethod
+    async def create_peer(
+        self,
+        config: Any,
+    ) -> Any:
+        """Create a new peer configuration."""
+        pass
+
+    @abstractmethod
+    async def update_peer(
+        self,
+        peer_id: str,
+        updates: Dict[str, Any],
+    ) -> Any:
+        """Update an existing peer configuration."""
+        pass
+
+    @abstractmethod
+    async def delete_peer(
+        self,
+        peer_id: str,
+    ) -> bool:
+        """Delete a peer configuration and its sync status."""
+        pass
+
+    @abstractmethod
+    async def get_sync_status(
+        self,
+        peer_id: str,
+    ) -> Optional[Any]:
+        """Get sync status for a peer."""
+        pass
+
+    @abstractmethod
+    async def update_sync_status(
+        self,
+        peer_id: str,
+        status: Any,
+    ) -> Any:
+        """Update sync status for a peer."""
+        pass
+
+    @abstractmethod
+    async def list_sync_statuses(self) -> List[Any]:
+        """List all peer sync statuses."""
+        pass
+
+
 class FederationConfigRepositoryBase(ABC):
     """Abstract base class for federation configuration storage."""
 

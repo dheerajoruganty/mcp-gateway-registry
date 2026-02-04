@@ -227,6 +227,32 @@ registry_static_token_auth_enabled = true
 registry_api_token = "m3zT65wREARMVDToKosg_DgNkKqS_434hNxy3sslGPY"
 
 # ============================================================================
+# FEDERATION CONFIGURATION (Peer-to-Peer Registry Sync)
+# ============================================================================
+
+# Unique identifier for this registry instance in federation.
+# Used to identify the source of synced items (e.g., "my-registry", "prod-us-east-1").
+# registry_id = "my-registry"
+
+# Enable static token auth for Federation API endpoints (/api/federation/*, /api/peers/*).
+# When enabled, peer registries can authenticate using FEDERATION_STATIC_TOKEN.
+# Default: false
+# federation_static_token_auth_enabled = true
+
+# Static token for Federation API access. Peer registries use this as Bearer token.
+# Generate with: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+# Can also be set via environment variable:
+#   export TF_VAR_federation_static_token="your-generated-token"
+# federation_static_token = "your-federation-token-here"
+
+# Fernet encryption key for storing federation tokens in MongoDB.
+# Required on importing registry (the one that syncs FROM peer registries).
+# Generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Can also be set via environment variable:
+#   export TF_VAR_federation_encryption_key="your-fernet-key-here"
+# federation_encryption_key = "your-fernet-encryption-key-here"
+
+# ============================================================================
 # AUTHENTICATION PROVIDER CONFIGURATION
 # ============================================================================
 

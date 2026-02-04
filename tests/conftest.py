@@ -5,8 +5,35 @@ This module provides session-scoped fixtures and auto-mocking configuration
 that applies to all tests.
 """
 
-import logging
+# =============================================================================
+# SSL PATH MOCKING (BEFORE ANY IMPORTS)
+# =============================================================================
+# This must run FIRST to avoid permission errors when nginx_service is imported
+
+import errno
 import os
+
+_original_stat = os.stat
+
+
+def _patched_stat(path, *args, **kwargs):
+    """Patched stat that handles SSL paths gracefully in CI environments."""
+    path_str = str(path).lower()
+    if "ssl" in path_str or "privkey" in path_str or "fullchain" in path_str:
+        # Raise FileNotFoundError with proper errno for SSL paths
+        # This simulates missing certs and is properly handled by Path.exists()
+        raise FileNotFoundError(errno.ENOENT, "No such file or directory", str(path))
+    return _original_stat(path, *args, **kwargs)
+
+
+# Apply the patch immediately
+os.stat = _patched_stat
+
+# =============================================================================
+# NOW SAFE TO IMPORT
+# =============================================================================
+
+import logging
 import sys
 import tempfile
 from collections.abc import Generator
@@ -37,7 +64,10 @@ def pytest_configure(config):
     Pytest hook that runs BEFORE test collection.
 
     This runs before any imports happen, ensuring environment variables
-    are set before Settings() is created.
+    are set before Settings() is created. Also registers custom markers.
+
+    Args:
+        config: Pytest config object
     """
     # Set MongoDB connection to localhost for tests
     # (Docker deployments use 'mongodb' hostname from docker-compose.yml)
@@ -64,29 +94,34 @@ def pytest_configure(config):
         # Settings hasn't been imported yet, which is fine
         pass
 
-
-# =============================================================================
-# SSL PATH MOCKING (BEFORE ANY IMPORTS)
-# =============================================================================
-# This must run FIRST to avoid permission errors when nginx_service is imported
-
-import errno
-
-_original_stat = os.stat
-
-
-def _patched_stat(path, *args, **kwargs):
-    """Patched stat that handles SSL paths gracefully in CI environments."""
-    path_str = str(path).lower()
-    if "ssl" in path_str or "privkey" in path_str or "fullchain" in path_str:
-        # Raise FileNotFoundError with proper errno for SSL paths
-        # This simulates missing certs and is properly handled by Path.exists()
-        raise FileNotFoundError(errno.ENOENT, "No such file or directory", str(path))
-    return _original_stat(path, *args, **kwargs)
-
-
-# Apply the patch immediately
-os.stat = _patched_stat
+    # Register custom markers
+    config.addinivalue_line(
+        "markers", "unit: Unit tests that test single components in isolation"
+    )
+    config.addinivalue_line(
+        "markers", "integration: Integration tests that test multiple components together"
+    )
+    config.addinivalue_line(
+        "markers", "requires_models: Tests that require real ML models (slow)"
+    )
+    config.addinivalue_line(
+        "markers", "auth: Authentication and authorization tests"
+    )
+    config.addinivalue_line(
+        "markers", "agents: A2A agent service tests"
+    )
+    config.addinivalue_line(
+        "markers", "servers: MCP server service tests"
+    )
+    config.addinivalue_line(
+        "markers", "api: API route tests"
+    )
+    config.addinivalue_line(
+        "markers", "search: Search functionality tests"
+    )
+    config.addinivalue_line(
+        "markers", "slow: Tests that take a long time to run"
+    )
 
 
 # =============================================================================
@@ -503,50 +538,6 @@ def sample_agent_card() -> dict[str, Any]:
         "visibility": "public",
         "trustLevel": "unverified"
     }
-
-
-# =============================================================================
-# MARKERS AND CONFIGURATION
-# =============================================================================
-
-
-def pytest_configure(config):
-    """
-    Pytest configuration hook.
-
-    Registers custom markers and configures test environment.
-
-    Args:
-        config: Pytest config object
-    """
-    # Register custom markers
-    config.addinivalue_line(
-        "markers", "unit: Unit tests that test single components in isolation"
-    )
-    config.addinivalue_line(
-        "markers", "integration: Integration tests that test multiple components together"
-    )
-    config.addinivalue_line(
-        "markers", "requires_models: Tests that require real ML models (slow)"
-    )
-    config.addinivalue_line(
-        "markers", "auth: Authentication and authorization tests"
-    )
-    config.addinivalue_line(
-        "markers", "agents: A2A agent service tests"
-    )
-    config.addinivalue_line(
-        "markers", "servers: MCP server service tests"
-    )
-    config.addinivalue_line(
-        "markers", "api: API route tests"
-    )
-    config.addinivalue_line(
-        "markers", "search: Search functionality tests"
-    )
-    config.addinivalue_line(
-        "markers", "slow: Tests that take a long time to run"
-    )
 
 
 def pytest_collection_modifyitems(config, items):

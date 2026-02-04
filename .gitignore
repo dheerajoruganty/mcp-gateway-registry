@@ -142,6 +142,8 @@ celerybeat.pid
 # Configuration files with sensitive data
 credentials-provider/agentcore-auth/config.yaml
 credentials-provider/oauth/config.yaml
+cli/examples/peer-registry-lob-1.json
+cli/examples/peer-sales-registry.json
 .venv
 env/
 venv/
@@ -346,3 +348,4 @@ agent_security_scans/
 
 # Claude
 .claude
+.token?
