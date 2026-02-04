@@ -16,7 +16,11 @@ from datetime import UTC, datetime
 from threading import Lock as ThreadingLock
 from typing import Any, Literal, Optional
 
-from ..repositories.factory import get_peer_federation_repository, get_security_scan_repository
+from ..repositories.factory import (
+    get_peer_federation_repository,
+    get_search_repository,
+    get_security_scan_repository,
+)
 from ..repositories.interfaces import PeerFederationRepositoryBase
 from ..schemas.agent_models import AgentCard
 from ..schemas.peer_federation_schema import (
@@ -1177,6 +1181,54 @@ class PeerFederationService:
         sync_metadata = item.get("sync_metadata") or {}
         return sync_metadata.get("local_overrides", False)
 
+    async def _index_server_for_search(
+        self,
+        path: str,
+        server_data: dict[str, Any],
+    ) -> None:
+        """
+        Explicitly index a server for search (embeddings).
+
+        This is called after successfully storing a synced server to ensure
+        it's indexed for semantic search. The server_service methods should
+        do this automatically, but this is a fallback to ensure it happens.
+
+        Args:
+            path: Server path (e.g., /peer-registry-lob-1/my-server)
+            server_data: Server data dict
+        """
+        try:
+            search_repo = get_search_repository()
+            is_enabled = server_data.get("is_enabled", True)
+            await search_repo.index_server(path, server_data, is_enabled)
+            logger.debug(f"Indexed synced server for search: {path}")
+        except Exception as e:
+            logger.error(f"Failed to index synced server {path} for search: {e}")
+
+    async def _index_agent_for_search(
+        self,
+        path: str,
+        agent_card: AgentCard,
+    ) -> None:
+        """
+        Explicitly index an agent for search (embeddings).
+
+        This is called after successfully storing a synced agent to ensure
+        it's indexed for semantic search. The agent_service methods should
+        do this automatically, but this is a fallback to ensure it happens.
+
+        Args:
+            path: Agent path (e.g., /peer-registry-lob-1/my-agent)
+            agent_card: AgentCard instance
+        """
+        try:
+            search_repo = get_search_repository()
+            is_enabled = agent_service.is_agent_enabled(path)
+            await search_repo.index_agent(path, agent_card, is_enabled)
+            logger.debug(f"Indexed synced agent for search: {path}")
+        except Exception as e:
+            logger.error(f"Failed to index synced agent {path} for search: {e}")
+
     async def _store_synced_servers(
         self,
         peer_id: str,
@@ -1242,6 +1294,8 @@ class PeerFederationService:
                         if success:
                             logger.debug(f"Updated synced server: {prefixed_path}")
                             stored_count += 1
+                            # Explicitly index for search (embeddings)
+                            await self._index_server_for_search(prefixed_path, server_data)
                         else:
                             logger.error(f"Failed to update server: {prefixed_path}")
                     else:
@@ -1250,6 +1304,8 @@ class PeerFederationService:
                         if result.get("success"):
                             logger.debug(f"Registered synced server: {prefixed_path}")
                             stored_count += 1
+                            # Explicitly index for search (embeddings)
+                            await self._index_server_for_search(prefixed_path, server_data)
                         else:
                             logger.error(f"Failed to register server: {prefixed_path}")
 
@@ -1331,6 +1387,8 @@ class PeerFederationService:
                         if updated_agent:
                             logger.debug(f"Updated synced agent: {prefixed_path}")
                             stored_count += 1
+                            # Explicitly index for search (embeddings)
+                            await self._index_agent_for_search(prefixed_path, updated_agent)
                         else:
                             logger.error(f"Failed to update agent: {prefixed_path}")
                     else:
@@ -1340,6 +1398,8 @@ class PeerFederationService:
                         if registered_agent:
                             logger.debug(f"Registered synced agent: {prefixed_path}")
                             stored_count += 1
+                            # Explicitly index for search (embeddings)
+                            await self._index_agent_for_search(prefixed_path, registered_agent)
                         else:
                             logger.error(f"Failed to register agent: {prefixed_path}")
 
