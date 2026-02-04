@@ -1000,7 +1000,7 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                     : registryId.replace('peer-registry-', '').replace('peer-', '').toUpperCase() + ' (Federated)';
 
                   return (
-                    <div key={registryId} id={`server-registry-${registryId}`} className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden scroll-mt-4">
+                    <div key={registryId} id={`server-registry-${registryId}`} className="border border-gray-200 dark:border-gray-700 rounded-xl scroll-mt-4">
                       {/* Collapsible Header */}
                       <button
                         onClick={() => toggleRegistryGroup(registryId)}
@@ -1046,9 +1046,9 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
 
                       {/* Collapsible Content */}
                       {isExpanded && (
-                        <div className="p-4 bg-white dark:bg-gray-800">
+                        <div className="p-4 bg-white dark:bg-gray-800 overflow-visible">
                           <div
-                            className="grid"
+                            className="grid overflow-visible"
                             style={{
                               gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
                               gap: 'clamp(1.5rem, 3vw, 2.5rem)'
@@ -1232,9 +1232,9 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
 
                       {/* Collapsible Content */}
                       {isExpanded && (
-                        <div className="p-4 bg-white dark:bg-gray-800">
+                        <div className="p-4 bg-white dark:bg-gray-800 overflow-visible">
                           <div
-                            className="grid"
+                            className="grid overflow-visible"
                             style={{
                               gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
                               gap: 'clamp(1.5rem, 3vw, 2.5rem)'
