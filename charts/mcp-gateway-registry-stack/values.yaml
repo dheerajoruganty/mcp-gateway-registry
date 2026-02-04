@@ -3,11 +3,20 @@ global:
   # Domain configuration - update this to your actual domain
   domain: "DOMAIN"
 
-  # Security settings - CHANGE THESE IN PRODUCTION
-  secretKey: "aReallyGoodKeyThatShouldBeChanged"
+  # Security settings
+  # secretKey: If not provided, a random 64-character key is auto-generated
+  # and shared between auth-server and registry via a shared secret.
+  # The generated key persists across helm upgrades.
+  # Uncomment and set to use a specific key:
+  # secretKey: "your-secure-key-here"
+
+  # Shared secret name - automatically set for stack deployment
+  # Both auth-server and registry will use this secret for SECRET_KEY
+  sharedSecretName: "shared-secret"
 
   # Common ingress settings
   ingress:
+    inboundCidrs: # optional comma separated list of allowed inbound CIDR ranges
     className: alb
     tls: true
     # Routing mode: "subdomain" or "path"
@@ -19,12 +28,6 @@ global:
       authServer: /auth-server
       registry: /registry
       keycloak: /keycloak # make sure to update keycloak.httpRelativePath (/keycloak/)
-    annotations:
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
-      alb.ingress.kubernetes.io/scheme: internet-facing
-      alb.ingress.kubernetes.io/ssl-redirect: '443'
-      alb.ingress.kubernetes.io/target-type: ip
-      alb.ingress.kubernetes.io/success-codes: 200,302
 
 mongodb-kubernetes:
   operator:
@@ -115,22 +118,14 @@ mongodb-configure:
 
 # Registry service configuration
 registry:
-  # app.secretKey and app.authServerUrl will be templated in the subchart using global values
   app:
     replicas: 2 # set to > 1 replica for high availability
   ingress:
     enabled: true
     ingressClassName: alb
-    annotations:
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
-      alb.ingress.kubernetes.io/scheme: internet-facing
-      alb.ingress.kubernetes.io/ssl-redirect: '443'
-      alb.ingress.kubernetes.io/target-type: ip
-      alb.ingress.kubernetes.io/success-codes: 200,302
 
 # Auth server configuration
 auth-server:
-  # app.secretKey, app.externalUrl, app.sessionCookieDomain will be templated using global values
   app:
     replicas: 2 # set to > 1 replica for high availability
   keycloak:
@@ -141,10 +136,3 @@ auth-server:
   ingress:
     enabled: true
     ingressClassName: alb
-    annotations:
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
-      alb.ingress.kubernetes.io/scheme: internet-facing
-      alb.ingress.kubernetes.io/ssl-redirect: '443'
-      alb.ingress.kubernetes.io/target-type: ip
-      alb.ingress.kubernetes.io/success-codes: 200,302
-      alb.ingress.kubernetes.io/healthcheck-path: /health

@@ -1,7 +1,7 @@
 # Storage Architecture: MongoDB CE & AWS DocumentDB
 
 **Status:** Current Implementation
-**Last Updated:** January 3, 2026
+**Last Updated:** January 30, 2026
 **Target Audience:** Developers, DevOps Engineers, System Architects
 
 ## Table of Contents
@@ -326,7 +326,9 @@ query = "financial analysis tools"
 # 2. Generate query embedding (same as MongoDB CE)
 query_embedding = model.encode([query])[0]
 
-# 3. DocumentDB performs indexed vector search
+# 3. DocumentDB performs indexed vector search with tuned parameters
+ef_search = settings.vector_search_ef_search  # Default: 100
+k_value = max(max_results * 3, 50)            # At least 50 for small collections
 pipeline = [
     {
         "$search": {
@@ -334,7 +336,8 @@ pipeline = [
                 "vector": query_embedding,
                 "path": "embedding",
                 "similarity": "cosine",
-                "k": max_results * 3  # Get 3x for re-ranking
+                "k": k_value,
+                "efSearch": ef_search,
             }
         }
     }
@@ -344,25 +347,27 @@ pipeline = [
 # Results are already ranked by vector similarity
 
 # 5. Apply text-based boosting in aggregation pipeline
+#    Each query keyword is matched independently against path, name,
+#    description, tags, and tool names/descriptions
 pipeline.append({
     "$addFields": {
         "text_boost": {
             "$add": [
-                # Boost if query appears in name (+3.0)
-                {"$cond": [{"$regexMatch": {"input": "$name", "regex": query}}, 3.0, 0.0]},
-                # Boost if query appears in description (+2.0)
-                {"$cond": [{"$regexMatch": {"input": "$description", "regex": query}}, 2.0, 0.0]}
+                # Per keyword: path(+5), name(+3), description(+2), tags(+1.5)
+                {"$cond": [{"$regexMatch": {"input": "$path", "regex": keyword, "options": "i"}}, 5.0, 0.0]},
+                {"$cond": [{"$regexMatch": {"input": "$name", "regex": keyword, "options": "i"}}, 3.0, 0.0]},
+                {"$cond": [{"$regexMatch": {"input": "$description", "regex": keyword, "options": "i"}}, 2.0, 0.0]},
+                # ... plus tags (+1.5) and each tool (+1.0)
             ]
         }
     }
 })
 
-# 6. Re-rank by text boost while preserving vector order
-pipeline.append({"$sort": {"text_boost": -1}})
-pipeline.append({"$limit": max_results})
+# 6. Score combination: normalized_vector + (text_boost * 0.1)
+# All candidates scored, sorted by hybrid score, then top-3 per entity type
 
 # 7. Execute aggregation pipeline
-results = await collection.aggregate(pipeline).to_list(max_results)
+results = await collection.aggregate(pipeline).to_list(k_value)
 ```
 
 #### Code Location
@@ -393,8 +398,10 @@ The application code is identical, but DocumentDB executes it much faster.
 
 - **Optimization:**
   - HNSW parameters tuned for accuracy vs. speed tradeoff
-  - `m=16, efConstruction=128` provides good balance
-  - Can adjust `k` (number of neighbors) based on accuracy needs
+  - `m=16, efConstruction=128` provides good balance for index construction
+  - `efSearch=100` (configurable) provides near-exact recall for typical deployments
+  - Minimum `k=50` ensures small collections are fully covered
+  - Can adjust via `VECTOR_SEARCH_EF_SEARCH` environment variable
 
 ### Terraform Configuration
 
@@ -592,27 +599,47 @@ async def search(self, query: str, max_results: int = 10):
     # 1. Generate query embedding
     query_embedding = model.encode([query])[0]
 
-    # 2. DocumentDB HNSW index search
+    # 2. DocumentDB HNSW index search with tuned parameters
+    ef_search = settings.vector_search_ef_search  # Default: 100
+    k_value = max(max_results * 3, 50)
     pipeline = [{
         "$search": {
             "vectorSearch": {
                 "vector": query_embedding,
                 "path": "embedding",
                 "similarity": "cosine",
-                "k": max_results
+                "k": k_value,
+                "efSearch": ef_search,
             }
         }
     }]
 
     # 3. DocumentDB returns sorted results (FAST!)
-    results = await collection.aggregate(pipeline).to_list(max_results)
+    results = await collection.aggregate(pipeline).to_list(k_value)
 
+    # 4. Score all results, sort by hybrid score, pick top-3 per entity type
     return results
 ```
 
 **Time Complexity:** O(log n) - HNSW index lookup
 **Latency:** ~10-50ms for millions of documents
 **Scalability:** Millions of documents
+
+### Search Resilience: Lexical Fallback
+
+Both backends support automatic fallback to lexical-only search when the embedding model is unavailable. This ensures search remains operational even during embedding provider outages, misconfiguration, or API key expiration.
+
+**Behavior when embeddings are unavailable:**
+
+- Servers and agents are indexed without embeddings (empty vectors)
+- DocumentDB rejects 0-dimension vectors, so documents are stored without vector data
+- Search uses MongoDB aggregation with `$regexMatch` for keyword matching on path, name, description, tags, and tools
+- The `_load_error` cache in `SentenceTransformersClient` prevents repeated model download attempts
+- API response includes `"search_mode": "lexical-only"` to indicate degraded mode
+
+**Recovery:** Restart the service with correct embedding configuration. The error cache resets on restart and search returns to full hybrid mode.
+
+See [Hybrid Search Architecture](hybrid-search-architecture.md) for detailed fallback flow and scoring.
 
 ### Hybrid Search (Text + Vector)
 
@@ -627,15 +654,19 @@ Both backends support hybrid search combining:
 results = [
     {
         "name": "Financial Analysis Server",
-        "vector_score": 0.85,      # 85% semantic similarity
-        "text_boost": 3.0,         # "market" found in name
-        "final_score": 0.94        # 0.85 + (3.0 * 0.03)
+        "vector_score": 0.85,         # Cosine similarity
+        "normalized_vector": 0.925,   # (0.85 + 1.0) / 2.0
+        "text_boost": 3.0,            # "market" found in name
+        "boost_contrib": 0.30,        # 3.0 * 0.1
+        "final_score": 1.0            # clamped to 1.0
     },
     {
         "name": "Investment Tools",
-        "vector_score": 0.75,      # 75% semantic similarity
-        "text_boost": 0.0,         # No keyword match
-        "final_score": 0.75
+        "vector_score": 0.75,         # Cosine similarity
+        "normalized_vector": 0.875,   # (0.75 + 1.0) / 2.0
+        "text_boost": 0.0,            # No keyword match
+        "boost_contrib": 0.0,
+        "final_score": 0.875
     }
 ]
 ```
@@ -643,10 +674,12 @@ results = [
 **Formula:**
 
 ```
-final_score = vector_score + (text_boost * 0.03)
+normalized_vector = (cosine_similarity + 1.0) / 2.0   # Map [-1,1] to [0,1]
+boost_contribution = text_boost * 0.1                   # Scale boost down
+final_score = clamp(normalized_vector + boost_contribution, 0.0, 1.0)
 ```
 
-This ensures semantic relevance is primary (vector_score dominates) while exact keyword matches get a small bonus.
+The `0.1` multiplier is consistent across both DocumentDB and MongoDB CE search paths. Semantic relevance is primary (normalized vector score dominates) while keyword matches provide a meaningful boost for exact references.
 
 ---
 

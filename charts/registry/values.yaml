@@ -15,7 +15,10 @@ app:
   authServerUrl: http://localhost:8888
 
   # Security settings
-  secretKey: apassword
+  # secretKey: If not provided, a random 64-character key is auto-generated.
+  # When deployed via mcp-gateway-registry-stack, the key is shared with auth-server.
+  # Uncomment to use a specific key:
+  # secretKey: "your-secure-key-here"
 
 # Service configuration
 service:

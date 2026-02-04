@@ -283,7 +283,42 @@ class FaissService:
 - No local compute requirements
 - Data transmitted to provider
 
+## Graceful Degradation
+
+### Lexical Fallback When Model Unavailable
+
+If the embedding model fails to load or is unreachable (e.g., invalid model name, expired API key, network failure), the search system automatically falls back to **lexical-only search** instead of returning errors.
+
+**What happens:**
+
+1. The embeddings client caches the load error (`_load_error`) to avoid repeated download/API attempts
+2. The search repository detects the failure and sets `_embedding_unavailable = True`
+3. All subsequent searches use keyword matching (regex on path, name, description, tags, tools) instead of vector similarity
+4. Servers and agents are still indexed, but without embeddings (stored with empty vectors)
+5. The API response includes `"search_mode": "lexical-only"` to indicate reduced search quality
+
+**How to detect:**
+
+- Check the API response `search_mode` field: `"hybrid"` (normal) vs. `"lexical-only"` (fallback)
+- Look for log warnings: `"Embedding model unavailable, falling back to lexical-only search"`
+- During indexing: `"Embedding model unavailable, indexing '<name>' without embeddings"`
+
+**How to recover:**
+
+Fix the embedding configuration and restart the service. On restart, the error cache is cleared and the system will attempt to load the model again. If successful, search returns to full hybrid mode automatically.
+
+See [Hybrid Search Architecture](design/hybrid-search-architecture.md) for details on lexical-only scoring.
+
 ## Troubleshooting
+
+### Embedding Model Not Found
+
+```
+Failed to load SentenceTransformer model: sentence-transformers/my-model is not a local folder
+and is not a valid model identifier listed on 'https://huggingface.co/models'
+```
+
+**Solution:** Verify the model name in `EMBEDDINGS_MODEL_NAME` is correct. Check the [Hugging Face model hub](https://huggingface.co/models?library=sentence-transformers) for valid names. The system will continue operating with lexical-only search until the model is fixed.
 
 ### LiteLLM Not Installed
 
