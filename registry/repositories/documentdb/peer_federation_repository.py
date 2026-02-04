@@ -264,8 +264,9 @@ class DocumentDBPeerFederationRepository(PeerFederationRepositoryBase):
                 logger.debug(f"Sync status not found for peer: {peer_id}")
                 return None
 
-            # Remove MongoDB _id before creating Pydantic model
+            # Remove MongoDB _id and metadata before creating Pydantic model
             doc.pop("_id", None)
+            doc.pop("updated_at", None)
 
             sync_status = PeerSyncStatus(**doc)
             logger.debug(f"Retrieved sync status for peer: {peer_id}")

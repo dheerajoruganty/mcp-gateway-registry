@@ -16,6 +16,8 @@ interface SyncMetadata {
   upstream_path?: string;
   last_synced_at?: string;
   is_read_only?: boolean;
+  is_orphaned?: boolean;
+  orphaned_at?: string;
 }
 
 interface Server {
@@ -172,6 +174,9 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
   // Store peer registry endpoints for display
   // Maps peer_id to endpoint URL: { 'peer-registry-lob-1': 'https://mcpregistry.ddns.net', ... }
   const [peerRegistryEndpoints, setPeerRegistryEndpoints] = useState<Record<string, string>>({});
+
+  // Track which peer is currently being synced
+  const [syncingPeer, setSyncingPeer] = useState<string | null>(null);
 
   // Fetch peer registry configs to get their endpoints
   useEffect(() => {
@@ -521,6 +526,23 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
       await refreshData(); // Refresh both servers and agents from useServerStats
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  // Sync a peer registry to fetch latest servers/agents
+  const handleSyncPeer = async (peerId: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent collapsing the section
+    setSyncingPeer(peerId);
+    try {
+      await axios.post(`/api/peers/${peerId}/sync`);
+      setToast({ message: `Synced from ${peerId} successfully`, type: 'success' });
+      // Refresh the server list to show updated data
+      await refreshData();
+    } catch (error) {
+      console.error('Failed to sync peer:', error);
+      setToast({ message: `Failed to sync from ${peerId}`, type: 'error' });
+    } finally {
+      setSyncingPeer(null);
     }
   };
 
@@ -1002,6 +1024,17 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                           <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full">
                             {filteredRegistryServers.length} server{filteredRegistryServers.length !== 1 ? 's' : ''}
                           </span>
+                          {/* Resync button for federated registries */}
+                          {registryId !== 'local' && (
+                            <button
+                              onClick={(e) => handleSyncPeer(registryId, e)}
+                              disabled={syncingPeer === registryId}
+                              className="ml-2 p-1 text-cyan-600 dark:text-cyan-400 hover:text-cyan-800 dark:hover:text-cyan-200 hover:bg-cyan-100 dark:hover:bg-cyan-900/30 rounded-lg transition-colors disabled:opacity-50"
+                              title={`Resync from ${peerRegistryEndpoints[registryId] || registryId}`}
+                            >
+                              <ArrowPathIcon className={`h-4 w-4 ${syncingPeer === registryId ? 'animate-spin' : ''}`} />
+                            </button>
+                          )}
                         </div>
                       </button>
 
@@ -1172,6 +1205,17 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                           <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full">
                             {filteredRegistryAgents.length} agent{filteredRegistryAgents.length !== 1 ? 's' : ''}
                           </span>
+                          {/* Resync button for federated registries */}
+                          {registryId !== 'local' && (
+                            <button
+                              onClick={(e) => handleSyncPeer(registryId, e)}
+                              disabled={syncingPeer === registryId}
+                              className="ml-2 p-1 text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-200 hover:bg-violet-100 dark:hover:bg-violet-900/30 rounded-lg transition-colors disabled:opacity-50"
+                              title={`Resync from ${peerRegistryEndpoints[registryId] || registryId}`}
+                            >
+                              <ArrowPathIcon className={`h-4 w-4 ${syncingPeer === registryId ? 'animate-spin' : ''}`} />
+                            </button>
+                          )}
                         </div>
                       </button>
 

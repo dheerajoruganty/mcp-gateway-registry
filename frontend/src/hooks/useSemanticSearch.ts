@@ -19,6 +19,8 @@ export interface SyncMetadata {
   upstream_path?: string;
   last_synced_at?: string;
   is_read_only?: boolean;
+  is_orphaned?: boolean;
+  orphaned_at?: string;
 }
 
 export interface SemanticServerHit {

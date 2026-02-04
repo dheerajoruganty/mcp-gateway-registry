@@ -195,6 +195,7 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
               const peerRegistryId = isFederatedServer && server.sync_metadata?.source_peer_id
                 ? server.sync_metadata.source_peer_id.replace('peer-registry-', '').replace('peer-', '').toUpperCase()
                 : null;
+              const isOrphanedServer = server.sync_metadata?.is_orphaned === true;
 
               return (
               <div
@@ -207,14 +208,16 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
                       <p className="text-base font-semibold text-gray-900 dark:text-white">
                         {server.server_name}
                       </p>
-                      {/* Registry source badge */}
-                      {isFederatedServer ? (
+                      {/* Registry source badge - only show for federated (peer registry) items */}
+                      {isFederatedServer && (
                         <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200 border border-cyan-200 dark:border-cyan-700">
                           {peerRegistryId}
                         </span>
-                      ) : (
-                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200 border border-green-200 dark:border-green-700">
-                          LOCAL
+                      )}
+                      {/* Orphaned badge */}
+                      {isOrphanedServer && (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200 border border-red-200 dark:border-red-700" title="No longer exists on peer registry">
+                          ORPHANED
                         </span>
                       )}
                     </div>
@@ -353,6 +356,7 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
               const peerRegistryId = isFederatedAgent && agent.sync_metadata?.source_peer_id
                 ? agent.sync_metadata.source_peer_id.replace('peer-registry-', '').replace('peer-', '').toUpperCase()
                 : null;
+              const isOrphanedAgent = agent.sync_metadata?.is_orphaned === true;
 
               return (
               <div
@@ -365,14 +369,16 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
                       <p className="text-base font-semibold text-gray-900 dark:text-white">
                         {agent.agent_name}
                       </p>
-                      {/* Registry source badge */}
-                      {isFederatedAgent ? (
+                      {/* Registry source badge - only show for federated (peer registry) items */}
+                      {isFederatedAgent && (
                         <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200 border border-violet-200 dark:border-violet-700">
                           {peerRegistryId}
                         </span>
-                      ) : (
-                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200 border border-green-200 dark:border-green-700">
-                          LOCAL
+                      )}
+                      {/* Orphaned badge */}
+                      {isOrphanedAgent && (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200 border border-red-200 dark:border-red-700" title="No longer exists on peer registry">
+                          ORPHANED
                         </span>
                       )}
                     </div>

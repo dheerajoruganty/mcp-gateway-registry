@@ -2801,17 +2801,30 @@ def cmd_peer_status(args: argparse.Namespace) -> int:
             return 0
 
         print(f"\nSync Status for peer '{args.peer_id}':")
-        print(f"  Last Sync Status:  {response.get('last_sync_status', 'never')}")
-        print(f"  Last Sync Time:    {response.get('last_sync_time', 'never')}")
-        print(f"  Last Generation:   {response.get('last_generation', 0)}")
+
+        # Determine last sync status from history or health
+        history = response.get('sync_history', [])
+        if history:
+            last_entry = history[0]
+            last_status = "success" if last_entry.get('success') else "failed"
+            last_time = last_entry.get('completed_at') or last_entry.get('started_at')
+        else:
+            last_status = "never"
+            last_time = response.get('last_successful_sync') or response.get('last_sync_attempt')
+
+        print(f"  Last Sync Status:  {last_status}")
+        print(f"  Last Sync Time:    {last_time or 'never'}")
+        print(f"  Last Generation:   {response.get('current_generation', 0)}")
         print(f"  Servers Synced:    {response.get('total_servers_synced', 0)}")
         print(f"  Agents Synced:     {response.get('total_agents_synced', 0)}")
+        print(f"  Is Healthy:        {response.get('is_healthy', False)}")
 
-        history = response.get('sync_history', [])
         if history:
             print(f"\n  Recent Sync History ({len(history)} entries):")
             for entry in history[:5]:
-                print(f"    {entry.get('timestamp')} - {entry.get('status')}")
+                entry_status = "success" if entry.get('success') else "failed"
+                entry_time = entry.get('completed_at') or entry.get('started_at')
+                print(f"    {entry_time} - {entry_status}")
                 print(f"      Servers: {entry.get('servers_synced', 0)}, "
                       f"Agents: {entry.get('agents_synced', 0)}")
 
