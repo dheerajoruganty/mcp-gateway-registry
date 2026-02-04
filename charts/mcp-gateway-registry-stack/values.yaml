@@ -16,6 +16,7 @@ global:
 
   # Common ingress settings
   ingress:
+    inboundCidrs: # optional comma separated list of allowed inbound CIDR ranges
     className: alb
     tls: true
     # Routing mode: "subdomain" or "path"
@@ -27,12 +28,6 @@ global:
       authServer: /auth-server
       registry: /registry
       keycloak: /keycloak # make sure to update keycloak.httpRelativePath (/keycloak/)
-    annotations:
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
-      alb.ingress.kubernetes.io/scheme: internet-facing
-      alb.ingress.kubernetes.io/ssl-redirect: '443'
-      alb.ingress.kubernetes.io/target-type: ip
-      alb.ingress.kubernetes.io/success-codes: 200,302
 
 mongodb-kubernetes:
   operator:
@@ -128,12 +123,6 @@ registry:
   ingress:
     enabled: true
     ingressClassName: alb
-    annotations:
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
-      alb.ingress.kubernetes.io/scheme: internet-facing
-      alb.ingress.kubernetes.io/ssl-redirect: '443'
-      alb.ingress.kubernetes.io/target-type: ip
-      alb.ingress.kubernetes.io/success-codes: 200,302
 
 # Auth server configuration
 auth-server:
@@ -147,10 +136,3 @@ auth-server:
   ingress:
     enabled: true
     ingressClassName: alb
-    annotations:
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
-      alb.ingress.kubernetes.io/scheme: internet-facing
-      alb.ingress.kubernetes.io/ssl-redirect: '443'
-      alb.ingress.kubernetes.io/target-type: ip
-      alb.ingress.kubernetes.io/success-codes: 200,302
-      alb.ingress.kubernetes.io/healthcheck-path: /health
