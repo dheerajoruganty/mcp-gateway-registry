@@ -14,6 +14,7 @@ from .interfaces import (
     SearchRepositoryBase,
     FederationConfigRepositoryBase,
     PeerFederationRepositoryBase,
+    SkillRepositoryBase,
 )
 from .audit_repository import AuditRepositoryBase
 
@@ -28,6 +29,7 @@ _search_repo: Optional[SearchRepositoryBase] = None
 _federation_config_repo: Optional[FederationConfigRepositoryBase] = None
 _peer_federation_repo: Optional[PeerFederationRepositoryBase] = None
 _audit_repo: Optional[AuditRepositoryBase] = None
+_skill_repo: Optional[SkillRepositoryBase] = None
 
 
 def get_server_repository() -> ServerRepositoryBase:
@@ -172,7 +174,7 @@ def get_peer_federation_repository() -> PeerFederationRepositoryBase:
 
 def get_audit_repository() -> AuditRepositoryBase:
     """Get audit repository singleton.
-    
+
     Note: Audit repository only supports DocumentDB/MongoDB backends.
     Returns None if storage backend is 'file'.
     """
@@ -195,9 +197,31 @@ def get_audit_repository() -> AuditRepositoryBase:
     return _audit_repo
 
 
+def get_skill_repository() -> SkillRepositoryBase:
+    """Get skill repository singleton."""
+    global _skill_repo
+
+    if _skill_repo is not None:
+        return _skill_repo
+
+    backend = settings.storage_backend
+    logger.info(f"Creating skill repository with backend: {backend}")
+
+    if backend in ("documentdb", "mongodb-ce"):
+        from .documentdb.skill_repository import DocumentDBSkillRepository
+        _skill_repo = DocumentDBSkillRepository()
+    else:
+        # File-based skill repository not implemented yet
+        # Fall back to DocumentDB repository for now
+        from .documentdb.skill_repository import DocumentDBSkillRepository
+        _skill_repo = DocumentDBSkillRepository()
+
+    return _skill_repo
+
+
 def reset_repositories() -> None:
     """Reset all repository singletons. USE ONLY IN TESTS."""
-    global _server_repo, _agent_repo, _scope_repo, _security_scan_repo, _search_repo, _federation_config_repo, _peer_federation_repo, _audit_repo
+    global _server_repo, _agent_repo, _scope_repo, _security_scan_repo, _search_repo, _federation_config_repo, _peer_federation_repo, _audit_repo, _skill_repo
     _server_repo = None
     _agent_repo = None
     _scope_repo = None
@@ -206,3 +230,4 @@ def reset_repositories() -> None:
     _federation_config_repo = None
     _peer_federation_repo = None
     _audit_repo = None
+    _skill_repo = None

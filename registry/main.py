@@ -30,6 +30,7 @@ from registry.api.management_routes import router as management_router
 from registry.api.federation_routes import router as federation_router
 from registry.api.federation_export_routes import router as federation_export_router
 from registry.api.peer_management_routes import router as peer_management_router
+from registry.api.skill_routes import router as skill_router
 from registry.health.routes import router as health_router
 from registry.audit.routes import router as audit_router
 
@@ -327,6 +328,10 @@ app = FastAPI(
         {
             "name": "Audit Logs",
             "description": "Audit log viewing and export endpoints. Requires admin permissions."
+        },
+        {
+            "name": "skills",
+            "description": "Agent Skills registration and management. Requires JWT Bearer token authentication."
         }
     ]
 )
@@ -383,6 +388,7 @@ app.include_router(agent_router, prefix="/api", tags=["Agent Management"])
 app.include_router(management_router, prefix="/api")
 app.include_router(search_router, prefix="/api/search", tags=["Semantic Search"])
 app.include_router(federation_router, prefix="/api", tags=["federation"])
+app.include_router(skill_router, prefix="/api", tags=["skills"])
 app.include_router(health_router, prefix="/api/health", tags=["Health Monitoring"])
 app.include_router(federation_export_router)
 app.include_router(peer_management_router)
