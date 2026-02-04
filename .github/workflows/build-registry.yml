@@ -2,7 +2,7 @@ name: Build Registry Image
 
 on:
   push:
-    # branches: [main]
+    branches: [main]
     paths:
       - 'registry/**'
       - 'auth_server/**'
