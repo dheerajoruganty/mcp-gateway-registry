@@ -437,6 +437,11 @@ class AgentListItem(BaseModel):
     provider: Optional[str] = Field(None, description="Agent provider")
     streaming: bool = Field(default=False, description="Supports streaming")
     trust_level: str = Field(default="unverified", alias="trustLevel", description="Trust level")
+    sync_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        alias="syncMetadata",
+        description="Federation sync metadata for items from peer registries",
+    )
 
     class Config:
         populate_by_name = True  # Allow both snake_case and camelCase on input

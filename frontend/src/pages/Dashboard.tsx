@@ -308,7 +308,8 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
       url: '',  // Will be populated if needed
       version: '',
       visibility: 'public',
-      trust_level: 'community'
+      trust_level: 'community',
+      sync_metadata: a.sync_metadata,
     }));
   }, [agentsFromStats]);
 
@@ -901,10 +902,15 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                       <button
                         key={registryId}
                         onClick={() => {
-                          // Expand this registry, collapse others
+                          // Expand this registry, collapse others (for both servers and agents)
                           const newExpanded: Record<string, boolean> = {};
+                          // Update server registry states
                           registryIds.forEach(id => {
                             newExpanded[id] = (id === registryId);
+                          });
+                          // Also update agent registry states to keep them in sync
+                          agentRegistryIds.forEach(id => {
+                            newExpanded[`agents-${id}`] = (id === registryId);
                           });
                           setExpandedRegistries(prev => ({ ...prev, ...newExpanded }));
                           // Scroll to the section
@@ -1099,10 +1105,15 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                       <button
                         key={registryId}
                         onClick={() => {
-                          // Expand this registry, collapse others for agents
+                          // Expand this registry, collapse others (for both agents and servers)
                           const newExpanded: Record<string, boolean> = {};
+                          // Update agent registry states
                           agentRegistryIds.forEach(id => {
                             newExpanded[`agents-${id}`] = (id === registryId);
+                          });
+                          // Also update server registry states to keep them in sync
+                          registryIds.forEach(id => {
+                            newExpanded[id] = (id === registryId);
                           });
                           setExpandedRegistries(prev => ({ ...prev, ...newExpanded }));
                           // Scroll to the section

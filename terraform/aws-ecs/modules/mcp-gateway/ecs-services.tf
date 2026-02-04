@@ -161,6 +161,23 @@ module "ecs_service_auth" {
           name  = "REGISTRY_API_TOKEN"
           value = var.registry_api_token
         },
+        # Federation configuration (peer-to-peer registry sync)
+        {
+          name  = "REGISTRY_ID"
+          value = var.registry_id
+        },
+        {
+          name  = "FEDERATION_STATIC_TOKEN_AUTH_ENABLED"
+          value = tostring(var.federation_static_token_auth_enabled)
+        },
+        {
+          name  = "FEDERATION_STATIC_TOKEN"
+          value = var.federation_static_token
+        },
+        {
+          name  = "FEDERATION_ENCRYPTION_KEY"
+          value = var.federation_encryption_key
+        },
         {
           name  = "STORAGE_BACKEND"
           value = var.storage_backend
@@ -536,6 +553,22 @@ module "ecs_service_registry" {
         {
           name  = "DOCUMENTDB_TLS_CA_FILE"
           value = "/app/global-bundle.pem"
+        },
+        {
+          name  = "REGISTRY_ID"
+          value = var.registry_id
+        },
+        {
+          name  = "FEDERATION_STATIC_TOKEN_AUTH_ENABLED"
+          value = tostring(var.federation_static_token_auth_enabled)
+        },
+        {
+          name  = "FEDERATION_STATIC_TOKEN"
+          value = var.federation_static_token
+        },
+        {
+          name  = "FEDERATION_ENCRYPTION_KEY"
+          value = var.federation_encryption_key
         }
       ]
 
