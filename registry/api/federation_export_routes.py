@@ -140,6 +140,31 @@ def _get_item_attr(
     return getattr(item, attr, default)
 
 
+def _is_federated_item(
+    item: Any,
+) -> bool:
+    """
+    Check if an item was synced from another peer registry.
+
+    This is used for chain prevention: items synced from A to B should not
+    be re-exported from B to C. Only locally-created items should be exported.
+
+    Args:
+        item: Dict or object to check
+
+    Returns:
+        True if the item has sync_metadata.is_federated == True
+    """
+    sync_metadata = _get_item_attr(item, "sync_metadata", None)
+    if not sync_metadata:
+        return False
+
+    if isinstance(sync_metadata, dict):
+        return sync_metadata.get("is_federated", False) is True
+
+    return getattr(sync_metadata, "is_federated", False) is True
+
+
 def _filter_by_visibility(
     items: list[Any],
     peer_groups: list[str],
@@ -148,6 +173,7 @@ def _filter_by_visibility(
     Filter items based on visibility and peer's group membership.
 
     Filtering rules:
+    - Federated items (synced from another peer): NEVER included (chain prevention)
     - visibility=public: Always included (default if not specified)
     - visibility=group-restricted: Include only if peer is in allowed_groups
     - visibility=internal: NEVER included
@@ -161,8 +187,16 @@ def _filter_by_visibility(
     """
     filtered = []
     peer_group_set = set(peer_groups)
+    federated_count = 0
 
     for item in items:
+        # Chain prevention: Never re-export items synced from another peer
+        # This prevents A->B->C propagation where items from A would be
+        # re-exported from B to C
+        if _is_federated_item(item):
+            federated_count += 1
+            continue
+
         # Default to "public" if visibility not specified (backwards compatibility)
         visibility = _get_item_attr(item, "visibility", "public")
 
@@ -184,6 +218,7 @@ def _filter_by_visibility(
 
     logger.debug(
         f"Filtered {len(items)} items to {len(filtered)} based on visibility. "
+        f"Excluded {federated_count} federated items (chain prevention). "
         f"Peer groups: {peer_groups}"
     )
 

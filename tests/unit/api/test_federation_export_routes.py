@@ -960,15 +960,16 @@ class TestHelperFunctions:
         assert len(filtered) == 0
 
     def test_filter_by_visibility_no_visibility_field(self) -> None:
-        """Test items with no visibility field default to internal."""
+        """Test items with no visibility field default to public (backwards compatibility)."""
         items = [
             {"path": "/no-visibility"},
         ]
 
         filtered = federation_export_routes._filter_by_visibility(items, [])
 
-        # Should default to internal and not be exported
-        assert len(filtered) == 0
+        # Should default to public and be exported (backwards compatibility)
+        assert len(filtered) == 1
+        assert filtered[0]["path"] == "/no-visibility"
 
     def test_filter_by_generation_filters_correctly(self) -> None:
         """Test _filter_by_generation() filters items correctly."""
@@ -996,17 +997,24 @@ class TestHelperFunctions:
         assert len(filtered) == 2
 
     def test_filter_by_generation_missing_metadata(self) -> None:
-        """Test _filter_by_generation() handles missing sync_metadata."""
+        """Test _filter_by_generation() includes items without sync_metadata.
+
+        Items without sync_metadata are local items that have never been
+        synced - they should always be included as they're "new" to the peer.
+        """
         items = [
-            {"path": "/item1"},  # No sync_metadata
+            {"path": "/item1"},  # No sync_metadata - local item
             {"path": "/item2", "sync_metadata": {"sync_generation": 10}},
         ]
 
-        # Items without sync_metadata default to generation 0
+        # Items without sync_metadata are always included (local items)
         filtered = federation_export_routes._filter_by_generation(items, 0)
 
-        assert len(filtered) == 1
-        assert filtered[0]["path"] == "/item2"
+        # Both should be returned: item1 (local) and item2 (generation 10 > 0)
+        assert len(filtered) == 2
+        paths = [item["path"] for item in filtered]
+        assert "/item1" in paths
+        assert "/item2" in paths
 
     def test_item_to_dict_dict(self) -> None:
         """Test _item_to_dict() with dict input."""
@@ -1156,5 +1164,256 @@ class TestDisabledItemsFiltering:
 
             # Disabled agent should not be exported
             assert len(data["items"]) == 0
+
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.unit
+class TestChainPrevention:
+    """Test suite for chain prevention (A->B->C scenario).
+
+    When registry B syncs items from registry A, those items should NOT be
+    re-exported from B to registry C. This prevents federation chains and
+    ensures items only come from their original source.
+    """
+
+    def test_is_federated_item_with_dict(self) -> None:
+        """Test _is_federated_item() detects federated dict items."""
+        # Item synced from another peer
+        federated_item = {
+            "path": "/peer-a/server1",
+            "sync_metadata": {
+                "is_federated": True,
+                "source_peer_id": "peer-a",
+            },
+        }
+
+        assert federation_export_routes._is_federated_item(federated_item) is True
+
+    def test_is_federated_item_with_object(self) -> None:
+        """Test _is_federated_item() detects federated object items."""
+        mock_item = Mock()
+        mock_item.sync_metadata = Mock()
+        mock_item.sync_metadata.is_federated = True
+
+        assert federation_export_routes._is_federated_item(mock_item) is True
+
+    def test_is_federated_item_local_item(self) -> None:
+        """Test _is_federated_item() returns False for local items."""
+        # Local item with no sync_metadata
+        local_item = {
+            "path": "/my-local-server",
+        }
+
+        assert federation_export_routes._is_federated_item(local_item) is False
+
+    def test_is_federated_item_local_with_sync_metadata(self) -> None:
+        """Test _is_federated_item() returns False for local items with sync_metadata."""
+        # Local item that has sync_metadata but is_federated is False
+        local_item = {
+            "path": "/my-local-server",
+            "sync_metadata": {
+                "is_federated": False,
+                "sync_generation": 5,
+            },
+        }
+
+        assert federation_export_routes._is_federated_item(local_item) is False
+
+    def test_is_federated_item_no_is_federated_field(self) -> None:
+        """Test _is_federated_item() returns False when is_federated field missing."""
+        item = {
+            "path": "/server",
+            "sync_metadata": {
+                "sync_generation": 10,
+            },
+        }
+
+        assert federation_export_routes._is_federated_item(item) is False
+
+    def test_filter_by_visibility_excludes_federated_items(self) -> None:
+        """Test _filter_by_visibility() excludes federated items (chain prevention)."""
+        items = [
+            # Local public server - should be exported
+            {"path": "/local-public", "visibility": "public"},
+            # Federated server from peer-a - should NOT be exported
+            {
+                "path": "/peer-a/server1",
+                "visibility": "public",
+                "sync_metadata": {
+                    "is_federated": True,
+                    "source_peer_id": "peer-a",
+                },
+            },
+            # Another federated server - should NOT be exported
+            {
+                "path": "/peer-b/server2",
+                "visibility": "public",
+                "sync_metadata": {
+                    "is_federated": True,
+                    "source_peer_id": "peer-b",
+                },
+            },
+        ]
+
+        filtered = federation_export_routes._filter_by_visibility(items, [])
+
+        # Only local item should be returned
+        assert len(filtered) == 1
+        assert filtered[0]["path"] == "/local-public"
+
+    def test_filter_by_visibility_mixed_local_and_federated(self) -> None:
+        """Test filtering with mix of local and federated items."""
+        items = [
+            # Local public
+            {"path": "/local-public", "visibility": "public"},
+            # Local group-restricted
+            {
+                "path": "/local-finance",
+                "visibility": "group-restricted",
+                "allowed_groups": ["finance"],
+            },
+            # Local internal
+            {"path": "/local-internal", "visibility": "internal"},
+            # Federated public
+            {
+                "path": "/peer-a/public",
+                "visibility": "public",
+                "sync_metadata": {"is_federated": True},
+            },
+            # Federated group-restricted
+            {
+                "path": "/peer-a/finance",
+                "visibility": "group-restricted",
+                "allowed_groups": ["finance"],
+                "sync_metadata": {"is_federated": True},
+            },
+        ]
+
+        # Peer has finance group
+        filtered = federation_export_routes._filter_by_visibility(items, ["finance"])
+
+        # Should return local public + local finance
+        # Should NOT return: local internal, any federated items
+        assert len(filtered) == 2
+        paths = [item["path"] for item in filtered]
+        assert "/local-public" in paths
+        assert "/local-finance" in paths
+        assert "/local-internal" not in paths
+        assert "/peer-a/public" not in paths
+        assert "/peer-a/finance" not in paths
+
+    def test_export_servers_excludes_federated(
+        self,
+        mock_federation_auth: Any,
+    ) -> None:
+        """Test /api/federation/servers endpoint excludes federated servers."""
+        from registry.auth.dependencies import nginx_proxied_auth
+
+        app.dependency_overrides[nginx_proxied_auth] = mock_federation_auth
+
+        servers_dict = {
+            "/local-server": {
+                "path": "/local-server",
+                "name": "Local Server",
+                "visibility": "public",
+            },
+            "/peer-a/synced-server": {
+                "path": "/peer-a/synced-server",
+                "name": "Synced from Peer A",
+                "visibility": "public",
+                "sync_metadata": {
+                    "is_federated": True,
+                    "source_peer_id": "peer-a",
+                },
+            },
+        }
+
+        with (
+            patch.object(
+                server_service,
+                "get_all_servers",
+                return_value=servers_dict,
+            ),
+            patch.object(
+                server_service,
+                "is_service_enabled",
+                return_value=True,
+            ),
+        ):
+            client = TestClient(app)
+            response = client.get("/api/federation/servers")
+
+            assert response.status_code == status.HTTP_200_OK
+            data = response.json()
+
+            # Only local server should be exported
+            assert len(data["items"]) == 1
+            assert data["items"][0]["path"] == "/local-server"
+
+        app.dependency_overrides.clear()
+
+    def test_export_agents_excludes_federated(
+        self,
+        mock_federation_auth: Any,
+    ) -> None:
+        """Test /api/federation/agents endpoint excludes federated agents."""
+        from registry.auth.dependencies import nginx_proxied_auth
+
+        app.dependency_overrides[nginx_proxied_auth] = mock_federation_auth
+
+        # Create mock agents
+        local_agent = Mock()
+        local_agent.path = "/agents/local-agent"
+        local_agent.visibility = "public"
+        local_agent.allowed_groups = []
+        local_agent.sync_metadata = None
+        local_agent.model_dump = Mock(
+            return_value={
+                "path": "/agents/local-agent",
+                "visibility": "public",
+            }
+        )
+
+        federated_agent = Mock()
+        federated_agent.path = "/agents/peer-a/synced-agent"
+        federated_agent.visibility = "public"
+        federated_agent.allowed_groups = []
+        federated_agent.sync_metadata = {
+            "is_federated": True,
+            "source_peer_id": "peer-a",
+        }
+        federated_agent.model_dump = Mock(
+            return_value={
+                "path": "/agents/peer-a/synced-agent",
+                "visibility": "public",
+                "sync_metadata": {
+                    "is_federated": True,
+                    "source_peer_id": "peer-a",
+                },
+            }
+        )
+
+        with (
+            patch.object(
+                agent_service,
+                "get_all_agents",
+                return_value=[local_agent, federated_agent],
+            ),
+            patch.object(
+                agent_service,
+                "is_agent_enabled",
+                return_value=True,
+            ),
+        ):
+            client = TestClient(app)
+            response = client.get("/api/federation/agents")
+
+            assert response.status_code == status.HTTP_200_OK
+            data = response.json()
+
+            # Only local agent should be exported
+            assert len(data["items"]) == 1
+            assert data["items"][0]["path"] == "/agents/local-agent"
 
         app.dependency_overrides.clear()
