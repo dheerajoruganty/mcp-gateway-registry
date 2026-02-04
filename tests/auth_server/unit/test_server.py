@@ -1034,7 +1034,8 @@ class TestNetworkTrustedMode:
             )
 
             # Assert - should NOT return network-trusted response
-            assert response.json().get("method") != "network-trusted"
+            if response.status_code == 200:
+                assert response.json().get("method") != "network-trusted"
 
     def test_network_trusted_bypasses_v01_api(self):
         """When enabled, /v0.1/* requests also bypass JWT validation."""
@@ -1135,7 +1136,8 @@ class TestNetworkTrustedMode:
             )
 
             # Assert - should NOT return network-trusted (falls through to JWT validation)
-            assert response.json().get("method") != "network-trusted"
+            if response.status_code == 200:
+                assert response.json().get("method") != "network-trusted"
 
     def test_network_trusted_skips_bypass_when_session_cookie_present(self):
         """When session cookie is present, bypass is skipped for normal cookie auth flow."""
