@@ -217,6 +217,9 @@ class PeerFederationService:
         """
         Remove a peer from registry.
 
+        Also cleans up all servers and agents synced from this peer
+        (paths starting with /{peer_id}/).
+
         Args:
             peer_id: Peer identifier
 
@@ -233,6 +236,14 @@ class PeerFederationService:
                 PeerRegistryConfig(peer_id=peer_id, name="unknown", endpoint="http://unknown"),
             ).name
 
+            # Clean up synced servers from this peer
+            servers_deleted = await self._cleanup_synced_servers(peer_id)
+            logger.info(f"Deleted {servers_deleted} synced servers from peer '{peer_id}'")
+
+            # Clean up synced agents from this peer
+            agents_deleted = await self._cleanup_synced_agents(peer_id)
+            logger.info(f"Deleted {agents_deleted} synced agents from peer '{peer_id}'")
+
             repo = self._get_repo()
 
             # Delete via repository (handles cascade delete of sync status)
@@ -245,9 +256,88 @@ class PeerFederationService:
                 if peer_id in self.peer_sync_status:
                     del self.peer_sync_status[peer_id]
 
-                logger.info(f"Successfully removed peer '{peer_name}' with peer_id '{peer_id}'")
+                logger.info(
+                    f"Successfully removed peer '{peer_name}' with peer_id '{peer_id}' "
+                    f"(cleaned up {servers_deleted} servers, {agents_deleted} agents)"
+                )
 
             return result
+
+    async def _cleanup_synced_servers(
+        self,
+        peer_id: str,
+    ) -> int:
+        """
+        Delete all servers synced from a specific peer.
+
+        Args:
+            peer_id: Peer identifier
+
+        Returns:
+            Number of servers deleted
+        """
+        deleted_count = 0
+        path_prefix = f"/{peer_id}/"
+
+        try:
+            # Get all servers from the repository
+            all_servers = await server_service.get_all_servers(include_federated=True)
+
+            # Find servers with paths starting with the peer prefix
+            for path in list(all_servers.keys()):
+                if path.startswith(path_prefix):
+                    try:
+                        success = await server_service.remove_server(path)
+                        if success:
+                            deleted_count += 1
+                            logger.debug(f"Deleted synced server: {path}")
+                        else:
+                            logger.warning(f"Failed to delete synced server: {path}")
+                    except Exception as e:
+                        logger.error(f"Error deleting synced server {path}: {e}")
+
+        except Exception as e:
+            logger.error(f"Error cleaning up synced servers for peer '{peer_id}': {e}")
+
+        return deleted_count
+
+    async def _cleanup_synced_agents(
+        self,
+        peer_id: str,
+    ) -> int:
+        """
+        Delete all agents synced from a specific peer.
+
+        Args:
+            peer_id: Peer identifier
+
+        Returns:
+            Number of agents deleted
+        """
+        deleted_count = 0
+        path_prefix = f"/{peer_id}/"
+
+        try:
+            # Get all agents from the repository
+            all_agents = await agent_service.get_all_agents()
+
+            # Find agents with paths starting with the peer prefix
+            for agent in all_agents:
+                if agent.path.startswith(path_prefix):
+                    try:
+                        success = await agent_service.delete_agent(agent.path)
+                        if success:
+                            deleted_count += 1
+                            logger.debug(f"Deleted synced agent: {agent.path}")
+                        else:
+                            logger.warning(f"Failed to delete synced agent: {agent.path}")
+                    except Exception as e:
+                        logger.error(f"Error deleting synced agent {agent.path}: {e}")
+
+        except Exception as e:
+            logger.error(f"Error cleaning up synced agents for peer '{peer_id}': {e}")
+
+        return deleted_count
 
     async def list_peers(
         self,
