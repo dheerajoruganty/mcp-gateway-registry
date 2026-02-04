@@ -189,16 +189,35 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
             className="grid"
             style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}
           >
-            {servers.map((server) => (
+            {servers.map((server) => {
+              // Detect if server is from a peer registry
+              const isFederatedServer = server.path?.startsWith('/peer-');
+              const peerRegistryId = isFederatedServer
+                ? server.path.split('/')[1]?.replace('peer-registry-', '').replace('peer-', '').toUpperCase()
+                : null;
+
+              return (
               <div
                 key={server.path}
                 className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-sm hover:shadow-md transition-shadow"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-base font-semibold text-gray-900 dark:text-white">
-                      {server.server_name}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-base font-semibold text-gray-900 dark:text-white">
+                        {server.server_name}
+                      </p>
+                      {/* Registry source badge */}
+                      {isFederatedServer ? (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200 border border-cyan-200 dark:border-cyan-700">
+                          {peerRegistryId}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200 border border-green-200 dark:border-green-700">
+                          LOCAL
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500 dark:text-gray-300">{server.path}</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -261,7 +280,8 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
                   </div>
                 )}
               </div>
-            ))}
+            );
+            })}
           </div>
         </section>
       )}
@@ -327,16 +347,35 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
             className="grid"
             style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}
           >
-            {agents.map((agent) => (
+            {agents.map((agent) => {
+              // Detect if agent is from a peer registry
+              const isFederatedAgent = agent.path?.startsWith('/peer-');
+              const peerRegistryId = isFederatedAgent
+                ? agent.path.split('/')[1]?.replace('peer-registry-', '').replace('peer-', '').toUpperCase()
+                : null;
+
+              return (
               <div
                 key={agent.path}
                 className="rounded-2xl border border-cyan-200 dark:border-cyan-900/40 bg-white dark:bg-gray-800 p-5 shadow-sm hover:shadow-md transition-shadow"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-base font-semibold text-gray-900 dark:text-white">
-                      {agent.agent_name}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-base font-semibold text-gray-900 dark:text-white">
+                        {agent.agent_name}
+                      </p>
+                      {/* Registry source badge */}
+                      {isFederatedAgent ? (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200 border border-violet-200 dark:border-violet-700">
+                          {peerRegistryId}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200 border border-green-200 dark:border-green-700">
+                          LOCAL
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
                       {agent.visibility || 'public'}
                     </p>
@@ -392,7 +431,8 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
                   <span>{agent.is_enabled ? 'Enabled' : 'Disabled'}</span>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </section>
       )}
