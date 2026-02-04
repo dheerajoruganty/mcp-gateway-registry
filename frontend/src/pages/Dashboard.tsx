@@ -10,6 +10,14 @@ import { useSemanticSearch } from '../hooks/useSemanticSearch';
 import axios from 'axios';
 
 
+interface SyncMetadata {
+  is_federated?: boolean;
+  source_peer_id?: string;
+  upstream_path?: string;
+  last_synced_at?: string;
+  is_read_only?: boolean;
+}
+
 interface Server {
   name: string;
   path: string;
@@ -28,6 +36,7 @@ interface Server {
   is_python?: boolean;
   mcp_endpoint?: string;
   metadata?: Record<string, unknown>;
+  sync_metadata?: SyncMetadata;
 }
 
 interface Agent {
@@ -44,6 +53,7 @@ interface Agent {
   usersCount?: number;
   rating?: number;
   status?: 'healthy' | 'healthy-auth-expired' | 'unhealthy' | 'unknown';
+  sync_metadata?: SyncMetadata;
 }
 
 // Toast notification component
@@ -311,15 +321,15 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
     });
   }, [agents]);
 
-  // Group servers by source registry (local vs peer registries)
+  // Group servers by source registry (local vs peer registries) using sync_metadata
   // Returns a map of registry ID to servers: { 'local': [...], 'peer-registry-lob-1': [...], ... }
   const serversByRegistry = useMemo(() => {
     const groups: Record<string, Server[]> = { 'local': [] };
 
     internalServers.forEach(server => {
-      // Check if server is from a peer registry (path starts with /peer-)
-      if (server.path?.startsWith('/peer-')) {
-        const registryId = server.path.split('/')[1];  // Extract 'peer-registry-xxx'
+      // Check if server is from a peer registry using sync_metadata
+      if (server.sync_metadata?.is_federated && server.sync_metadata?.source_peer_id) {
+        const registryId = server.sync_metadata.source_peer_id;
         if (!groups[registryId]) {
           groups[registryId] = [];
         }
@@ -338,13 +348,14 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
     return ['local', ...ids.filter(id => id !== 'local').sort()];
   }, [serversByRegistry]);
 
-  // Group agents by source registry similarly
+  // Group agents by source registry similarly using sync_metadata
   const agentsByRegistry = useMemo(() => {
     const groups: Record<string, Agent[]> = { 'local': [] };
 
     internalAgents.forEach(agent => {
-      if (agent.path?.startsWith('/peer-')) {
-        const registryId = agent.path.split('/')[1];
+      // Check if agent is from a peer registry using sync_metadata
+      if (agent.sync_metadata?.is_federated && agent.sync_metadata?.source_peer_id) {
+        const registryId = agent.sync_metadata.source_peer_id;
         if (!groups[registryId]) {
           groups[registryId] = [];
         }

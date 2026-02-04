@@ -19,6 +19,14 @@ import AgentDetailsModal from './AgentDetailsModal';
 import SecurityScanModal from './SecurityScanModal';
 import StarRatingWidget from './StarRatingWidget';
 
+interface SyncMetadata {
+  is_federated?: boolean;
+  source_peer_id?: string;
+  upstream_path?: string;
+  last_synced_at?: string;
+  is_read_only?: boolean;
+}
+
 /**
  * Agent interface representing an A2A agent.
  */
@@ -37,6 +45,8 @@ export interface Agent {
   rating?: number;
   rating_details?: Array<{ user: string; rating: number }>;
   status?: 'healthy' | 'healthy-auth-expired' | 'unhealthy' | 'unknown';
+  // Federation sync metadata
+  sync_metadata?: SyncMetadata;
 }
 
 /**
@@ -300,11 +310,10 @@ const AgentCard: React.FC<AgentCardProps> = React.memo(({
     return { Icon: ShieldCheckIcon, color: 'text-green-500 dark:text-green-400', title: 'Security scan passed' };
   };
 
-  // Check if this is a federated agent from a peer registry
-  // Federated agents have paths like /peer-registry-name/agent-path
-  const isFederatedAgent = agent.path?.startsWith('/peer-');
-  const peerRegistryId = isFederatedAgent
-    ? agent.path.split('/')[1]  // Extract "peer-registry-name" from "/peer-registry-name/agent-path"
+  // Check if this is a federated agent from a peer registry using sync_metadata
+  const isFederatedAgent = agent.sync_metadata?.is_federated === true;
+  const peerRegistryId = isFederatedAgent && agent.sync_metadata?.source_peer_id
+    ? agent.sync_metadata.source_peer_id
     : null;
 
   return (
@@ -346,7 +355,7 @@ const AgentCard: React.FC<AgentCardProps> = React.memo(({
                 {/* Registry source badge - show LOCAL or peer registry name */}
                 {isFederatedAgent ? (
                   <span className="px-2 py-0.5 text-xs font-semibold bg-gradient-to-r from-violet-100 to-purple-100 text-violet-700 dark:from-violet-900/30 dark:to-purple-900/30 dark:text-violet-300 rounded-full flex-shrink-0 border border-violet-200 dark:border-violet-600" title={`Synced from ${peerRegistryId}`}>
-                    {peerRegistryId?.toUpperCase().replace('PEER-REGISTRY-', '')}
+                    {peerRegistryId?.toUpperCase().replace('PEER-REGISTRY-', '').replace('PEER-', '')}
                   </span>
                 ) : (
                   <span className="px-2 py-0.5 text-xs font-semibold bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 dark:from-green-900/30 dark:to-emerald-900/30 dark:text-green-300 rounded-full flex-shrink-0 border border-green-200 dark:border-green-600">

@@ -190,10 +190,10 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
             style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}
           >
             {servers.map((server) => {
-              // Detect if server is from a peer registry
-              const isFederatedServer = server.path?.startsWith('/peer-');
-              const peerRegistryId = isFederatedServer
-                ? server.path.split('/')[1]?.replace('peer-registry-', '').replace('peer-', '').toUpperCase()
+              // Detect if server is from a peer registry using sync_metadata
+              const isFederatedServer = server.sync_metadata?.is_federated === true;
+              const peerRegistryId = isFederatedServer && server.sync_metadata?.source_peer_id
+                ? server.sync_metadata.source_peer_id.replace('peer-registry-', '').replace('peer-', '').toUpperCase()
                 : null;
 
               return (
@@ -348,10 +348,10 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
             style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}
           >
             {agents.map((agent) => {
-              // Detect if agent is from a peer registry
-              const isFederatedAgent = agent.path?.startsWith('/peer-');
-              const peerRegistryId = isFederatedAgent
-                ? agent.path.split('/')[1]?.replace('peer-registry-', '').replace('peer-', '').toUpperCase()
+              // Detect if agent is from a peer registry using sync_metadata
+              const isFederatedAgent = agent.sync_metadata?.is_federated === true;
+              const peerRegistryId = isFederatedAgent && agent.sync_metadata?.source_peer_id
+                ? agent.sync_metadata.source_peer_id.replace('peer-registry-', '').replace('peer-', '').toUpperCase()
                 : null;
 
               return (

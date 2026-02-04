@@ -30,6 +30,14 @@ interface ServerVersion {
   description?: string;
 }
 
+interface SyncMetadata {
+  is_federated?: boolean;
+  source_peer_id?: string;
+  upstream_path?: string;
+  last_synced_at?: string;
+  is_read_only?: boolean;
+}
+
 export interface Server {
   name: string;
   path: string;
@@ -53,6 +61,8 @@ export interface Server {
   mcp_server_version?: string;
   mcp_server_version_previous?: string;
   mcp_server_version_updated_at?: string;
+  // Federation sync metadata
+  sync_metadata?: SyncMetadata;
 }
 
 interface ServerCardProps {
@@ -324,11 +334,10 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
   // Check if this server has security pending
   const isSecurityPending = server.tags?.includes('security-pending');
 
-  // Check if this is a federated server from a peer registry
-  // Federated servers have paths like /peer-registry-name/server-path
-  const isFederatedServer = server.path?.startsWith('/peer-');
-  const peerRegistryId = isFederatedServer
-    ? server.path.split('/')[1]  // Extract "peer-registry-name" from "/peer-registry-name/server-path"
+  // Check if this is a federated server from a peer registry using sync_metadata
+  const isFederatedServer = server.sync_metadata?.is_federated === true;
+  const peerRegistryId = isFederatedServer && server.sync_metadata?.source_peer_id
+    ? server.sync_metadata.source_peer_id
     : null;
 
   return (
@@ -370,7 +379,7 @@ const ServerCard: React.FC<ServerCardProps> = React.memo(({ server, onToggle, on
                 {/* Registry source badge - show LOCAL or peer registry name */}
                 {isFederatedServer ? (
                   <span className="px-2 py-0.5 text-xs font-semibold bg-gradient-to-r from-cyan-100 to-blue-100 text-cyan-700 dark:from-cyan-900/30 dark:to-blue-900/30 dark:text-cyan-300 rounded-full flex-shrink-0 border border-cyan-200 dark:border-cyan-600" title={`Synced from ${peerRegistryId}`}>
-                    {peerRegistryId?.toUpperCase().replace('PEER-REGISTRY-', '')}
+                    {peerRegistryId?.toUpperCase().replace('PEER-REGISTRY-', '').replace('PEER-', '')}
                   </span>
                 ) : (
                   <span className="px-2 py-0.5 text-xs font-semibold bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 dark:from-green-900/30 dark:to-emerald-900/30 dark:text-green-300 rounded-full flex-shrink-0 border border-green-200 dark:border-green-600">
