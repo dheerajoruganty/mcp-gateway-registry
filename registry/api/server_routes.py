@@ -375,6 +375,7 @@ async def get_servers_json(
                     "mcp_server_version": server_info.get("mcp_server_version"),
                     "mcp_server_version_previous": server_info.get("mcp_server_version_previous"),
                     "mcp_server_version_updated_at": server_info.get("mcp_server_version_updated_at"),
+                    "sync_metadata": server_info.get("sync_metadata"),
                 }
             )
 

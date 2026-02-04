@@ -487,6 +487,7 @@ async def list_agents(
                 provider=provider_name,
                 streaming=streaming,
                 trust_level=agent.trust_level,
+                sync_metadata=agent.sync_metadata,
             )
             filtered_agents.append(agent_info)
 

@@ -694,6 +694,11 @@ class AgentInfo(BaseModel):
         alias="trustLevel",
         description="unverified, community, verified, trusted",
     )
+    sync_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        alias="syncMetadata",
+        description="Federation sync metadata for items from peer registries",
+    )
 
     model_config = ConfigDict(
         populate_by_name=True  # Allow both snake_case and camelCase on input
