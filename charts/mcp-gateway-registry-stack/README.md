@@ -154,3 +154,106 @@ kubectl logs -n MYNAMESPACE setup-keycloak-d6g2r --tail 20
 ```
 
 You will see the credentials in the output
+
+## Scaling and High Availability
+
+### Replica Configuration
+
+Both the auth-server and registry deployments support configuring the number of replicas via `values.yaml`:
+
+```yaml
+auth-server:
+  replicaCount: 2
+
+registry:
+  replicaCount: 2
+```
+
+For production environments, we recommend running at least 2 replicas of each service to ensure high availability.
+
+### Topology Spread Constraints
+
+By default, neither the auth-server nor registry deployments include `topologySpreadConstraints`. This is intentional for several reasons:
+
+1. **Routing Complexity**: Routing is complex and handled differently between deployments  
+2. **Development Flexibility**: Single-node or small clusters (common in dev/test) would fail to schedule pods with strict spread constraints
+3. **Custom Requirements**: Organizations often have specific topology requirements that vary by environment
+
+For production deployments on multi-AZ clusters, we recommend adding topology spread constraints to both deployments to distribute pods across availability zones and nodes. This improves fault tolerance and ensures service availability during zone or node failures.
+
+#### Adding Topology Spread Constraints
+
+To add topology spread constraints, patch the deployments after installation:
+
+```bash
+# Patch auth-server deployment
+kubectl patch deployment auth-server -n MYNAMESPACE --type='json' -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/topologySpreadConstraints",
+    "value": [
+      {
+        "maxSkew": 1,
+        "topologyKey": "topology.kubernetes.io/zone",
+        "whenUnsatisfiable": "ScheduleAnyway",
+        "labelSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "auth-server",
+            "app.kubernetes.io/component": "auth-server"
+          }
+        }
+      },
+      {
+        "maxSkew": 1,
+        "topologyKey": "kubernetes.io/hostname",
+        "whenUnsatisfiable": "ScheduleAnyway",
+        "labelSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "auth-server",
+            "app.kubernetes.io/component": "auth-server"
+          }
+        }
+      }
+    ]
+  }
+]'
+
+# Patch registry deployment
+kubectl patch deployment registry -n MYNAMESPACE --type='json' -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/topologySpreadConstraints",
+    "value": [
+      {
+        "maxSkew": 1,
+        "topologyKey": "topology.kubernetes.io/zone",
+        "whenUnsatisfiable": "ScheduleAnyway",
+        "labelSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "registry",
+            "app.kubernetes.io/component": "registry"
+          }
+        }
+      },
+      {
+        "maxSkew": 1,
+        "topologyKey": "kubernetes.io/hostname",
+        "whenUnsatisfiable": "ScheduleAnyway",
+        "labelSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "registry",
+            "app.kubernetes.io/component": "registry"
+          }
+        }
+      }
+    ]
+  }
+]'
+```
+
+#### Constraint Explanation
+
+- **`topology.kubernetes.io/zone`**: Spreads pods across availability zones for zone-level fault tolerance
+- **`kubernetes.io/hostname`**: Spreads pods across different nodes within each zone for node-level fault tolerance
+- **`maxSkew: 1`**: Ensures pods are distributed as evenly as possible (difference between zones/nodes is at most 1)
+- **`whenUnsatisfiable: ScheduleAnyway`**: Uses soft constraints that prefer even distribution but won't block scheduling if perfect distribution isn't possible. Change to `DoNotSchedule` for strict enforcement

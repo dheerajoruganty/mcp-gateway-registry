@@ -119,7 +119,7 @@ mongodb-configure:
 # Registry service configuration
 registry:
   app:
-    replicas: 1
+    replicas: 2 # set to > 1 replica for high availability
   ingress:
     enabled: true
     ingressClassName: alb
@@ -127,7 +127,7 @@ registry:
 # Auth server configuration
 auth-server:
   app:
-    replicas: 1
+    replicas: 2 # set to > 1 replica for high availability
   keycloak:
     enabled: true
     realm: mcp-gateway
