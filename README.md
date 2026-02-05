@@ -129,6 +129,8 @@ Interactive terminal interface for chatting with AI models and discovering MCP t
 
 ## What's New
 
+- **Peer-to-Peer Registry Federation** - Connect multiple MCP Gateway Registry instances for bidirectional server and agent synchronization. Central IT teams can aggregate visibility across Line of Business registries, or LOBs can inherit shared tools from a central hub. Features include configurable sync modes (all, whitelist, tag filter), scheduled and on-demand sync, static token authentication for IdP-agnostic deployments, Fernet-encrypted credential storage, generation-based orphan detection, and path namespacing to prevent collisions. Synced items are read-only and display their source registry. A VS Code-style Settings UI provides peer management, sync triggering, and status monitoring. [Architecture Design](docs/design/federation-architecture.md) | [Operational Guide](docs/federation-operational-guide.md)
+
 - **Static Token Auth for Registry API** - Access Registry API endpoints (`/api/*`, `/v0.1/*`) using a static API key instead of IdP-based JWT validation. Designed for trusted network environments, CI/CD pipelines, and CLI tooling where configuring a full identity provider may not be practical. MCP Gateway endpoints continue to require full IdP authentication. Includes startup validation that disables the feature if no token is configured. [Static Token Auth Guide](docs/static-token-auth.md)
 
 - **MCP Server Version Routing** - Run multiple versions of the same MCP server simultaneously behind a single gateway endpoint. Register new versions as inactive, test them with the `X-MCP-Server-Version` header, then promote to active with a single API call or UI click. Features include instant rollback, version pinning for clients, deprecation lifecycle with sunset dates, automatic nginx map-based O(1) routing, cascade deletion of all versions, and post-swap health checks. The dashboard displays both the admin-controlled routing version and the MCP server-reported software version independently. Only the active version appears in search results and health checks. [Design Document](docs/design/server-versioning.md) | [Operations Guide](docs/server-versioning-operations.md)
@@ -797,7 +799,8 @@ echo 'ASOR_ACCESS_TOKEN=your_token' >> .env
 | [Installation Guide](docs/installation.md)<br/>Complete setup instructions for EC2 and EKS | [AWS ECS Deployment](terraform/aws-ecs/README.md)<br/>Production-ready deployment on AWS ECS Fargate | [API Reference](docs/registry_api.md)<br/>Programmatic registry management |
 | [Keycloak Integration](docs/keycloak-integration.md)<br/>Enterprise identity with agent audit trails | [Token Refresh Service](docs/token-refresh-service.md)<br/>Automated token refresh and lifecycle management | [MCP Registry CLI](docs/mcp-registry-cli.md)<br/>Command-line client for registry management |
 | [Configuration Reference](docs/configuration.md)<br/>Environment variables and settings | [Amazon Cognito Setup](docs/cognito.md)<br/>Step-by-step IdP configuration | [Observability Guide](docs/OBSERVABILITY.md)<br/>**NEW!** Metrics, monitoring, and OpenTelemetry setup |
-| | [Anthropic Registry Import](docs/anthropic-registry-import.md)<br/>**NEW!** Import servers from Anthropic MCP Registry | [Federation Guide](docs/federation.md)<br/>**NEW!** External registry integration (Anthropic, ASOR) |
+| | [Anthropic Registry Import](docs/anthropic-registry-import.md)<br/>**NEW!** Import servers from Anthropic MCP Registry | [Federation Guide](docs/federation.md)<br/>External registry integration (Anthropic, ASOR) |
+| | | [P2P Federation Guide](docs/federation-operational-guide.md)<br/>**NEW!** Peer-to-peer registry federation |
 | | [Service Management](docs/service-management.md)<br/>Server lifecycle and operations | [Anthropic Registry API](docs/anthropic_registry_api.md)<br/>**NEW!** REST API compatibility |
 | | | [Fine-Grained Access Control](docs/scopes.md)<br/>Permission management and security |
 | | | [Dynamic Tool Discovery](docs/dynamic-tool-discovery.md)<br/>Autonomous agent capabilities |
@@ -847,8 +850,8 @@ The following major features span multiple milestones and represent significant 
 - **[#232 - A2A Curated Registry Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/232)** ✅ **COMPLETED**
   Enable agent-to-agent discovery and tool invocation through curated registry patterns.
 
-- **[#260 - Federation Between MCP Registry Instances](https://github.com/agentic-community/mcp-gateway-registry/issues/260)** 📅 **PLANNED** (Jan 2026 Week 4)
-  Support for federated registry discovery and access across multiple registry instances.
+- **[#260 - Federation Between MCP Registry Instances](https://github.com/agentic-community/mcp-gateway-registry/issues/260)** 🚧 **IN PROGRESS**
+  Support for federated registry discovery and access across multiple registry instances. UI implementation complete.
 
 - **[#295 - Multi-Level Tool Usage Rate Limiting](https://github.com/agentic-community/mcp-gateway-registry/issues/295)** 📅 **PLANNED** (Jan 2026 Week 3)
   Comprehensive rate limiting architecture with detailed implementation guide for tool usage control.

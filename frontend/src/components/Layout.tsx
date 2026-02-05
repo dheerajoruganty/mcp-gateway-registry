@@ -112,6 +112,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </div>
               )}
 
+              {/* Settings gear icon (admin only) */}
+              {user?.is_admin && (
+                <Link
+                  to="/settings"
+                  className="p-2 text-gray-400 hover:text-gray-500 dark:text-gray-300 dark:hover:text-gray-100 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                  title="Settings"
+                >
+                  <Cog6ToothIcon className="h-5 w-5" />
+                </Link>
+              )}
+
               {/* Theme toggle */}
               <button
                 onClick={toggleTheme}
