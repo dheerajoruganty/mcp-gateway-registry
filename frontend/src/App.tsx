@@ -9,6 +9,7 @@ import RegisterPage from './pages/RegisterPage';
 import Login from './pages/Login';
 import OAuthCallback from './pages/OAuthCallback';
 import ProtectedRoute from './components/ProtectedRoute';
+import SettingsPage from './pages/SettingsPage';
 
 // Get basename from <base> tag for path-based routing (e.g., /registry)
 const getBasename = () => {
@@ -46,6 +47,13 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <RegisterPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/settings/*" element={
+              <ProtectedRoute>
+                <Layout>
+                  <SettingsPage />
                 </Layout>
               </ProtectedRoute>
             } />

@@ -1024,6 +1024,42 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                     ? 'Local Registry'
                     : registryId.replace('peer-registry-', '').replace('peer-', '').toUpperCase() + ' (Federated)';
 
+                  // When there's only one registry (local), skip the collapsible wrapper
+                  const showRegistryHeader = registryIds.length > 1 || registryId !== 'local';
+
+                  // Render servers without registry header when it's the only registry
+                  if (!showRegistryHeader) {
+                    return (
+                      <div key={registryId} className="overflow-visible">
+                        <div
+                          className="grid overflow-visible"
+                          style={{
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
+                            gap: 'clamp(1.5rem, 3vw, 2.5rem)'
+                          }}
+                        >
+                          {filteredRegistryServers.map((server) => (
+                            <ServerCard
+                              key={server.path}
+                              server={server}
+                              onToggle={handleToggleServer}
+                              onEdit={handleEditServer}
+                              canModify={user?.can_modify_servers || false}
+                              canHealthCheck={hasUiPermission('health_check_service', server.path)}
+                              canToggle={hasUiPermission('toggle_service', server.path)}
+                              canDelete={(user?.is_admin || hasUiPermission('delete_service', server.path)) && !server.sync_metadata?.is_federated}
+                              onDelete={handleDeleteServer}
+                              onRefreshSuccess={refreshData}
+                              onShowToast={showToast}
+                              onServerUpdate={handleServerUpdate}
+                              authToken={agentApiToken}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div key={registryId} id={`server-registry-${registryId}`} className="border border-gray-200 dark:border-gray-700 rounded-xl scroll-mt-4">
                       {/* Collapsible Header */}
@@ -1211,6 +1247,47 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                   const displayName = registryId === 'local'
                     ? 'Local Registry'
                     : registryId.replace('peer-registry-', '').replace('peer-', '').toUpperCase() + ' (Federated)';
+
+                  // When there's only one registry (local), skip the collapsible wrapper
+                  const showRegistryHeader = agentRegistryIds.length > 1 || registryId !== 'local';
+
+                  // Render agents without registry header when it's the only registry
+                  if (!showRegistryHeader) {
+                    return (
+                      <div key={registryId} className="overflow-visible">
+                        <div
+                          className="grid overflow-visible"
+                          style={{
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
+                            gap: 'clamp(1.5rem, 3vw, 2.5rem)'
+                          }}
+                        >
+                          {filteredRegistryAgents.map((agent) => (
+                            <AgentCard
+                              key={agent.path}
+                              agent={agent}
+                              onToggle={handleToggleAgent}
+                              onEdit={handleEditAgent}
+                              canModify={user?.can_modify_servers || false}
+                              canHealthCheck={hasUiPermission('health_check_agent', agent.path)}
+                              canToggle={hasUiPermission('toggle_agent', agent.path)}
+                              canDelete={
+                                (user?.is_admin ||
+                                hasUiPermission('delete_agent', agent.path) ||
+                                agent.registered_by === user?.username) &&
+                                !agent.sync_metadata?.is_federated
+                              }
+                              onDelete={handleDeleteAgent}
+                              onRefreshSuccess={refreshData}
+                              onShowToast={showToast}
+                              onAgentUpdate={handleAgentUpdate}
+                              authToken={agentApiToken}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div key={registryId} id={`agent-registry-${registryId}`} className="border border-cyan-200 dark:border-cyan-700 rounded-xl overflow-hidden scroll-mt-4">
