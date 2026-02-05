@@ -57,7 +57,7 @@ class TestMaskingFunctions:
         assert "..." in result
 
     def test_mask_token(self):
-        """Test masking JWT tokens."""
+        """Test masking JWT tokens showing first 4 characters."""
         from auth_server.server import mask_token
 
         # Arrange
@@ -67,8 +67,8 @@ class TestMaskingFunctions:
         result = mask_token(token)
 
         # Assert
-        assert result.startswith("...")
-        assert result.endswith("test")
+        assert result.startswith("eyJh")
+        assert result.endswith("...")
         assert len(result) < len(token)
 
     def test_anonymize_ip_ipv4(self):
