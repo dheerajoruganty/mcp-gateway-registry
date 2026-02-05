@@ -957,6 +957,20 @@ async def delete_agent(
             detail=f"Agent not found at path '{path}'",
         )
 
+    # Block deletion of federated (read-only) agents from peer registries
+    sync_metadata = existing_agent.sync_metadata or {}
+    if sync_metadata.get("is_federated") or sync_metadata.get("is_read_only"):
+        source_peer = sync_metadata.get("source_peer_id", "unknown peer registry")
+        logger.warning(
+            f"User {user_context['username']} attempted to delete federated agent {path} "
+            f"from {source_peer}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Agent '{path}' is synced from {source_peer} and cannot be deleted locally. "
+            f"Delete this agent from its source registry, or remove the peer federation.",
+        )
+
     # Check delete permission: admin, delete_agent permission, or owner
     if not _has_delete_agent_permission(user_context, path) and \
        existing_agent.registered_by != user_context["username"]:
