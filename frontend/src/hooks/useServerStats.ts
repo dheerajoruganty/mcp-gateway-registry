@@ -37,6 +37,7 @@ interface Server {
   mcp_server_version_previous?: string;
   mcp_server_version_updated_at?: string;
   sync_metadata?: SyncMetadata;
+  registered_by?: string | null;
 }
 
 interface ServerStats {
@@ -170,6 +171,7 @@ export const useServerStats = (): UseServerStatsReturn => {
           num_tools: agentInfo.num_skills || 0, // Use num_skills for agents
           type: 'agent' as const,
           sync_metadata: agentInfo.sync_metadata,
+          registered_by: agentInfo.registered_by || agentInfo.registeredBy || null,
         };
         
         console.log(`🔄 Transformed agent ${transformed.name}:`, {

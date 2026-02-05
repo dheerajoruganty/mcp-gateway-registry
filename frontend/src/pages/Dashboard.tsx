@@ -56,6 +56,7 @@ interface Agent {
   rating?: number;
   status?: 'healthy' | 'healthy-auth-expired' | 'unhealthy' | 'unknown';
   sync_metadata?: SyncMetadata;
+  registered_by?: string | null;
 }
 
 // Toast notification component
@@ -310,6 +311,7 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
       visibility: 'public',
       trust_level: 'community',
       sync_metadata: a.sync_metadata,
+      registered_by: a.registered_by,
     }));
   }, [agentsFromStats]);
 
@@ -731,6 +733,27 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
     }
   }, [setServers, showToast]);
 
+  const handleDeleteServer = useCallback(async (path: string) => {
+    const formData = new FormData();
+    formData.append('path', path);
+
+    await axios.post('/api/servers/remove', formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+
+    // Remove from local state immediately for responsive UI
+    setServers(prevServers => prevServers.filter(s => s.path !== path));
+    showToast('Server deleted successfully', 'success');
+  }, [setServers, showToast]);
+
+  const handleDeleteAgent = useCallback(async (path: string) => {
+    await axios.delete(`/api/agents${path}`);
+
+    // Remove from local state immediately for responsive UI
+    setAgents(prevAgents => prevAgents.filter(a => a.path !== path));
+    showToast('Agent deleted successfully', 'success');
+  }, [setAgents, showToast]);
+
   const handleToggleAgent = useCallback(async (path: string, enabled: boolean) => {
     // Optimistically update the UI first
     setAgents(prevAgents =>
@@ -865,9 +888,11 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
             onToggle={handleToggleServer}
             onEdit={handleEditServer}
             canModify={user?.can_modify_servers || false}
+            canDelete={(user?.is_admin || hasUiPermission('delete_service', server.path)) && !server.sync_metadata?.is_federated}
             onRefreshSuccess={refreshData}
             onShowToast={showToast}
             onServerUpdate={handleServerUpdate}
+            onDelete={handleDeleteServer}
             authToken={agentApiToken}
           />
         ))}
@@ -1063,6 +1088,8 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                                 canModify={user?.can_modify_servers || false}
                                 canHealthCheck={hasUiPermission('health_check_service', server.path)}
                                 canToggle={hasUiPermission('toggle_service', server.path)}
+                                canDelete={(user?.is_admin || hasUiPermission('delete_service', server.path)) && !server.sync_metadata?.is_federated}
+                                onDelete={handleDeleteServer}
                                 onRefreshSuccess={refreshData}
                                 onShowToast={showToast}
                                 onServerUpdate={handleServerUpdate}
@@ -1249,6 +1276,13 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                                 canModify={user?.can_modify_servers || false}
                                 canHealthCheck={hasUiPermission('health_check_agent', agent.path)}
                                 canToggle={hasUiPermission('toggle_agent', agent.path)}
+                                canDelete={
+                                  (user?.is_admin ||
+                                  hasUiPermission('delete_agent', agent.path) ||
+                                  agent.registered_by === user?.username) &&
+                                  !agent.sync_metadata?.is_federated
+                                }
+                                onDelete={handleDeleteAgent}
                                 onRefreshSuccess={refreshData}
                                 onShowToast={showToast}
                                 onAgentUpdate={handleAgentUpdate}
@@ -1306,9 +1340,11 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                         onToggle={handleToggleServer}
                         onEdit={handleEditServer}
                         canModify={user?.can_modify_servers || false}
+                        canDelete={(user?.is_admin || hasUiPermission('delete_service', server.path)) && !server.sync_metadata?.is_federated}
                         onRefreshSuccess={refreshData}
                         onShowToast={showToast}
                         onServerUpdate={handleServerUpdate}
+                        onDelete={handleDeleteServer}
                         authToken={agentApiToken}
                       />
                     ))}
@@ -1338,6 +1374,13 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                         canModify={user?.can_modify_servers || false}
                         canHealthCheck={hasUiPermission('health_check_agent', agent.path)}
                         canToggle={hasUiPermission('toggle_agent', agent.path)}
+                        canDelete={
+                          (user?.is_admin ||
+                          hasUiPermission('delete_agent', agent.path) ||
+                          agent.registered_by === user?.username) &&
+                          !agent.sync_metadata?.is_federated
+                        }
+                        onDelete={handleDeleteAgent}
                         onRefreshSuccess={refreshData}
                         onShowToast={showToast}
                         onAgentUpdate={handleAgentUpdate}
