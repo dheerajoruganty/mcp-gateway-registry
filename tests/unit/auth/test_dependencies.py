@@ -1101,9 +1101,11 @@ class TestEnhancedAuth:
             "provider": "local",
         }
         session_cookie = mock_signer.dumps(session_data)
+        mock_request = Mock(spec=Request)
+        mock_request.state = Mock()
 
         # Act
-        context = await enhanced_auth(session=session_cookie)
+        context = await enhanced_auth(request=mock_request, session=session_cookie)
 
         # Assert
         assert context["username"] == "admin"
@@ -1130,9 +1132,11 @@ class TestEnhancedAuth:
             "groups": ["registry-users-lob1"],
         }
         session_cookie = mock_signer.dumps(session_data)
+        mock_request = Mock(spec=Request)
+        mock_request.state = Mock()
 
         # Act
-        context = await enhanced_auth(session=session_cookie)
+        context = await enhanced_auth(request=mock_request, session=session_cookie)
 
         # Assert
         assert context["username"] == "oauth_user"
@@ -1144,9 +1148,13 @@ class TestEnhancedAuth:
     @pytest.mark.asyncio
     async def test_enhanced_auth_no_session(self):
         """Test enhanced_auth raises 401 without session."""
+        # Arrange
+        mock_request = Mock(spec=Request)
+        mock_request.state = Mock()
+
         # Act & Assert
         with pytest.raises(HTTPException) as exc_info:
-            await enhanced_auth(session=None)
+            await enhanced_auth(request=mock_request, session=None)
 
         assert exc_info.value.status_code == 401
 
@@ -1168,6 +1176,7 @@ class TestNginxProxiedAuth:
         mock_request = Mock(spec=Request)
         mock_request.url.path = "/api/test"
         mock_request.method = "GET"
+        mock_request.state = Mock()
         mock_request.headers = {
             "x-user": "nginx_user",
             "x-username": "nginx_user",
@@ -1202,6 +1211,7 @@ class TestNginxProxiedAuth:
         mock_request = Mock(spec=Request)
         mock_request.url.path = "/api/test"
         mock_request.method = "GET"
+        mock_request.state = Mock()
         mock_request.headers = {}
 
         session_data = {
@@ -1233,6 +1243,7 @@ class TestNginxProxiedAuth:
         mock_request = Mock(spec=Request)
         mock_request.url.path = "/api/test"
         mock_request.method = "GET"
+        mock_request.state = Mock()
         mock_request.headers = {}
 
         # Act
@@ -1308,9 +1319,11 @@ class TestEdgeCases:
             "groups": [],
         }
         session_cookie = mock_signer.dumps(session_data)
+        mock_request = Mock(spec=Request)
+        mock_request.state = Mock()
 
         # Act
-        context = await enhanced_auth(session=session_cookie)
+        context = await enhanced_auth(request=mock_request, session=session_cookie)
 
         # Assert
         assert context["username"] == "no_groups_user"
