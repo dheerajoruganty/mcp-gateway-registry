@@ -102,8 +102,12 @@ services:
       - ${HOME}/mcp-gateway/federation.json:/app/config/federation.json
       - ${HOME}/mcp-gateway/ssl:/etc/ssl:ro
     depends_on:
-      - auth-server
-      - metrics-service
+      auth-server:
+        condition: service_started
+      metrics-service:
+        condition: service_healthy
+      mongodb-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   # Metrics Collection Service - using pre-built image
@@ -196,6 +200,8 @@ services:
     depends_on:
       metrics-service:
         condition: service_healthy
+      mongodb-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   # Current Time MCP Server - using pre-built image
