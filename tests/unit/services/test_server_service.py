@@ -1064,13 +1064,14 @@ class TestToggleService:
 
         # Mock nginx service
         with patch("registry.core.nginx_service.nginx_service") as mock_nginx_service:
+            mock_nginx_service.generate_config_async = AsyncMock()
             # Act
             result = await server_service.toggle_service(path, True)
 
             # Assert
             assert result is True
             mock_server_repository.set_state.assert_called_once_with(path, True)
-            mock_nginx_service.generate_config.assert_called_once()
+            mock_nginx_service.generate_config_async.assert_called_once()
             mock_nginx_service.reload_nginx.assert_called_once()
 
     @pytest.mark.asyncio
@@ -1090,13 +1091,14 @@ class TestToggleService:
 
         # Mock nginx service
         with patch("registry.core.nginx_service.nginx_service") as mock_nginx_service:
+            mock_nginx_service.generate_config_async = AsyncMock()
             # Act
             result = await server_service.toggle_service(path, False)
 
             # Assert
             assert result is True
             mock_server_repository.set_state.assert_called_once_with(path, False)
-            mock_nginx_service.generate_config.assert_called_once()
+            mock_nginx_service.generate_config_async.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_toggle_service_nonexistent_server_fails(
@@ -1128,6 +1130,7 @@ class TestToggleService:
 
         # Mock nginx service
         with patch("registry.core.nginx_service.nginx_service") as mock_nginx_service:
+            mock_nginx_service.generate_config_async = AsyncMock()
             # Act
             result = await server_service.toggle_service(path, True)
 
@@ -1135,7 +1138,7 @@ class TestToggleService:
             assert result is False
             mock_server_repository.set_state.assert_called_once_with(path, True)
             # Nginx should not be called if repository fails
-            mock_nginx_service.generate_config.assert_not_called()
+            mock_nginx_service.generate_config_async.assert_not_called()
             mock_nginx_service.reload_nginx.assert_not_called()
 
 
@@ -1187,7 +1190,7 @@ class TestReloadStateFromDisk:
         # Mock nginx service to avoid integration issues
         with patch("registry.core.nginx_service.nginx_service") as mock_nginx_service:
             # Mock the nginx methods to succeed
-            mock_nginx_service.generate_config.return_value = None
+            mock_nginx_service.generate_config_async = AsyncMock(return_value=None)
             mock_nginx_service.reload_nginx.return_value = None
 
             # Act
@@ -1211,11 +1214,12 @@ class TestReloadStateFromDisk:
 
         # Mock nginx service
         with patch("registry.core.nginx_service.nginx_service") as mock_nginx_service:
+            mock_nginx_service.generate_config_async = AsyncMock()
             # Act
             await server_service.reload_state_from_disk()
 
             # Assert
-            mock_nginx_service.generate_config.assert_not_called()
+            mock_nginx_service.generate_config_async.assert_not_called()
             mock_nginx_service.reload_nginx.assert_not_called()
 
 

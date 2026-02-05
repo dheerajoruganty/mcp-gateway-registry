@@ -46,6 +46,7 @@ from registry.health.service import health_service
 from registry.core.nginx_service import nginx_service
 from registry.services.federation_service import get_federation_service
 from registry.services.peer_federation_service import get_peer_federation_service
+from registry.services.peer_sync_scheduler import get_peer_sync_scheduler
 
 # Import core configuration
 from registry.core.config import settings
@@ -224,6 +225,12 @@ async def lifespan(app: FastAPI):
         await peer_federation_service.load_peers_and_state()
         logger.info(f"Loaded {len(peer_federation_service.registered_peers)} peer registries")
 
+        # Start peer sync scheduler for scheduled federation sync
+        logger.info("Starting peer sync scheduler...")
+        peer_sync_scheduler = get_peer_sync_scheduler()
+        await peer_sync_scheduler.start()
+        logger.info("Peer sync scheduler started")
+
         logger.info("🌐 Generating initial Nginx configuration...")
         enabled_service_paths = await server_service.get_enabled_services()
         enabled_servers = {}
@@ -245,6 +252,10 @@ async def lifespan(app: FastAPI):
     # Shutdown tasks
     logger.info("🔄 Shutting down MCP Gateway Registry...")
     try:
+        # Stop peer sync scheduler
+        peer_sync_scheduler = get_peer_sync_scheduler()
+        await peer_sync_scheduler.stop()
+
         # Shutdown services gracefully
         await health_service.shutdown()
         logger.info("✅ Shutdown completed successfully!")

@@ -188,12 +188,49 @@ def anonymize_ip(ip_address: str) -> str:
 
 
 def mask_token(token: str) -> str:
-    """Mask JWT token showing only last 4 characters."""
+    """Mask JWT token showing only first 4 characters followed by ellipsis."""
     if not token:
         return "***EMPTY***"
-    if len(token) > 20:
-        return f"...{token[-4:]}"
+    if len(token) > 8:
+        return f"{token[:4]}..."
     return "***MASKED***"
+
+
+def _mask_sensitive_dict(
+    data: dict,
+    sensitive_keys: tuple = ("access_token", "refresh_token", "token", "secret", "password")
+) -> dict:
+    """
+    Recursively mask sensitive fields in a dictionary for safe logging.
+
+    Args:
+        data: Dictionary to process
+        sensitive_keys: Tuple of key names to mask
+
+    Returns:
+        New dictionary with sensitive fields masked
+    """
+    if not isinstance(data, dict):
+        return data
+
+    masked = {}
+    for key, value in data.items():
+        key_lower = key.lower()
+        if any(sensitive in key_lower for sensitive in sensitive_keys):
+            if isinstance(value, str) and value:
+                masked[key] = mask_token(value)
+            else:
+                masked[key] = "***MASKED***"
+        elif isinstance(value, dict):
+            masked[key] = _mask_sensitive_dict(value, sensitive_keys)
+        elif isinstance(value, list):
+            masked[key] = [
+                _mask_sensitive_dict(item, sensitive_keys) if isinstance(item, dict) else item
+                for item in value
+            ]
+        else:
+            masked[key] = value
+    return masked
 
 
 def mask_headers(headers: dict) -> dict:
@@ -1321,8 +1358,8 @@ async def validate_request(request: Request):
             if cookie_value:
                 try:
                     validation_result = await validate_session_cookie(cookie_value)
-                    # Log validation result without exposing username
-                    safe_result = {k: v for k, v in validation_result.items() if k != "username"}
+                    # Log validation result without exposing username or tokens
+                    safe_result = _mask_sensitive_dict(validation_result)
                     safe_result["username"] = hash_username(validation_result.get("username", ""))
                     logger.info(f"Session cookie validation result: {safe_result}")
                     logger.info(
@@ -1505,7 +1542,7 @@ async def validate_request(request: Request):
             "server_name": server_name,
             "tool_name": tool_name,
         }
-        logger.info(f"Full validation result: {json.dumps(validation_result, indent=2)}")
+        logger.info(f"Full validation result: {json.dumps(_mask_sensitive_dict(validation_result), indent=2)}")
         logger.info(f"Response data being sent: {json.dumps(response_data, indent=2)}")
         # Create JSON response with headers that nginx can use
         response = JSONResponse(content=response_data, status_code=200)
