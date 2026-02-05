@@ -2,6 +2,10 @@
 
 This guide covers setting up and operating peer-to-peer federation between MCP Gateway Registry instances.
 
+## Demo
+
+https://github.com/user-attachments/assets/630ce847-b151-4eaa-9cc9-2ec77797f2b5
+
 ## Quick Start
 
 ### Prerequisites
