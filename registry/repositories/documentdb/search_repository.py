@@ -1181,17 +1181,19 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
 
                 if entity_type == "mcp_server":
                     matching_tools = doc.get("matching_tools", [])
+                    server_metadata = doc.get("metadata", {})
                     result_entry = {
                         "entity_type": "mcp_server",
                         "path": doc.get("path"),
                         "server_name": doc.get("name"),
                         "description": doc.get("description"),
                         "tags": doc.get("tags", []),
-                        "num_tools": doc.get("metadata", {}).get("num_tools", 0),
+                        "num_tools": server_metadata.get("num_tools", 0),
                         "is_enabled": doc.get("is_enabled", False),
                         "relevance_score": relevance_score,
                         "match_context": doc.get("description"),
-                        "matching_tools": matching_tools
+                        "matching_tools": matching_tools,
+                        "sync_metadata": server_metadata.get("sync_metadata"),
                     }
                     grouped_results["servers"].append(result_entry)
                     server_count += 1
@@ -1236,7 +1238,8 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
                         "is_enabled": doc.get("is_enabled", False),
                         "relevance_score": relevance_score,
                         "match_context": doc.get("description"),
-                        "agent_card": metadata.get("agent_card", {})
+                        "agent_card": metadata.get("agent_card", {}),
+                        "sync_metadata": metadata.get("sync_metadata"),
                     }
                     grouped_results["agents"].append(result_entry)
                     agent_count += 1

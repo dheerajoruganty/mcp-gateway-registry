@@ -46,6 +46,7 @@ dependencies = [
     "pymongo>=4.6.0",
     "dnspython>=2.4.0",
     "litellm>=1.50.0",
+    "cryptography>=46.0.3",
 ]
 
 [project.optional-dependencies]

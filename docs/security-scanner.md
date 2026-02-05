@@ -34,6 +34,52 @@ The registry implements multiple complementary security scanning workflows for b
 
 These workflows ensure continuous security monitoring throughout the MCP server and A2A agent lifecycle, from initial registration through ongoing operations.
 
+### Architecture Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+
+    participant Client as Client/Admin
+    participant Registry as MCP Gateway Registry<br/>(Scan Orchestrator + MongoDB-CE/DocumentDB)
+    participant Scanner as Cisco AI Defense<br/>(YARA | LLM | Cisco Proprietary)
+    participant Target as MCP Server / A2A Agent
+
+    %% Registration-time scanning
+    rect rgb(225, 245, 254)
+        note over Client,Target: Registration-Time Scanning (Server or Agent)
+        Client->>Registry: Register Server/Agent
+        Registry->>Target: Connect & Fetch Tools/Skills
+        Target-->>Registry: Tool/Skill Definitions
+
+        Registry->>Scanner: Analyze with configured scanner(s)
+        Note right of Scanner: Configured via env vars:<br/>SECURITY_ANALYZERS=yara<br/>or yara,llm<br/>or cisco
+        Scanner-->>Registry: Findings (severity, threats)
+
+        alt SAFE - No Critical/High Issues
+            Registry->>Registry: Store (enabled=true)
+        else UNSAFE - Critical/High Issues Found
+            Registry->>Registry: Store (enabled=false, tag=security-pending)
+        end
+
+        Registry-->>Client: Registration Response + Scan Summary
+    end
+
+    %% On-demand scanning
+    rect rgb(255, 243, 224)
+        note over Client,Target: On-Demand Scanning (Admin API)
+        Client->>Registry: POST /api/servers/{path}/rescan<br/>or POST /api/agents/{path}/rescan
+        Registry->>Target: Connect & Fetch Tools/Skills
+        Target-->>Registry: Tool/Skill Definitions
+
+        Registry->>Scanner: Analyze with configured scanner(s)
+        Scanner-->>Registry: Findings (severity, threats)
+
+        Registry->>Registry: Update Status & Store Results
+        Registry-->>Client: Scan Results Response
+    end
+```
+
 ## Security Scanning During Server Registration
 
 When adding a new MCP server to the registry, a security scan is automatically performed as part of the registration workflow. This pre-deployment scanning prevents vulnerable or malicious servers from being exposed to AI agents.

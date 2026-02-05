@@ -8,6 +8,14 @@ interface ServerVersion {
   is_default: boolean;
 }
 
+interface SyncMetadata {
+  is_federated?: boolean;
+  source_peer_id?: string;
+  upstream_path?: string;
+  last_synced_at?: string;
+  is_read_only?: boolean;
+}
+
 interface Server {
   name: string;
   path: string;
@@ -28,6 +36,7 @@ interface Server {
   mcp_server_version?: string;
   mcp_server_version_previous?: string;
   mcp_server_version_updated_at?: string;
+  sync_metadata?: SyncMetadata;
 }
 
 interface ServerStats {
@@ -132,6 +141,7 @@ export const useServerStats = (): UseServerStatsReturn => {
           mcp_server_version: serverInfo.mcp_server_version,
           mcp_server_version_previous: serverInfo.mcp_server_version_previous,
           mcp_server_version_updated_at: serverInfo.mcp_server_version_updated_at,
+          sync_metadata: serverInfo.sync_metadata,
         };
         
         // Debug log the transformed server
@@ -159,6 +169,7 @@ export const useServerStats = (): UseServerStatsReturn => {
           status: 'unknown' as const, // Agents don't have health status yet
           num_tools: agentInfo.num_skills || 0, // Use num_skills for agents
           type: 'agent' as const,
+          sync_metadata: agentInfo.sync_metadata,
         };
         
         console.log(`🔄 Transformed agent ${transformed.name}:`, {

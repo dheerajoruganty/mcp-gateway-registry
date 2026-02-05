@@ -666,7 +666,7 @@ class TestUserCanAccessAgent:
     async def test_admin_user_can_access_any_agent(self, mock_agent_service):
         """Test admin user can access any agent."""
         # Arrange
-        mock_agent = AgentCardFactory(visibility="private")
+        mock_agent = AgentCardFactory(visibility="internal")
         mock_agent_service.get_agent_info = AsyncMock(return_value=mock_agent)
         user_context = {"is_admin": True}
 
@@ -744,11 +744,11 @@ class TestUserCanAccessAgent:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_private_agent_accessible_to_owner(self, mock_agent_service):
-        """Test private agent is accessible to owner."""
+    async def test_internal_agent_accessible_to_owner(self, mock_agent_service):
+        """Test internal agent is accessible to owner."""
         # Arrange
         mock_agent = AgentCardFactory(
-            visibility="private", registered_by="testuser"
+            visibility="internal", registered_by="testuser"
         )
         mock_agent_service.get_agent_info = AsyncMock(return_value=mock_agent)
         user_context = {
@@ -764,11 +764,11 @@ class TestUserCanAccessAgent:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_private_agent_not_accessible_to_others(self, mock_agent_service):
-        """Test private agent is not accessible to non-owners."""
+    async def test_internal_agent_not_accessible_to_others(self, mock_agent_service):
+        """Test internal agent is not accessible to non-owners."""
         # Arrange
         mock_agent = AgentCardFactory(
-            visibility="private", registered_by="owner"
+            visibility="internal", registered_by="owner"
         )
         mock_agent_service.get_agent_info = AsyncMock(return_value=mock_agent)
         user_context = {

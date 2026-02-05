@@ -35,6 +35,18 @@ class MatchingToolResult(BaseModel):
     match_context: Optional[str] = None
 
 
+class SyncMetadata(BaseModel):
+    """Metadata for items synced from peer registries."""
+
+    is_federated: bool = False
+    source_peer_id: Optional[str] = None
+    synced_at: Optional[str] = None
+    original_path: Optional[str] = None
+    is_orphaned: bool = False
+    orphaned_at: Optional[str] = None
+    is_read_only: bool = True
+
+
 class ServerSearchResult(BaseModel):
     path: str
     server_name: str
@@ -45,6 +57,7 @@ class ServerSearchResult(BaseModel):
     relevance_score: float = Field(..., ge=0.0, le=1.0)
     match_context: Optional[str] = None
     matching_tools: List[MatchingToolResult] = Field(default_factory=list)
+    sync_metadata: Optional[SyncMetadata] = None
 
 
 class ToolSearchResult(BaseModel):
@@ -68,6 +81,7 @@ class AgentSearchResult(BaseModel):
     is_enabled: bool = False
     relevance_score: float = Field(..., ge=0.0, le=1.0)
     match_context: Optional[str] = None
+    sync_metadata: Optional[SyncMetadata] = None
 
 
 class SemanticSearchRequest(BaseModel):
@@ -136,7 +150,7 @@ async def _user_can_access_agent(agent_path: str, user_context: dict) -> bool:
     if agent_card.visibility == "public":
         return True
 
-    if agent_card.visibility == "private":
+    if agent_card.visibility == "internal":
         return agent_card.registered_by == user_context.get("username")
 
     if agent_card.visibility == "group-restricted":
@@ -203,6 +217,10 @@ async def semantic_search(
             for tool in server.get("matching_tools", [])
         ]
 
+        # Parse sync_metadata if present
+        raw_sync = server.get("sync_metadata")
+        sync_meta = SyncMetadata(**raw_sync) if raw_sync else None
+
         filtered_servers.append(
             ServerSearchResult(
                 path=server.get("path", ""),
@@ -214,6 +232,7 @@ async def semantic_search(
                 relevance_score=server.get("relevance_score", 0.0),
                 match_context=server.get("match_context"),
                 matching_tools=matching_tools,
+                sync_metadata=sync_meta,
             )
         )
 
@@ -261,6 +280,10 @@ async def semantic_search(
             for skill in raw_skills
         ]
 
+        # Parse sync_metadata from search result or agent card
+        raw_agent_sync = agent.get("sync_metadata") or agent_card_dict.get("sync_metadata")
+        agent_sync_meta = SyncMetadata(**raw_agent_sync) if raw_agent_sync else None
+
         filtered_agents.append(
             AgentSearchResult(
                 path=agent_path,
@@ -278,6 +301,7 @@ async def semantic_search(
                 relevance_score=agent.get("relevance_score", 0.0),
                 match_context=agent.get("match_context")
                 or agent_card_dict.get("description"),
+                sync_metadata=agent_sync_meta,
             )
         )
 

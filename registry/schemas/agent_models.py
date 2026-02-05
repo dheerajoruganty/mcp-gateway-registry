@@ -493,13 +493,20 @@ class AgentCard(BaseModel):
 
     # Access control
     visibility: str = Field(
-        "public",
-        description="public, private, or group-restricted",
+        "internal",
+        description="public, group-restricted, or internal (default for security)",
     )
     allowed_groups: List[str] = Field(
         default_factory=list,
         alias="allowedGroups",
-        description="Groups with access",
+        description="Groups with access when visibility is group-restricted",
+    )
+
+    # Federation sync metadata
+    sync_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        alias="syncMetadata",
+        description="Metadata for items synced from peer registries",
     )
 
     # Validation and trust
@@ -553,7 +560,7 @@ class AgentCard(BaseModel):
         v: str,
     ) -> str:
         """Validate visibility value."""
-        valid_values = ["public", "private", "group-restricted"]
+        valid_values = ["public", "group-restricted", "internal"]
         if v not in valid_values:
             raise ValueError(
                 f"Visibility must be one of: {', '.join(valid_values)}"
@@ -687,6 +694,11 @@ class AgentInfo(BaseModel):
         alias="trustLevel",
         description="unverified, community, verified, trusted",
     )
+    sync_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        alias="syncMetadata",
+        description="Federation sync metadata for items from peer registries",
+    )
 
     model_config = ConfigDict(
         populate_by_name=True  # Allow both snake_case and camelCase on input
@@ -755,8 +767,8 @@ class AgentRegistrationRequest(BaseModel):
         description="License information",
     )
     visibility: str = Field(
-        default="public",
-        description="Visibility: public, private, or group-restricted",
+        default="internal",
+        description="Visibility: public, group-restricted, or internal (default)",
     )
 
     model_config = ConfigDict(populate_by_name=True)

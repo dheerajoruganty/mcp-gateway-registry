@@ -38,7 +38,7 @@ module "mcp_gateway" {
   # When CloudFront is enabled, HTTPS termination happens at CloudFront, not ALB
   enable_https    = var.enable_route53_dns && !var.enable_cloudfront
   certificate_arn = var.enable_route53_dns && !var.enable_cloudfront ? aws_acm_certificate.registry[0].arn : ""
-  
+
   # Domain name for the registry - determines REGISTRY_URL and OAuth redirect URIs
   # Simplified to 3 modes (no dual-access):
   #   Mode 1: CloudFront-only - use CloudFront domain
@@ -47,7 +47,7 @@ module "mcp_gateway" {
   domain_name = var.enable_route53_dns ? "registry.${local.root_domain}" : (
     var.enable_cloudfront ? aws_cloudfront_distribution.mcp_gateway[0].domain_name : ""
   )
-  
+
   # Additional server names for nginx - no longer needed with simplified modes
   # Each deployment has a single entry point (either custom domain or CloudFront domain)
   additional_server_names = ""
@@ -130,6 +130,12 @@ module "mcp_gateway" {
   # Registry static token auth
   registry_static_token_auth_enabled = var.registry_static_token_auth_enabled
   registry_api_token                 = var.registry_api_token
+
+  # Federation configuration (peer-to-peer registry sync)
+  registry_id                          = var.registry_id
+  federation_static_token_auth_enabled = var.federation_static_token_auth_enabled
+  federation_static_token              = var.federation_static_token
+  federation_encryption_key            = var.federation_encryption_key
 }
 
 # =============================================================================

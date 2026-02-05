@@ -1,0 +1,246 @@
+# Peer Federation Test Configuration
+#
+# This compose file runs two registry instances for testing peer federation:
+#   - Registry A: http://localhost:7860 (namespace: registry-a)
+#   - Registry B: http://localhost:7861 (namespace: registry-b)
+#
+# Usage:
+#   docker compose -f docker-compose.federation-test.yml up --build
+#
+# Test Steps:
+#   1. Register a server on Registry A via the UI at http://localhost:7860
+#   2. Configure Registry B to peer with Registry A via API or UI
+#   3. Trigger sync and verify servers appear on Registry B
+
+services:
+  # Shared MongoDB for both registries (different namespaces)
+  mongodb:
+    image: mongo:8.2
+    container_name: fed-test-mongodb
+    command: mongod --replSet rs0 --bind_ip 127.0.0.1,mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - fed-mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      fed-net-a:
+        aliases:
+          - keycloak
+      fed-net-b:
+        aliases:
+          - keycloak
+
+  # MongoDB initialization
+  mongodb-init:
+    image: python:3.11-slim
+    container_name: fed-test-mongodb-init
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      - DOCUMENTDB_HOST=mongodb
+      - DOCUMENTDB_PORT=27017
+      - DOCUMENTDB_DATABASE=mcp_registry
+    volumes:
+      - ./scripts/init-mongodb-ce.py:/app/scripts/init-mongodb-ce.py:ro
+      - ./scripts/registry-admins.json:/app/scripts/registry-admins.json:ro
+      - ./scripts/mcp-registry-admin.json:/app/scripts/mcp-registry-admin.json:ro
+      - ./scripts/mcp-servers-unrestricted-read.json:/app/scripts/mcp-servers-unrestricted-read.json:ro
+      - ./scripts/mcp-servers-unrestricted-execute.json:/app/scripts/mcp-servers-unrestricted-execute.json:ro
+    command: >
+      sh -c "
+      pip install --quiet motor pymongo &&
+      python /app/scripts/init-mongodb-ce.py
+      "
+    restart: "no"
+    networks:
+      - fed-net-a
+
+  # Registry A - Primary registry
+  registry-a:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.registry
+    container_name: fed-test-registry-a
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-federation-test-secret-key-a}
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - AUTH_SERVER_URL=http://auth-server:8888
+      # Storage Backend - use MongoDB with separate namespace
+      - STORAGE_BACKEND=mongodb-ce
+      - DOCUMENTDB_HOST=mongodb
+      - DOCUMENTDB_PORT=27017
+      - DOCUMENTDB_DATABASE=mcp_registry
+      - DOCUMENTDB_NAMESPACE=registry-a
+      - DOCUMENTDB_USE_TLS=false
+      - DOCUMENTDB_REPLICA_SET=rs0
+      # Disable external features for testing
+      - KEYCLOAK_ENABLED=false
+      - COGNITO_ENABLED=false
+      - GITHUB_ENABLED=false
+      - GOOGLE_ENABLED=false
+      - ENTRA_ENABLED=false
+      # Metrics (optional - can be disabled)
+      - METRICS_SERVICE_URL=
+      # Registry ID for federation
+      - REGISTRY_ID=registry-a
+    ports:
+      - "7860:7860"
+      - "80:80"
+    volumes:
+      - fed-registry-a-data:/app/registry/servers
+      - fed-registry-a-agents:/app/registry/agents
+      - fed-registry-a-models:/app/registry/models
+    depends_on:
+      mongodb-init:
+        condition: service_completed_successfully
+      auth-server-a:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      fed-net-a:
+      fed-net-b:
+        aliases:
+          - registry-a
+
+  # Auth Server for Registry A
+  auth-server-a:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.auth
+    container_name: fed-test-auth-a
+    environment:
+      - REGISTRY_URL=http://registry-a:7860
+      - SECRET_KEY=${SECRET_KEY:-federation-test-secret-key-a}
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - STORAGE_BACKEND=mongodb-ce
+      - DOCUMENTDB_HOST=mongodb
+      - DOCUMENTDB_PORT=27017
+      - DOCUMENTDB_DATABASE=mcp_registry
+      - DOCUMENTDB_NAMESPACE=registry-a
+      - DOCUMENTDB_USE_TLS=false
+      - DOCUMENTDB_REPLICA_SET=rs0
+      - KEYCLOAK_ENABLED=false
+      - COGNITO_ENABLED=false
+      - GITHUB_ENABLED=false
+      - GOOGLE_ENABLED=false
+      - ENTRA_ENABLED=false
+      - METRICS_SERVICE_URL=
+    ports:
+      - "8888:8888"
+    depends_on:
+      mongodb-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      fed-net-a:
+        aliases:
+          - auth-server
+
+  # Registry B - Peer registry
+  registry-b:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.registry
+    container_name: fed-test-registry-b
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-federation-test-secret-key-b}
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - AUTH_SERVER_URL=http://auth-server:8888
+      # Storage Backend - use MongoDB with separate namespace
+      - STORAGE_BACKEND=mongodb-ce
+      - DOCUMENTDB_HOST=mongodb
+      - DOCUMENTDB_PORT=27017
+      - DOCUMENTDB_DATABASE=mcp_registry
+      - DOCUMENTDB_NAMESPACE=registry-b
+      - DOCUMENTDB_USE_TLS=false
+      - DOCUMENTDB_REPLICA_SET=rs0
+      # Disable external features for testing
+      - KEYCLOAK_ENABLED=false
+      - COGNITO_ENABLED=false
+      - GITHUB_ENABLED=false
+      - GOOGLE_ENABLED=false
+      - ENTRA_ENABLED=false
+      # Metrics (optional - can be disabled)
+      - METRICS_SERVICE_URL=
+      # Registry ID for federation
+      - REGISTRY_ID=registry-b
+      # Static token for peer federation (testing only)
+      - FEDERATION_STATIC_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJtY3AtZ2F0ZXdheS1yZWdpc3RyeSIsInN1YiI6ImZlZGVyYXRpb24tc2VydmljZSIsInVzZXJuYW1lIjoiZmVkZXJhdGlvbi1zZXJ2aWNlIiwic2NvcGVzIjpbImZlZGVyYXRpb24tc2VydmljZSIsInJlZ2lzdHJ5LWFkbWlucyJdLCJncm91cHMiOlsiZmVkZXJhdGlvbi1zZXJ2aWNlIiwicmVnaXN0cnktYWRtaW5zIl0sImlhdCI6MTc2OTg4Njg3OSwiZXhwIjoxODAxNDIyODc5fQ.-zU0VW_egYINSPyf0rtD-8SF8zGnl0UezFs5Ux6eRwo
+    ports:
+      - "7861:7860"
+      - "81:80"
+    volumes:
+      - fed-registry-b-data:/app/registry/servers
+      - fed-registry-b-agents:/app/registry/agents
+      - fed-registry-b-models:/app/registry/models
+    depends_on:
+      mongodb-init:
+        condition: service_completed_successfully
+      auth-server-b:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      fed-net-a:
+        aliases:
+          - registry-b
+      fed-net-b:
+
+  # Auth Server for Registry B
+  auth-server-b:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.auth
+    container_name: fed-test-auth-b
+    environment:
+      - REGISTRY_URL=http://registry-b:7860
+      - SECRET_KEY=${SECRET_KEY:-federation-test-secret-key-b}
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - STORAGE_BACKEND=mongodb-ce
+      - DOCUMENTDB_HOST=mongodb
+      - DOCUMENTDB_PORT=27017
+      - DOCUMENTDB_DATABASE=mcp_registry
+      - DOCUMENTDB_NAMESPACE=registry-b
+      - DOCUMENTDB_USE_TLS=false
+      - DOCUMENTDB_REPLICA_SET=rs0
+      - KEYCLOAK_ENABLED=false
+      - COGNITO_ENABLED=false
+      - GITHUB_ENABLED=false
+      - GOOGLE_ENABLED=false
+      - ENTRA_ENABLED=false
+      - METRICS_SERVICE_URL=
+    ports:
+      - "8889:8888"
+    depends_on:
+      mongodb-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      fed-net-b:
+        aliases:
+          - auth-server
+
+networks:
+  fed-net-a:
+    driver: bridge
+  fed-net-b:
+    driver: bridge
+
+volumes:
+  fed-mongodb-data:
+  fed-registry-a-data:
+  fed-registry-a-agents:
+  fed-registry-a-models:
+  fed-registry-b-data:
+  fed-registry-b-agents:
+  fed-registry-b-models:

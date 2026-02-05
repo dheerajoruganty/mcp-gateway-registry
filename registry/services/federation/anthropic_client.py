@@ -6,14 +6,12 @@ and transforms them to the gateway's internal format.
 """
 
 import logging
-import os
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import quote
 
-from .base_client import BaseFederationClient
 from ...schemas.federation_schema import AnthropicServerConfig
-
+from .base_client import BaseFederationClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,7 +29,7 @@ class AnthropicFederationClient(BaseFederationClient):
         endpoint: str,
         api_version: str = "v0.1",
         timeout_seconds: int = 30,
-        retry_attempts: int = 3
+        retry_attempts: int = 3,
     ):
         """
         Initialize Anthropic federation client.
@@ -46,10 +44,8 @@ class AnthropicFederationClient(BaseFederationClient):
         self.api_version = api_version
 
     def fetch_server(
-        self,
-        server_name: str,
-        server_config: Optional[AnthropicServerConfig] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, server_name: str, server_config: AnthropicServerConfig | None = None
+    ) -> dict[str, Any] | None:
         """
         Fetch a single server from Anthropic Registry.
 
@@ -81,9 +77,8 @@ class AnthropicFederationClient(BaseFederationClient):
         return self._transform_server_response(response, server_name, server_config)
 
     def fetch_all_servers(
-        self,
-        server_configs: List[AnthropicServerConfig]
-    ) -> List[Dict[str, Any]]:
+        self, server_configs: list[AnthropicServerConfig]
+    ) -> list[dict[str, Any]]:
         """
         Fetch multiple servers from Anthropic Registry.
 
@@ -96,7 +91,6 @@ class AnthropicFederationClient(BaseFederationClient):
         servers = []
 
         for config in server_configs:
-
             server_data = self.fetch_server(config.name, config)
             if server_data:
                 servers.append(server_data)
@@ -108,10 +102,10 @@ class AnthropicFederationClient(BaseFederationClient):
 
     def _transform_server_response(
         self,
-        response: Dict[str, Any],
+        response: dict[str, Any],
         server_name: str,
-        server_config: Optional[AnthropicServerConfig]
-    ) -> Dict[str, Any]:
+        server_config: AnthropicServerConfig | None,
+    ) -> dict[str, Any]:
         """
         Transform Anthropic API response to internal gateway format.
 
@@ -134,7 +128,7 @@ class AnthropicFederationClient(BaseFederationClient):
         # Extract transport info - handle both old (packages) and new (remotes) schema
         transport_type = "streamable-http"
         proxy_url = None
-        
+
         # Try new schema format (remotes)
         remotes = server.get("remotes", [])
         if remotes:
@@ -181,11 +175,8 @@ class AnthropicFederationClient(BaseFederationClient):
             "requires_auth": False,
             "auth_headers": [],
             "tags": list(set(tags)),  # Remove duplicates
-            "metadata": {
-                "original_response": response,
-                "config_metadata": {}
-            },
-            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "metadata": {"original_response": response, "config_metadata": {}},
+            "cached_at": datetime.now(UTC).isoformat(),
             "is_read_only": True,
             "attribution_label": "Anthropic MCP Registry",
             # Additional fields for compatibility

@@ -19,6 +19,17 @@
 # ==================== UI-SCOPES ====================
 # Define agent registry permissions and service listing rights for each group
 UI-Scopes:
+  # Federation service account for peer-to-peer registry sync (read-only)
+  federation-service:
+    list_agents:
+    - all
+    get_agent:
+    - all
+    list_service:
+    - all
+    health_check_service:
+    - all
+
   # Admin user for MCP registry (highest privileges)
   mcp-registry-admin:
     list_agents:
@@ -136,6 +147,9 @@ UI-Scopes:
 
 group_mappings:
   # ----- Keycloak Group Mappings (group names) -----
+  federation-service:
+  - federation-service
+
   mcp-registry-admin:
   - mcp-registry-admin
   - mcp-servers-unrestricted/read
@@ -213,6 +227,22 @@ mcp-servers-unrestricted/execute:
   - tokens
   - GET
   - POST
+
+# Federation Service Scope: Read-only access for peer-to-peer registry sync
+# This scope is used by peer registries to fetch servers and agents for federation
+federation-service:
+- server: api
+  methods:
+  - initialize
+  - GET
+- agents:
+    actions:
+    - action: list_agents
+      resources:
+      - all
+    - action: get_agent
+      resources:
+      - all
 
 # LOB1 Group Scope: Read-only access to API; currenttime and mcpgw servers; code-reviewer and test-automation agents
 registry-users-lob1:
