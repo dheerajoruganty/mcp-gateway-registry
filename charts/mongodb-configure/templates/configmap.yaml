@@ -4,345 +4,44 @@ metadata:
   name: setup-mongodb
   namespace: {{ .Release.Namespace }}
 data:
-  scopes.yml: |
-    # Scopes Configuration for MCP Gateway Registry
-    #
-    # This file defines three main top-level groups:
-    # 1. UI-Scopes: Agent registry permissions (list, get, publish, modify, delete agents) and MCP service access
-    # 2. group_mappings: Maps Keycloak groups to scope names
-    # 3. Individual group scopes: Detailed MCP server method/tool access for each group
-    #
-    # Each group has two types of permissions:
-    # - Agent permissions: Actions on agent resources (list_agents, get_agent, publish_agent, modify_agent, delete_agent)
-    # - MCP server permissions: Methods and tools accessible on specific MCP servers (currenttime, mcpgw, fininfo, etc.)
-    #
-    # To add a new group, follow these three steps:
-    # 1. Add to UI-Scopes: Define agent and service permissions (what agents/services the group can access)
-    # 2. Add to group_mappings: Map the Keycloak group name to the internal scope name
-    # 3. Add individual group scope entry: Define detailed MCP server methods/tools and agent actions for the group
-
-    # ==================== UI-SCOPES ====================
-    # Define agent registry permissions and service listing rights for each group
-    UI-Scopes:
-      # Admin user for MCP registry (highest privileges)
-      mcp-registry-admin:
-        list_agents:
-          - all
-        get_agent:
-          - all
-        publish_agent:
-          - all
-        modify_agent:
-          - all
-        delete_agent:
-          - all
-        list_service:
-          - all
-        register_service:
-          - all
-        health_check_service:
-          - all
-        toggle_service:
-          - all
-        modify_service:
-          - all
-
-      # Registry admin group (wildcard access to all agents and services)
-      registry-admins:
-        list_agents:
-          - all
-        get_agent:
-          - all
-        publish_agent:
-          - all
-        modify_agent:
-          - all
-        delete_agent:
-          - all
-        list_service:
-          - all
-        register_service:
-          - all
-        health_check_service:
-          - all
-        toggle_service:
-          - all
-        modify_service:
-          - all
-
-      # LOB1 (Line of Business 1): Restricted to code-reviewer and test-automation agents
-      registry-users-lob1:
-        list_agents:
-          - /code-reviewer
-          - /test-automation
-        get_agent:
-          - /code-reviewer
-          - /test-automation
-        publish_agent:
-          - /code-reviewer
-          - /test-automation
-        modify_agent:
-          - /code-reviewer
-          - /test-automation
-        delete_agent:
-          - /code-reviewer
-          - /test-automation
-        list_service:
-          - currenttime
-          - mcpgw
-        health_check_service:
-          - currenttime
-          - mcpgw
-
-      # LOB2 (Line of Business 2): Restricted to data-analysis and security-analyzer agents
-      registry-users-lob2:
-        list_agents:
-          - /data-analysis
-          - /security-analyzer
-        get_agent:
-          - /data-analysis
-          - /security-analyzer
-        publish_agent:
-          - /data-analysis
-          - /security-analyzer
-        modify_agent:
-          - /data-analysis
-          - /security-analyzer
-        delete_agent:
-          - /data-analysis
-          - /security-analyzer
-        list_service:
-          - realserverfaketools
-          - mcpgw
-          - fininfo
-        health_check_service:
-          - realserverfaketools
-          - mcpgw
-          - fininfo
-
-    # ==================== GROUP MAPPINGS ====================
-    # Maps Keycloak groups to internal scope group names
-    group_mappings:
-      mcp-registry-admin:
-        - mcp-registry-admin
-        - mcp-servers-unrestricted/read
-        - mcp-servers-unrestricted/execute
-      registry-admins:
-        - registry-admins
-      registry-users-lob1:
-        - registry-users-lob1
-      registry-users-lob2:
-        - registry-users-lob2
-      # Add mappings for the actual Keycloak groups
-      mcp-registry-developer:
-        - registry-admins  # Map developers to admin scope
-      mcp-registry-operator:
-        - registry-admins  # Map operators to admin scope  
-      mcp-registry-user:
-        - registry-users-lob1  # Map users to LOB1 scope
-      mcp-servers-restricted:
-        - registry-users-lob1  # Map restricted users to LOB1
-      mcp-servers-unrestricted:
-        - mcp-servers-unrestricted/read
-        - mcp-servers-unrestricted/execute
-
-    # ==================== MCP SERVER SCOPES ====================
-    # Unrestricted read access: Wildcard access to all servers with all methods and tools
-    mcp-servers-unrestricted/read:
-      - server: '*'
-        methods:
-          - initialize
-          - notifications/initialized
-          - ping
-          - tools/list
-          - tools/call
-          - resources/list
-          - resources/templates/list
-          - GET
-        tools: '*'
-
-    # Unrestricted execute access: Full CRUD operations on all servers (POST, PUT, DELETE in addition to read)
-    mcp-servers-unrestricted/execute:
-      - server: '*'
-        methods:
-          - initialize
-          - notifications/initialized
-          - ping
-          - tools/list
-          - tools/call
-          - resources/list
-          - resources/templates/list
-          - GET
-          - POST
-          - PUT
-          - DELETE
-        tools: '*'
-
-    # LOB1 Group Scope: Read-only access to API; currenttime and mcpgw servers; code-reviewer and test-automation agents
-    registry-users-lob1:
-      - server: api
-        methods:
-          - initialize
-          - GET
-      - server: currenttime
-        methods:
-          - initialize
-          - notifications/initialized
-          - ping
-          - tools/list
-          - tools/call
-          - resources/list
-          - resources/templates/list
-        tools:
-          - current_time_by_timezone
-      - server: mcpgw
-        methods:
-          - initialize
-          - notifications/initialized
-          - ping
-          - tools/list
-          - tools/call
-          - resources/list
-          - resources/templates/list
-        tools:
-          - intelligent_tool_finder
-      - agents:
-          actions:
-            - action: list_agents
-              resources:
-                - /code-reviewer
-                - /test-automation
-            - action: get_agent
-              resources:
-                - /code-reviewer
-                - /test-automation
-            - action: publish_agent
-              resources:
-                - /code-reviewer
-                - /test-automation
-            - action: modify_agent
-              resources:
-                - /code-reviewer
-                - /test-automation
-            - action: delete_agent
-              resources:
-                - /code-reviewer
-                - /test-automation
-
-    # LOB2 Group Scope: Read-only access to API; realserverfaketools, mcpgw, fininfo servers; data-analysis and security-analyzer agents
-    registry-users-lob2:
-      - server: api
-        methods:
-          - initialize
-          - GET
-      - server: realserverfaketools
-        methods:
-          - initialize
-          - notifications/initialized
-          - ping
-          - tools/list
-          - tools/call
-          - resources/list
-          - resources/templates/list
-        tools:
-          - quantum_flux_analyzer
-          - neural_pattern_synthesizer
-          - hyper_dimensional_mapper
-      - server: mcpgw
-        methods:
-          - initialize
-          - notifications/initialized
-          - ping
-          - tools/list
-          - tools/call
-          - resources/list
-          - resources/templates/list
-        tools:
-          - intelligent_tool_finder
-      - server: fininfo
-        methods:
-          - initialize
-          - notifications/initialized
-          - ping
-          - tools/list
-          - tools/call
-          - resources/list
-          - resources/templates/list
-        tools:
-          - get_stock_aggregates
-          - print_stock_data
-      - agents:
-          actions:
-            - action: list_agents
-              resources:
-                - /data-analysis
-                - /security-analyzer
-            - action: get_agent
-              resources:
-                - /data-analysis
-                - /security-analyzer
-            - action: publish_agent
-              resources:
-                - /data-analysis
-                - /security-analyzer
-            - action: modify_agent
-              resources:
-                - /data-analysis
-                - /security-analyzer
-            - action: delete_agent
-              resources:
-                - /data-analysis
-                - /security-analyzer
-
-    # Admin Group Scope: Unrestricted access to all servers with wildcard; unrestricted access to all agents
-    registry-admins:
-      - server: '*'
-        methods:
-          - all
-        tools:
-          - all
-      - agents:
-          actions:
-            - action: list_agents
-              resources:
-                - all
-            - action: get_agent
-              resources:
-                - all
-            - action: publish_agent
-              resources:
-                - all
-            - action: modify_agent
-              resources:
-                - all
-            - action: delete_agent
-              resources:
-                - all
-
-    # MCP Registry Admin Scope: UI-only scope for registry administration (no server access needed)
-    mcp-registry-admin:
-      - server: '*'
-        methods:
-          - all
-        tools:
-          - all
-      - agents:
-          actions:
-            - action: list_agents
-              resources:
-                - all
-            - action: get_agent
-              resources:
-                - all
-            - action: publish_agent
-              resources:
-                - all
-            - action: modify_agent
-              resources:
-                - all
-            - action: delete_agent
-              resources:
-                - all
+  registry-admins.json: |
+    {
+      "_id": "registry-admins",
+      "group_mappings": [
+        "registry-admins"
+      ],
+      "server_access": [
+        {
+          "server": "*",
+          "methods": ["all"],
+          "tools": ["all"]
+        },
+        {
+          "agents": {
+            "actions": [
+              {"action": "list_agents", "resources": ["all"]},
+              {"action": "get_agent", "resources": ["all"]},
+              {"action": "publish_agent", "resources": ["all"]},
+              {"action": "modify_agent", "resources": ["all"]},
+              {"action": "delete_agent", "resources": ["all"]}
+            ]
+          }
+        }
+      ],
+      "ui_permissions": {
+        "list_agents": ["all"],
+        "get_agent": ["all"],
+        "publish_agent": ["all"],
+        "modify_agent": ["all"],
+        "delete_agent": ["all"],
+        "list_service": ["all"],
+        "register_service": ["all"],
+        "health_check_service": ["all"],
+        "toggle_service": ["all"],
+        "modify_service": ["all"],
+        "delete_service": ["all"]
+      }
+    }
 
   wait.py: |
     import pymongo
@@ -396,6 +95,70 @@ data:
     wait_for_mongodb()
     print("MongoDB replica set is fully ready!")
 
+  mcp-registry-admin.json: |
+    {
+      "_id": "mcp-registry-admin",
+      "group_mappings": ["mcp-registry-admin", "mcp-servers-unrestricted/read", "mcp-servers-unrestricted/execute"],
+      "server_access": [
+        {
+          "server": "*",
+          "methods": ["all"],
+          "tools": ["all"]
+        },
+        {
+          "server": "api",
+          "methods": ["tokens", "GET", "POST"]
+        }
+      ],
+      "ui_permissions": {
+        "list_agents": ["all"],
+        "get_agent": ["all"],
+        "publish_agent": ["all"],
+        "modify_agent": ["all"],
+        "delete_agent": ["all"],
+        "list_service": ["all"],
+        "register_service": ["all"],
+        "health_check_service": ["all"],
+        "toggle_service": ["all"],
+        "modify_service": ["all"],
+        "delete_service": ["all"]
+      }
+    }
+
+  mcp-servers-unrestricted-execute.json: |
+    {
+      "_id": "mcp-servers-unrestricted/execute",
+      "group_mappings": [],
+      "server_access": [
+        {
+          "server": "*",
+          "methods": ["initialize", "notifications/initialized", "ping", "tools/list", "tools/call", "resources/list", "resources/templates/list", "GET", "POST", "PUT", "DELETE"],
+          "tools": "*"
+        },
+        {
+          "server": "api",
+          "methods": ["tokens", "GET", "POST"]
+        }
+      ]
+    }
+
+  mcp-servers-unrestricted-read.json: |
+    {
+      "_id": "mcp-servers-unrestricted/read",
+      "group_mappings": [],
+      "server_access": [
+        {
+          "server": "*",
+          "methods": ["initialize", "notifications/initialized", "ping", "tools/list", "tools/call", "resources/list", "resources/templates/list", "GET"],
+          "tools": "*"
+        },
+        {
+          "server": "api",
+          "methods": ["tokens", "GET"]
+        }
+      ]
+    }
+
   script.py: |
     #!/usr/bin/env python3
     """
@@ -404,18 +167,19 @@ data:
     This script:
     1. Initializes replica set (rs0)
     2. Creates collections and indexes
-    3. Loads scopes from scopes.yml
+    3. Loads default admin scope from registry-admins.json
 
     Usage:
         python init-mongodb-ce.py
     """
 
     import asyncio
+    import json
     import logging
     import os
     import sys
     import time
-    import yaml
+    from pathlib import Path
     from typing import Optional
 
     from motor.motor_asyncio import AsyncIOMotorClient
@@ -438,6 +202,7 @@ data:
     COLLECTION_EMBEDDINGS = "mcp_embeddings_1536"
     COLLECTION_SECURITY_SCANS = "mcp_security_scans"
     COLLECTION_FEDERATION_CONFIG = "mcp_federation_config"
+    COLLECTION_AUDIT_EVENTS = "audit_events"
 
 
     def _get_config_from_env() -> dict:
@@ -447,7 +212,6 @@ data:
             "port": int(os.getenv("DOCUMENTDB_PORT", "27017")),
             "database": os.getenv("DOCUMENTDB_DATABASE", "mcp_registry"),
             "namespace": os.getenv("DOCUMENTDB_NAMESPACE", "default"),
-            "scopes_file": os.getenv("SCOPES_FILE", "/app/config/scopes.yml"),
             "username": os.getenv("DOCUMENTDB_USERNAME", ""),
             "password": os.getenv("DOCUMENTDB_PASSWORD", ""),
             "replicaset": os.getenv("DOCUMENTDB_REPLICA_SET", "rs0"),
@@ -550,99 +314,91 @@ data:
             await collection.create_index([("enabled", ASCENDING)])
             logger.info(f"Created indexes for {full_name}")
 
+        elif collection_name == COLLECTION_AUDIT_EVENTS:
+            # Indexes for audit event queries (Requirements 6.2)
+            # Note: timestamp index is created as TTL index below, so we use compound indexes here
+            await collection.create_index([("identity.username", ASCENDING), ("timestamp", ASCENDING)])
+            await collection.create_index([("action.operation", ASCENDING), ("timestamp", ASCENDING)])
+            await collection.create_index([("action.resource_type", ASCENDING), ("timestamp", ASCENDING)])
+            await collection.create_index([("request_id", ASCENDING)], unique=True)
 
-    async def _load_scopes_from_yaml(
+            # TTL index for automatic expiration (Requirements 6.3)
+            # This also serves as the timestamp index for sorting
+            # Default 7 days (604800 seconds), configurable via AUDIT_LOG_MONGODB_TTL_DAYS
+            ttl_days = int(os.getenv("AUDIT_LOG_MONGODB_TTL_DAYS", "7"))
+            ttl_seconds = ttl_days * 24 * 60 * 60
+            await collection.create_index(
+                [("timestamp", ASCENDING)],
+                expireAfterSeconds=ttl_seconds,
+                name="timestamp_ttl"
+            )
+            logger.info(f"Created indexes for {full_name} (TTL: {ttl_days} days)")
+
+    async def _load_default_scopes(
         db,
         namespace: str,
-        scopes_file: str,
     ) -> None:
-        """Load scopes from YAML file into MongoDB.
+        """Load default scopes from JSON files into scopes collection.
 
-        Uses same logic as load-scopes.py to parse scopes.yml structure:
-        - group_mappings: Keycloak group to scope name mappings
-        - UI-Scopes: UI permissions for each scope
-        - Individual scope entries: Server access lists for each scope
+        This loads all scope JSON files from the scripts directory:
+        - registry-admins.json: Bootstrap admin scope with full permissions
+        - mcp-registry-admin.json: MCP registry admin scope (Keycloak group)
+        - mcp-servers-unrestricted-read.json: Read-only access to all servers
+        - mcp-servers-unrestricted-execute.json: Full CRUD access to all servers
         """
-        logger.info(f"Loading scopes from {scopes_file}")
-
-        # Check if file exists
-        if not os.path.exists(scopes_file):
-            logger.warning(f"Scopes file not found: {scopes_file}")
-            logger.warning("Scopes will not be loaded. You can load them later using load-scopes.py")
-            return
-
-        # Read YAML file
-        with open(scopes_file, "r") as f:
-            scopes_data = yaml.safe_load(f)
-
-        if not scopes_data:
-            logger.warning(f"No scopes data found in {scopes_file}")
-            return
-
         collection_name = f"{COLLECTION_SCOPES}_{namespace}"
         collection = db[collection_name]
 
-        # Extract group mappings and UI scopes
-        group_mappings = scopes_data.get("group_mappings", {})
-        ui_scopes = scopes_data.get("UI-Scopes", {})
+        # Find scope files in the same directory as this script
+        script_dir = Path(__file__).parent
 
-        # Process each scope group
-        scope_groups = []
-        for key, value in scopes_data.items():
-            # Skip the top-level keys
-            if key in ["group_mappings", "UI-Scopes"]:
+        # List of scope files to load (order matters - base scopes first)
+        scope_files = [
+            "registry-admins.json",
+            "mcp-registry-admin.json",
+            "mcp-servers-unrestricted-read.json",
+            "mcp-servers-unrestricted-execute.json",
+        ]
+
+        loaded_count = 0
+        for scope_filename in scope_files:
+            scope_file = script_dir / scope_filename
+
+            if not scope_file.exists():
+                logger.warning(f"Scope file not found: {scope_file}")
                 continue
 
-            # This is a scope group
-            scope_name = key
-            server_access = value if isinstance(value, list) else []
+            try:
+                with open(scope_file, "r") as f:
+                    scope_data = json.load(f)
 
-            # Build the scope document
-            scope_doc = {
-                "_id": scope_name,
-                "group_mappings": [],
-                "server_access": server_access,
-                "ui_permissions": {},
-            }
+                logger.info(f"Loading scope from {scope_filename}")
 
-            # Add group mappings for this scope
-            for keycloak_group, scope_names in group_mappings.items():
-                if scope_name in scope_names:
-                    scope_doc["group_mappings"].append(keycloak_group)
+                # Upsert the scope document
+                result = await collection.update_one(
+                    {"_id": scope_data["_id"]},
+                    {"$set": scope_data},
+                    upsert=True
+                )
 
-            # Add UI permissions for this scope
-            if scope_name in ui_scopes:
-                scope_doc["ui_permissions"] = ui_scopes[scope_name]
+                if result.upserted_id:
+                    logger.info(f"Inserted scope: {scope_data['_id']}")
+                    loaded_count += 1
+                elif result.modified_count > 0:
+                    logger.info(f"Updated scope: {scope_data['_id']}")
+                    loaded_count += 1
+                else:
+                    logger.info(f"Scope already up-to-date: {scope_data['_id']}")
 
-            scope_groups.append(scope_doc)
-
-        # Insert scopes into MongoDB
-        if scope_groups:
-            logger.info(f"Inserting {len(scope_groups)} scope groups into {collection_name}")
-
-            # Clear existing scopes first
-            await collection.delete_many({})
-
-            for scope_doc in scope_groups:
-                try:
-                    # Use update_one with upsert to avoid duplicate key errors
-                    result = await collection.update_one(
-                        {"_id": scope_doc["_id"]},
-                        {"$set": scope_doc},
-                        upsert=True
+                if "group_mappings" in scope_data:
+                    logger.info(
+                        f"  group_mappings: {scope_data.get('group_mappings', [])}"
                     )
 
-                    if result.upserted_id:
-                        logger.info(f"Inserted scope: {scope_doc['_id']}")
-                    elif result.modified_count > 0:
-                        logger.info(f"Updated scope: {scope_doc['_id']}")
+            except Exception as e:
+                logger.error(f"Failed to load scope from {scope_filename}: {e}", exc_info=True)
 
-                except Exception as e:
-                    logger.error(f"Failed to insert scope {scope_doc['_id']}: {e}")
-
-            logger.info(f"Successfully loaded {len(scope_groups)} scopes")
-        else:
-            logger.warning("No scope groups found to insert")
+        logger.info(f"Loaded {loaded_count} scopes into {collection_name}")
 
 
     async def _initialize_mongodb_ce() -> None:
@@ -655,7 +411,6 @@ data:
         logger.info(f"Host: {config['host']}:{config['port']}")
         logger.info(f"Database: {config['database']}")
         logger.info(f"Namespace: {config['namespace']}")
-        logger.info(f"Scopes file: {config['scopes_file']}")
         logger.info("")
 
         # Wait for MongoDB to be ready
@@ -690,6 +445,7 @@ data:
                 COLLECTION_EMBEDDINGS,
                 COLLECTION_SECURITY_SCANS,
                 COLLECTION_FEDERATION_CONFIG,
+                COLLECTION_AUDIT_EVENTS,
             ]
 
             for coll_name in collections:
@@ -708,8 +464,8 @@ data:
                 collection = db[full_name]
                 await _create_standard_indexes(collection, coll_name, namespace)
 
-            # Load scopes
-            await _load_scopes_from_yaml(db, namespace, config["scopes_file"])
+            # Load default admin scope
+            await _load_default_scopes(db, namespace)
 
             logger.info("")
             logger.info("=" * 60)
@@ -719,6 +475,9 @@ data:
             for coll_name in collections:
                 if coll_name == COLLECTION_EMBEDDINGS:
                     logger.info(f"  - {coll_name}_{namespace} (with vector search)")
+                elif coll_name == COLLECTION_AUDIT_EVENTS:
+                    ttl_days = int(os.getenv("AUDIT_LOG_MONGODB_TTL_DAYS", "7"))
+                    logger.info(f"  - {coll_name}_{namespace} (TTL: {ttl_days} days)")
                 else:
                     logger.info(f"  - {coll_name}_{namespace}")
             logger.info("")

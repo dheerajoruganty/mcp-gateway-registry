@@ -38,9 +38,18 @@ spec:
             - mountPath: /app/script.py
               name: script
               subPath: script.py
-            - mountPath: /app/config/scopes.yml
+            - mountPath: /app/registry-admins.json
               name: script
-              subPath: scopes.yml
+              subPath: registry-admins.json
+            - mountPath: /app/mcp-registry-admin.json
+              name: script
+              subPath: mcp-registry-admin.json
+            - mountPath: /app/mcp-servers-unrestricted-execute.json
+              name: script
+              subPath: mcp-servers-unrestricted-execute.json
+            - mountPath: /app/mcp-servers-unrestricted-read.json
+              name: script
+              subPath: mcp-servers-unrestricted-read.json
       restartPolicy: Never
       volumes:
         - name: script
