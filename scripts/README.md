@@ -129,6 +129,13 @@ The initialization script creates the following collections with indexes:
 6. **mcp_federation_config_{namespace}**
    - Unique index on `_id` (config ID)
 
+7. **audit_events_{namespace}**
+   - Unique index on `request_id`
+   - Compound index on `identity.username` + `timestamp`
+   - Compound index on `action.operation` + `timestamp`
+   - Compound index on `action.resource_type` + `timestamp`
+   - TTL index on `timestamp` (default 7 days, configurable via `AUDIT_LOG_MONGODB_TTL_DAYS`)
+
 ### Environment Variables
 
 | Variable | Default | Description |
@@ -142,6 +149,7 @@ The initialization script creates the following collections with indexes:
 | `DOCUMENTDB_USE_TLS` | `true` | Enable TLS for connections |
 | `DOCUMENTDB_TLS_CA_FILE` | `global-bundle.pem` | Path to TLS CA bundle |
 | `DOCUMENTDB_NAMESPACE` | `default` | Namespace for multi-tenancy |
+| `AUDIT_LOG_MONGODB_TTL_DAYS` | `7` | Audit log retention in days (TTL index) |
 
 ### Prerequisites
 
