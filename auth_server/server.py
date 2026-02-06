@@ -1179,9 +1179,10 @@ async def validate_request(request: Request):
                     server_name_from_url = "/".join(path_parts[:-1])
                     endpoint_from_url = path_parts[-1]
                 elif len(path_parts) >= 1:
-                    # No recognized MCP endpoint, use first part as server name
-                    server_name_from_url = path_parts[0]
-                    endpoint_from_url = path_parts[1] if len(path_parts) > 1 else None
+                    # No recognized MCP endpoint at end - use entire path as server name
+                    # This handles MCP server URLs like /peer-registry-lob-1/cloudflare-docs
+                    server_name_from_url = "/".join(path_parts)
+                    endpoint_from_url = None
 
                 logger.info(
                     f"Extracted server_name '{server_name_from_url}' and endpoint '{endpoint_from_url}' from original_url: {original_url}"
