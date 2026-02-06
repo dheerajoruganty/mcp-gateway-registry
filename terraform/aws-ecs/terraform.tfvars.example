@@ -253,6 +253,21 @@ registry_api_token = "m3zT65wREARMVDToKosg_DgNkKqS_434hNxy3sslGPY"
 # federation_encryption_key = "your-fernet-encryption-key-here"
 
 # ============================================================================
+# AUDIT LOGGING CONFIGURATION
+# ============================================================================
+
+# Enable/disable audit logging for compliance monitoring
+# When enabled, all API and MCP requests are logged to DocumentDB
+# Default: true
+# audit_log_enabled = true
+
+# Audit log retention period in days
+# Logs older than this are automatically deleted via DocumentDB TTL index
+# Common values: 7 (dev), 30 (standard), 90 (compliance)
+# Default: 7
+# audit_log_ttl_days = 7
+
+# ============================================================================
 # AUTHENTICATION PROVIDER CONFIGURATION
 # ============================================================================
 

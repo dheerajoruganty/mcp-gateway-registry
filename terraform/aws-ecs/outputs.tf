@@ -105,14 +105,14 @@ output "deployment_summary" {
 
 output "keycloak_url" {
   description = "Keycloak URL"
-  value       = var.enable_route53_dns ? "https://${local.keycloak_domain}" : (
+  value = var.enable_route53_dns ? "https://${local.keycloak_domain}" : (
     var.enable_cloudfront ? "https://${aws_cloudfront_distribution.keycloak[0].domain_name}" : "http://${aws_lb.keycloak.dns_name}"
   )
 }
 
 output "keycloak_admin_console" {
   description = "Keycloak admin console URL"
-  value       = var.enable_route53_dns ? "https://${local.keycloak_domain}/admin" : (
+  value = var.enable_route53_dns ? "https://${local.keycloak_domain}/admin" : (
     var.enable_cloudfront ? "https://${aws_cloudfront_distribution.keycloak[0].domain_name}/admin" : "http://${aws_lb.keycloak.dns_name}/admin"
   )
 }

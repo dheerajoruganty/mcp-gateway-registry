@@ -481,3 +481,24 @@ variable "federation_encryption_key" {
   default     = ""
   sensitive   = true
 }
+
+# =============================================================================
+# AUDIT LOGGING CONFIGURATION
+# =============================================================================
+
+variable "audit_log_enabled" {
+  description = "Enable audit logging for all API and MCP requests. Logs are stored in DocumentDB with automatic TTL-based retention."
+  type        = bool
+  default     = true
+}
+
+variable "audit_log_ttl_days" {
+  description = "Audit log retention period in days. Logs older than this are automatically deleted via DocumentDB TTL index. Common values: 7 (dev), 30 (standard), 90 (compliance)."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.audit_log_ttl_days >= 1 && var.audit_log_ttl_days <= 365
+    error_message = "Audit log TTL must be between 1 and 365 days"
+  }
+}

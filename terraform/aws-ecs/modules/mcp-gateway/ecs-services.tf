@@ -209,6 +209,14 @@ module "ecs_service_auth" {
         {
           name  = "DOCUMENTDB_TLS_CA_FILE"
           value = "/app/global-bundle.pem"
+        },
+        {
+          name  = "AUDIT_LOG_ENABLED"
+          value = tostring(var.audit_log_enabled)
+        },
+        {
+          name  = "AUDIT_LOG_MONGODB_TTL_DAYS"
+          value = tostring(var.audit_log_ttl_days)
         }
       ]
 
@@ -569,6 +577,14 @@ module "ecs_service_registry" {
         {
           name  = "FEDERATION_ENCRYPTION_KEY"
           value = var.federation_encryption_key
+        },
+        {
+          name  = "AUDIT_LOG_ENABLED"
+          value = tostring(var.audit_log_enabled)
+        },
+        {
+          name  = "AUDIT_LOG_MONGODB_TTL_DAYS"
+          value = tostring(var.audit_log_ttl_days)
         }
       ]
 

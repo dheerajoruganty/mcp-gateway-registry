@@ -67,7 +67,7 @@ resource "aws_cloudfront_distribution" "mcp_gateway" {
     target_origin_id = "mcp-gateway-alb"
 
     # Disable caching for dynamic content
-    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled[0].id
+    cache_policy_id = data.aws_cloudfront_cache_policy.caching_disabled[0].id
     # Forward all headers to origin
     origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer[0].id
 
@@ -118,8 +118,8 @@ resource "aws_cloudfront_distribution" "keycloak" {
     origin_id   = "keycloak-alb"
 
     custom_origin_config {
-      http_port              = 80
-      https_port             = 443
+      http_port  = 80
+      https_port = 443
       # Always use HTTP to ALB - the ALB HTTP listener is configured to forward
       # (not redirect) when CloudFront is enabled. Using HTTPS would fail because
       # the ALB cert is for the custom domain, not the ALB DNS name.
