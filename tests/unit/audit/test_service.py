@@ -1,18 +1,21 @@
 """
 Unit tests for AuditLogger service.
 
-Validates: Requirements 3.1, 3.3, 3.6
+Tests the MongoDB-only audit logging functionality.
 """
 
-import json
-import re
-import tempfile
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.audit import AuditLogger, Identity, RegistryApiAccessRecord, Request, Response
+from registry.audit import (
+    AuditLogger,
+    Identity,
+    RegistryApiAccessRecord,
+    Request,
+    Response,
+)
 
 
 def make_test_record(request_id: str = "test-123") -> RegistryApiAccessRecord:
@@ -20,79 +23,162 @@ def make_test_record(request_id: str = "test-123") -> RegistryApiAccessRecord:
     return RegistryApiAccessRecord(
         timestamp=datetime.now(timezone.utc),
         request_id=request_id,
-        identity=Identity(username="testuser", auth_method="oauth2", credential_type="bearer_token"),
-        request=Request(method="GET", path="/api/test", client_ip="127.0.0.1"),
-        response=Response(status_code=200, duration_ms=50.5),
+        identity=Identity(
+            username="testuser",
+            auth_method="oauth2",
+            credential_type="bearer_token",
+        ),
+        request=Request(
+            method="GET",
+            path="/api/test",
+            client_ip="127.0.0.1",
+        ),
+        response=Response(
+            status_code=200,
+            duration_ms=50.5,
+        ),
     )
 
 
-class TestFileCreation:
-    """Tests for file creation on first event."""
+class TestAuditLoggerInit:
+    """Tests for AuditLogger initialization."""
 
-    async def test_file_created_on_first_event(self):
-        """A new file is created when the first event is logged."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logger = AuditLogger(log_dir=tmpdir, stream_name="test-stream")
-            assert not logger.is_open
-            
-            await logger.log_event(make_test_record())
-            
-            assert logger.is_open
-            assert logger.current_file_path.exists()
-            await logger.close()
+    def test_init_with_mongodb_enabled(self):
+        """Logger initializes correctly with MongoDB enabled."""
+        mock_repo = MagicMock()
+        logger = AuditLogger(
+            stream_name="test-stream",
+            mongodb_enabled=True,
+            audit_repository=mock_repo,
+        )
+        assert logger.mongodb_enabled is True
+        assert logger.is_open is True
+        assert logger.stream_name == "test-stream"
 
+    def test_init_with_mongodb_disabled(self):
+        """Logger initializes correctly with MongoDB disabled."""
+        logger = AuditLogger(
+            stream_name="test-stream",
+            mongodb_enabled=False,
+        )
+        assert logger.mongodb_enabled is False
+        assert logger.is_open is False
 
-class TestJSONLFormat:
-    """Tests for JSON Lines format output."""
-
-    async def test_output_is_valid_jsonl(self):
-        """Each logged event is a valid JSON line."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logger = AuditLogger(log_dir=tmpdir, stream_name="test-stream")
-            
-            for i in range(3):
-                await logger.log_event(make_test_record(f"request-{i}"))
-            
-            file_path = logger.current_file_path
-            await logger.close()
-            
-            with open(file_path, "r") as f:
-                lines = f.readlines()
-            
-            assert len(lines) == 3
-            for i, line in enumerate(lines):
-                parsed = json.loads(line.strip())
-                assert parsed["request_id"] == f"request-{i}"
+    def test_deprecated_params_accepted(self):
+        """Deprecated parameters are accepted for backward compatibility."""
+        logger = AuditLogger(
+            log_dir="/tmp/test",
+            rotation_hours=2,
+            rotation_max_mb=50,
+            local_retention_hours=48,
+            stream_name="test-stream",
+        )
+        # Should not raise, deprecated params are ignored
+        assert logger.stream_name == "test-stream"
 
 
-class TestFilenamePattern:
-    """Tests for filename pattern matching."""
+class TestLogEvent:
+    """Tests for log_event method."""
 
-    async def test_filename_matches_pattern(self):
-        """Filename follows pattern {stream}-{ISO8601_timestamp}.jsonl."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logger = AuditLogger(log_dir=tmpdir, stream_name="registry-api-access")
-            await logger.log_event(make_test_record())
-            
-            filename = logger.current_file_path.name
-            pattern = r"registry-api-access-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.jsonl"
-            assert re.match(pattern, filename)
-            await logger.close()
+    async def test_log_event_writes_to_mongodb(self):
+        """Event is written to MongoDB when enabled."""
+        mock_repo = AsyncMock()
+        logger = AuditLogger(
+            stream_name="test-stream",
+            mongodb_enabled=True,
+            audit_repository=mock_repo,
+        )
+
+        record = make_test_record()
+        await logger.log_event(record)
+
+        mock_repo.insert.assert_called_once_with(record)
+
+    async def test_log_event_skipped_when_disabled(self):
+        """Event is skipped when MongoDB is disabled."""
+        mock_repo = AsyncMock()
+        logger = AuditLogger(
+            stream_name="test-stream",
+            mongodb_enabled=False,
+            audit_repository=mock_repo,
+        )
+
+        await logger.log_event(make_test_record())
+
+        mock_repo.insert.assert_not_called()
+
+    async def test_log_event_handles_mongodb_error(self):
+        """MongoDB errors are caught and logged, not raised."""
+        mock_repo = AsyncMock()
+        mock_repo.insert.side_effect = Exception("MongoDB connection failed")
+        logger = AuditLogger(
+            stream_name="test-stream",
+            mongodb_enabled=True,
+            audit_repository=mock_repo,
+        )
+
+        # Should not raise
+        await logger.log_event(make_test_record())
+
+    async def test_multiple_events_logged(self):
+        """Multiple events can be logged sequentially."""
+        mock_repo = AsyncMock()
+        logger = AuditLogger(
+            stream_name="test-stream",
+            mongodb_enabled=True,
+            audit_repository=mock_repo,
+        )
+
+        for i in range(3):
+            await logger.log_event(make_test_record(f"request-{i}"))
+
+        assert mock_repo.insert.call_count == 3
 
 
-class TestRotation:
-    """Tests for file rotation."""
+class TestClose:
+    """Tests for close method."""
 
-    async def test_time_based_rotation_trigger(self):
-        """_should_rotate returns True when time threshold exceeded."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logger = AuditLogger(log_dir=tmpdir, rotation_hours=1, stream_name="test-stream")
-            await logger.log_event(make_test_record())
-            
-            assert not await logger._should_rotate()
-            
-            # Simulate time passing
-            logger._current_file_start = datetime.now(timezone.utc) - timedelta(hours=2)
-            assert await logger._should_rotate()
-            
-            await logger.close()
+    async def test_close_is_safe(self):
+        """Close method completes without error."""
+        logger = AuditLogger(
+            stream_name="test-stream",
+            mongodb_enabled=True,
+            audit_repository=AsyncMock(),
+        )
+        # Should not raise
+        await logger.close()
+
+
+class TestProperties:
+    """Tests for logger properties."""
+
+    def test_current_file_path_returns_none(self):
+        """current_file_path returns None (no local files)."""
+        logger = AuditLogger(stream_name="test-stream")
+        assert logger.current_file_path is None
+
+    def test_is_open_with_mongodb(self):
+        """is_open returns True when MongoDB is enabled and repo is set."""
+        logger = AuditLogger(
+            stream_name="test-stream",
+            mongodb_enabled=True,
+            audit_repository=MagicMock(),
+        )
+        assert logger.is_open is True
+
+    def test_is_open_without_mongodb(self):
+        """is_open returns False when MongoDB is disabled."""
+        logger = AuditLogger(
+            stream_name="test-stream",
+            mongodb_enabled=False,
+        )
+        assert logger.is_open is False
+
+    def test_is_open_without_repo(self):
+        """is_open returns False when MongoDB enabled but no repo."""
+        logger = AuditLogger(
+            stream_name="test-stream",
+            mongodb_enabled=True,
+            audit_repository=None,
+        )
+        assert logger.is_open is False
