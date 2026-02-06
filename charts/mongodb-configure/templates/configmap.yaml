@@ -95,6 +95,70 @@ data:
     wait_for_mongodb()
     print("MongoDB replica set is fully ready!")
 
+  mcp-registry-admin.json: |
+    {
+      "_id": "mcp-registry-admin",
+      "group_mappings": ["mcp-registry-admin", "mcp-servers-unrestricted/read", "mcp-servers-unrestricted/execute"],
+      "server_access": [
+        {
+          "server": "*",
+          "methods": ["all"],
+          "tools": ["all"]
+        },
+        {
+          "server": "api",
+          "methods": ["tokens", "GET", "POST"]
+        }
+      ],
+      "ui_permissions": {
+        "list_agents": ["all"],
+        "get_agent": ["all"],
+        "publish_agent": ["all"],
+        "modify_agent": ["all"],
+        "delete_agent": ["all"],
+        "list_service": ["all"],
+        "register_service": ["all"],
+        "health_check_service": ["all"],
+        "toggle_service": ["all"],
+        "modify_service": ["all"],
+        "delete_service": ["all"]
+      }
+    }
+
+  mcp-servers-unrestricted-execute.json: |
+    {
+      "_id": "mcp-servers-unrestricted/execute",
+      "group_mappings": [],
+      "server_access": [
+        {
+          "server": "*",
+          "methods": ["initialize", "notifications/initialized", "ping", "tools/list", "tools/call", "resources/list", "resources/templates/list", "GET", "POST", "PUT", "DELETE"],
+          "tools": "*"
+        },
+        {
+          "server": "api",
+          "methods": ["tokens", "GET", "POST"]
+        }
+      ]
+    }
+
+  mcp-servers-unrestricted-read.json: |
+    {
+      "_id": "mcp-servers-unrestricted/read",
+      "group_mappings": [],
+      "server_access": [
+        {
+          "server": "*",
+          "methods": ["initialize", "notifications/initialized", "ping", "tools/list", "tools/call", "resources/list", "resources/templates/list", "GET"],
+          "tools": "*"
+        },
+        {
+          "server": "api",
+          "methods": ["tokens", "GET"]
+        }
+      ]
+    }
+
   script.py: |
     #!/usr/bin/env python3
     """
