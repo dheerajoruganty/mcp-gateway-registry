@@ -49,6 +49,7 @@ from registry.repositories.factory import get_scope_repository
 from registry.audit.mcp_logger import MCPLogger
 from registry.audit.service import AuditLogger
 from registry.audit.models import Identity, MCPServer
+from registry.core.config import settings
 
 # Configure logging
 logging.basicConfig(
