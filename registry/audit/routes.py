@@ -155,12 +155,28 @@ def _build_query(
         query["action.resource_id"] = resource_id
     
     # Response status filter
+    # For registry_api: use numeric response.status_code
+    # For mcp_access: use string mcp_response.status ("success" or "error")
     if status_min is not None or status_max is not None:
-        query["response.status_code"] = {}
-        if status_min is not None:
-            query["response.status_code"]["$gte"] = status_min
-        if status_max is not None:
-            query["response.status_code"]["$lte"] = status_max
+        if stream == "mcp_access":
+            # Map numeric ranges to MCP status strings
+            # 2xx (200-299) -> success, 4xx/5xx (400-599) -> error
+            if status_min is not None and status_min >= 200 and (status_max is None or status_max < 400):
+                # 2xx range = success
+                query["mcp_response.status"] = "success"
+            elif status_min is not None and status_min >= 400:
+                # 4xx/5xx range = error
+                query["mcp_response.status"] = "error"
+            # If "All Errors" (400-599), also map to error
+            elif status_min == 400 and status_max == 599:
+                query["mcp_response.status"] = "error"
+        else:
+            # Registry API uses numeric status codes
+            query["response.status_code"] = {}
+            if status_min is not None:
+                query["response.status_code"]["$gte"] = status_min
+            if status_max is not None:
+                query["response.status_code"]["$lte"] = status_max
     
     # Authorization filter
     if auth_decision:
