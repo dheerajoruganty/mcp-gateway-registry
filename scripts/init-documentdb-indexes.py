@@ -54,6 +54,7 @@ COLLECTION_SCOPES = "mcp_scopes"
 COLLECTION_EMBEDDINGS = "mcp_embeddings_1536"
 COLLECTION_SECURITY_SCANS = "mcp_security_scans"
 COLLECTION_FEDERATION_CONFIG = "mcp_federation_config"
+COLLECTION_AUDIT_EVENTS = "audit_events"
 
 
 async def _get_documentdb_connection_string(
@@ -459,6 +460,93 @@ async def _create_federation_config_indexes(
     logger.info(f"No additional indexes to create for {collection_name} (_id is auto-indexed)")
 
 
+async def _create_audit_events_indexes(
+    collection,
+    collection_name: str,
+    recreate: bool,
+) -> None:
+    """Create all indexes for audit events collection including TTL index.
+
+    Indexes support:
+    - Query by username + time range
+    - Query by operation + time range
+    - Query by resource type + time range
+    - Lookup by request_id
+    - TTL-based automatic expiration (default 7 days)
+    """
+    # Standard query indexes (compound with timestamp for range queries)
+    indexes = [
+        (("identity.username", 1), ("timestamp", 1)),
+        (("action.operation", 1), ("timestamp", 1)),
+        (("action.resource_type", 1), ("timestamp", 1)),
+    ]
+
+    for fields in indexes:
+        index_spec = [(f[0], f[1]) for f in fields]
+        index_name = "_".join(f[0].replace(".", "_") for f in fields) + "_idx"
+
+        if recreate:
+            try:
+                await collection.drop_index(index_name)
+                logger.info(f"Dropped existing index '{index_name}' from {collection_name}")
+            except Exception as e:
+                logger.debug(f"No existing index '{index_name}' to drop: {e}")
+
+        try:
+            await collection.create_index(
+                index_spec,
+                name=index_name,
+            )
+            logger.info(f"Created index '{index_name}' on {collection_name}")
+        except Exception as e:
+            logger.error(f"Failed to create index '{index_name}' on {collection_name}: {e}")
+
+    # Unique index on request_id
+    request_id_index = "request_id_idx"
+    if recreate:
+        try:
+            await collection.drop_index(request_id_index)
+            logger.info(f"Dropped existing index '{request_id_index}' from {collection_name}")
+        except Exception as e:
+            logger.debug(f"No existing index '{request_id_index}' to drop: {e}")
+
+    try:
+        await collection.create_index(
+            [("request_id", 1)],
+            name=request_id_index,
+            unique=True,
+        )
+        logger.info(f"Created unique index '{request_id_index}' on {collection_name}")
+    except Exception as e:
+        logger.error(f"Failed to create index '{request_id_index}' on {collection_name}: {e}")
+
+    # TTL index for automatic expiration
+    # Default 7 days (604800 seconds), configurable via AUDIT_LOG_MONGODB_TTL_DAYS
+    ttl_index_name = "timestamp_ttl"
+    ttl_days = int(os.getenv("AUDIT_LOG_MONGODB_TTL_DAYS", "7"))
+    ttl_seconds = ttl_days * 24 * 60 * 60
+
+    if recreate:
+        try:
+            await collection.drop_index(ttl_index_name)
+            logger.info(f"Dropped existing TTL index '{ttl_index_name}' from {collection_name}")
+        except Exception as e:
+            logger.debug(f"No existing TTL index '{ttl_index_name}' to drop: {e}")
+
+    try:
+        await collection.create_index(
+            [("timestamp", 1)],
+            name=ttl_index_name,
+            expireAfterSeconds=ttl_seconds,
+        )
+        logger.info(
+            f"Created TTL index '{ttl_index_name}' on {collection_name} "
+            f"(expireAfterSeconds={ttl_seconds}, {ttl_days} days)"
+        )
+    except Exception as e:
+        logger.error(f"Failed to create TTL index on {collection_name}: {e}")
+
+
 async def _print_collection_summary(
     db,
     namespace: str,
@@ -475,6 +563,7 @@ async def _print_collection_summary(
         f"{COLLECTION_EMBEDDINGS}_{namespace}",
         f"{COLLECTION_SECURITY_SCANS}_{namespace}",
         f"{COLLECTION_FEDERATION_CONFIG}_{namespace}",
+        f"{COLLECTION_AUDIT_EVENTS}_{namespace}",
     ]
 
     for coll_name in collection_names:
@@ -532,6 +621,7 @@ async def _initialize_collections(
         (COLLECTION_EMBEDDINGS, _create_embeddings_indexes),
         (COLLECTION_SECURITY_SCANS, _create_security_scans_indexes),
         (COLLECTION_FEDERATION_CONFIG, _create_federation_config_indexes),
+        (COLLECTION_AUDIT_EVENTS, _create_audit_events_indexes),
     ]
 
     for base_name, create_indexes_func in collection_configs:

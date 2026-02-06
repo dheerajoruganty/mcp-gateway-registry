@@ -32,9 +32,9 @@ resource "aws_s3_bucket_versioning" "codebuild" {
 
 # Upload buildspec to S3
 resource "aws_s3_object" "upstream_buildspec" {
-  count  = var.create_codebuild ? 1 : 0
-  bucket = aws_s3_bucket.codebuild[0].id
-  key    = "buildspecs/upstream-buildspec.yaml"
+  count   = var.create_codebuild ? 1 : 0
+  bucket  = aws_s3_bucket.codebuild[0].id
+  key     = "buildspecs/upstream-buildspec.yaml"
   content = <<-EOF
 version: 0.2
 

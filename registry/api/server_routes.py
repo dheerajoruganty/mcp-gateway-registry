@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 import httpx
 
 from ..core.config import settings
+from ..audit import set_audit_action
 from ..auth.dependencies import enhanced_auth, nginx_proxied_auth
 from ..services.server_service import server_service
 from ..services.security_scanner import security_scanner_service
@@ -253,10 +254,14 @@ async def read_root(
 
 @router.get("/servers")
 async def get_servers_json(
+    request: Request,
     query: str | None = None,
     user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
 ):
     """Get servers data as JSON for React frontend and external API (supports both session cookies and Bearer tokens)."""
+    # Set audit action for server list
+    set_audit_action(request, "list", "server", description="List all servers")
+    
     # CRITICAL DIAGNOSTIC: Log user_context received by endpoint
     logger.debug(f"[GET_SERVERS_DEBUG] Received user_context: {user_context}")
     logger.debug(f"[GET_SERVERS_DEBUG] user_context type: {type(user_context)}")
@@ -1664,12 +1669,19 @@ async def token_generation_page(
 
 @router.get("/server_details/{service_path:path}")
 async def get_server_details(
+    request: Request,
     service_path: str, user_context: Annotated[dict, Depends(enhanced_auth)]
 ):
     """Get server details by path, or all servers if path is 'all' (filtered by permissions)."""
     # Normalize the path to ensure it starts with '/'
     if not service_path.startswith("/"):
         service_path = "/" + service_path
+
+    # Set audit action for server read
+    if service_path == "/all":
+        set_audit_action(request, "list", "server", description="List all server details")
+    else:
+        set_audit_action(request, "read", "server", resource_id=service_path, description=f"Read server details for {service_path}")
 
     # Special case: if path is 'all' or '/all', return details for all accessible servers
     if service_path == "/all":
@@ -2902,6 +2914,9 @@ async def register_service_api(
       -F "proxy_pass_url=http://localhost:8000"
     ```
     """
+    # Set audit action for server registration
+    set_audit_action(request, "create", "server", resource_id=path, description=f"Register server {name}")
+    
     logger.info(
         f"API register service request from user '{user_context.get('username')}' for service '{name}'"
     )
@@ -3081,6 +3096,7 @@ async def register_service_api(
 
 @router.post("/servers/toggle")
 async def toggle_service_api(
+    request: Request,
     path: Annotated[str, Form()],
     new_state: Annotated[bool, Form()],
     user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
@@ -3112,6 +3128,9 @@ async def toggle_service_api(
     from ..search.service import faiss_service
     from ..health.service import health_service
     from ..core.nginx_service import nginx_service
+
+    # Set audit action for server toggle
+    set_audit_action(request, "toggle", "server", resource_id=path, description=f"Toggle server to {new_state}")
 
     logger.info(
         f"API toggle service request from user '{user_context.get('username')}' for path '{path}' to {new_state}"
@@ -3191,6 +3210,7 @@ async def toggle_service_api(
 
 @router.post("/servers/remove")
 async def remove_service_api(
+    request: Request,
     path: Annotated[str, Form()],
     user_context: Annotated[dict, Depends(nginx_proxied_auth)] = None,
 ):
@@ -3220,6 +3240,9 @@ async def remove_service_api(
     from ..health.service import health_service
     from ..core.nginx_service import nginx_service
     from ..services.scope_service import remove_server_scopes
+
+    # Set audit action for server removal
+    set_audit_action(request, "delete", "server", resource_id=path, description=f"Remove server at {path}")
 
     logger.info(
         f"API remove service request from user '{user_context.get('username')}' for path '{path}'"
@@ -3960,11 +3983,15 @@ async def import_group_definition(
 
 @router.post("/servers/{path:path}/rate")
 async def rate_server(
+    request: Request,
     path: str,
-    request: RatingRequest,
+    rating_request: RatingRequest,
     user_context: Annotated[dict, Depends(nginx_proxied_auth)],
 ):
     """Save integer ratings to server."""
+    # Set audit action for server rating
+    set_audit_action(request, "rate", "server", resource_id=path, description=f"Rate server with {rating_request.rating}")
+    
     if not path.startswith("/"):
         path = "/" + path
 
@@ -3996,7 +4023,7 @@ async def rate_server(
             )
 
     try:
-        avg_rating = await server_service.update_rating(actual_path, user_context["username"], request.rating)
+        avg_rating = await server_service.update_rating(actual_path, user_context["username"], rating_request.rating)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

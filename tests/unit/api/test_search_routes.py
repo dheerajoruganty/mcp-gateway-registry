@@ -13,7 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
 from registry.api.search_routes import (
@@ -35,6 +35,14 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # FIXTURES
 # =============================================================================
+
+
+@pytest.fixture
+def mock_http_request():
+    """Mock HTTP request for testing."""
+    mock_request = Mock(spec=Request)
+    mock_request.state = Mock()
+    return mock_request
 
 
 @pytest.fixture
@@ -863,6 +871,7 @@ class TestSemanticSearchSuccess:
     @pytest.mark.asyncio
     async def test_semantic_search_admin_sees_all_results(
         self,
+        mock_http_request,
         mock_search_repo,
         mock_agent_service,
         admin_user_context,
@@ -894,7 +903,7 @@ class TestSemanticSearchSuccess:
         mock_agent_service.get_agent_info = AsyncMock(side_effect=get_agent_side_effect)
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, admin_user_context, mock_search_repo
         )
 
@@ -910,6 +919,7 @@ class TestSemanticSearchSuccess:
     @pytest.mark.asyncio
     async def test_semantic_search_filters_by_server_access(
         self,
+        mock_http_request,
         mock_search_repo,
         mock_agent_service,
         regular_user_context,
@@ -929,7 +939,7 @@ class TestSemanticSearchSuccess:
         request = SemanticSearchRequest(query="test query")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, regular_user_context, mock_search_repo
         )
 
@@ -943,6 +953,7 @@ class TestSemanticSearchSuccess:
     @pytest.mark.asyncio
     async def test_semantic_search_filters_by_agent_access(
         self,
+        mock_http_request,
         mock_search_repo,
         mock_agent_service,
         regular_user_context,
@@ -975,7 +986,7 @@ class TestSemanticSearchSuccess:
         request = SemanticSearchRequest(query="test query")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, regular_user_context, mock_search_repo
         )
 
@@ -986,6 +997,7 @@ class TestSemanticSearchSuccess:
     @pytest.mark.asyncio
     async def test_semantic_search_restricted_user_sees_nothing(
         self,
+        mock_http_request,
         mock_search_repo,
         restricted_user_context,
         sample_faiss_search_results,
@@ -999,7 +1011,7 @@ class TestSemanticSearchSuccess:
         request = SemanticSearchRequest(query="test query")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, restricted_user_context, mock_search_repo
         )
 
@@ -1013,7 +1025,8 @@ class TestSemanticSearchSuccess:
 
     @pytest.mark.asyncio
     async def test_semantic_search_empty_results(
-        self, mock_search_repo, admin_user_context
+        self, mock_http_request,
+        mock_search_repo, admin_user_context
     ):
         """Test search with no results."""
         # Arrange
@@ -1024,7 +1037,7 @@ class TestSemanticSearchSuccess:
         request = SemanticSearchRequest(query="nonexistent")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, admin_user_context, mock_search_repo
         )
 
@@ -1037,6 +1050,7 @@ class TestSemanticSearchSuccess:
     @pytest.mark.asyncio
     async def test_semantic_search_with_entity_type_filter(
         self,
+        mock_http_request,
         mock_search_repo,
         admin_user_context,
         sample_faiss_search_results,
@@ -1052,7 +1066,7 @@ class TestSemanticSearchSuccess:
         )
 
         # Act
-        await semantic_search(
+        await semantic_search(mock_http_request,
             request, admin_user_context, mock_search_repo
         )
 
@@ -1066,6 +1080,7 @@ class TestSemanticSearchSuccess:
     @pytest.mark.asyncio
     async def test_semantic_search_with_custom_max_results(
         self,
+        mock_http_request,
         mock_search_repo,
         admin_user_context,
         sample_faiss_search_results,
@@ -1079,7 +1094,7 @@ class TestSemanticSearchSuccess:
         request = SemanticSearchRequest(query="test query", max_results=25)
 
         # Act
-        await semantic_search(
+        await semantic_search(mock_http_request,
             request, admin_user_context, mock_search_repo
         )
 
@@ -1092,7 +1107,8 @@ class TestSemanticSearchSuccess:
 
     @pytest.mark.asyncio
     async def test_semantic_search_strips_query(
-        self, mock_search_repo, admin_user_context
+        self, mock_http_request,
+        mock_search_repo, admin_user_context
     ):
         """Test search strips whitespace from query."""
         # Arrange
@@ -1103,7 +1119,7 @@ class TestSemanticSearchSuccess:
         request = SemanticSearchRequest(query="  test query  ")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, admin_user_context, mock_search_repo
         )
 
@@ -1113,6 +1129,7 @@ class TestSemanticSearchSuccess:
     @pytest.mark.asyncio
     async def test_semantic_search_server_with_matching_tools(
         self,
+        mock_http_request,
         mock_search_repo,
         admin_user_context,
         sample_faiss_search_results,
@@ -1126,7 +1143,7 @@ class TestSemanticSearchSuccess:
         request = SemanticSearchRequest(query="time")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, admin_user_context, mock_search_repo
         )
 
@@ -1154,7 +1171,8 @@ class TestSemanticSearchErrorHandling:
 
     @pytest.mark.asyncio
     async def test_semantic_search_value_error_returns_400(
-        self, mock_search_repo, admin_user_context
+        self, mock_http_request,
+        mock_search_repo, admin_user_context
     ):
         """Test ValueError from search service returns 400."""
         # Arrange
@@ -1166,7 +1184,7 @@ class TestSemanticSearchErrorHandling:
 
         # Act & Assert
         with pytest.raises(HTTPException) as exc_info:
-            await semantic_search(
+            await semantic_search(mock_http_request,
                 request, admin_user_context, mock_search_repo
             )
 
@@ -1175,7 +1193,8 @@ class TestSemanticSearchErrorHandling:
 
     @pytest.mark.asyncio
     async def test_semantic_search_runtime_error_returns_503(
-        self, mock_search_repo, admin_user_context
+        self, mock_http_request,
+        mock_search_repo, admin_user_context
     ):
         """Test RuntimeError from search service returns 503."""
         # Arrange
@@ -1187,7 +1206,7 @@ class TestSemanticSearchErrorHandling:
 
         # Act & Assert
         with pytest.raises(HTTPException) as exc_info:
-            await semantic_search(
+            await semantic_search(mock_http_request,
                 request, admin_user_context, mock_search_repo
             )
 
@@ -1197,6 +1216,7 @@ class TestSemanticSearchErrorHandling:
     @pytest.mark.asyncio
     async def test_semantic_search_handles_missing_agent_gracefully(
         self,
+        mock_http_request,
         mock_search_repo,
         mock_agent_service,
         admin_user_context,
@@ -1220,7 +1240,7 @@ class TestSemanticSearchErrorHandling:
         request = SemanticSearchRequest(query="test")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, admin_user_context, mock_search_repo
         )
 
@@ -1234,6 +1254,7 @@ class TestSemanticSearchErrorHandling:
     @pytest.mark.asyncio
     async def test_semantic_search_handles_agent_without_path(
         self,
+        mock_http_request,
         mock_search_repo,
         admin_user_context,
     ):
@@ -1255,7 +1276,7 @@ class TestSemanticSearchErrorHandling:
         request = SemanticSearchRequest(query="test")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, admin_user_context, mock_search_repo
         )
 
@@ -1278,6 +1299,7 @@ class TestSemanticSearchAgentFieldExtraction:
     @pytest.mark.asyncio
     async def test_semantic_search_extracts_agent_fields_from_card(
         self,
+        mock_http_request,
         mock_search_repo,
         mock_agent_service,
         admin_user_context,
@@ -1314,7 +1336,7 @@ class TestSemanticSearchAgentFieldExtraction:
         request = SemanticSearchRequest(query="test")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, admin_user_context, mock_search_repo
         )
 
@@ -1332,6 +1354,7 @@ class TestSemanticSearchAgentFieldExtraction:
     @pytest.mark.asyncio
     async def test_semantic_search_handles_skills_as_strings(
         self,
+        mock_http_request,
         mock_search_repo,
         mock_agent_service,
         admin_user_context,
@@ -1365,7 +1388,7 @@ class TestSemanticSearchAgentFieldExtraction:
         request = SemanticSearchRequest(query="test")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, admin_user_context, mock_search_repo
         )
 
@@ -1376,6 +1399,7 @@ class TestSemanticSearchAgentFieldExtraction:
     @pytest.mark.asyncio
     async def test_semantic_search_fallback_to_faiss_agent_data(
         self,
+        mock_http_request,
         mock_search_repo,
         mock_agent_service,
         admin_user_context,
@@ -1407,7 +1431,7 @@ class TestSemanticSearchAgentFieldExtraction:
         request = SemanticSearchRequest(query="test")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, admin_user_context, mock_search_repo
         )
 
@@ -1421,6 +1445,7 @@ class TestSemanticSearchAgentFieldExtraction:
     @pytest.mark.asyncio
     async def test_semantic_search_filters_none_skills(
         self,
+        mock_http_request,
         mock_search_repo,
         mock_agent_service,
         admin_user_context,
@@ -1454,7 +1479,7 @@ class TestSemanticSearchAgentFieldExtraction:
         request = SemanticSearchRequest(query="test")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, admin_user_context, mock_search_repo
         )
 
@@ -1478,6 +1503,7 @@ class TestSemanticSearchIntegration:
     @pytest.mark.asyncio
     async def test_semantic_search_full_workflow(
         self,
+        mock_http_request,
         mock_search_repo,
         mock_agent_service,
         regular_user_context,
@@ -1567,7 +1593,7 @@ class TestSemanticSearchIntegration:
         request = SemanticSearchRequest(query="test query")
 
         # Act
-        response = await semantic_search(
+        response = await semantic_search(mock_http_request, 
             request, regular_user_context, mock_search_repo
         )
 

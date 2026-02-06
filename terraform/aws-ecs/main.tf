@@ -136,6 +136,10 @@ module "mcp_gateway" {
   federation_static_token_auth_enabled = var.federation_static_token_auth_enabled
   federation_static_token              = var.federation_static_token
   federation_encryption_key            = var.federation_encryption_key
+
+  # Audit logging configuration
+  audit_log_enabled  = var.audit_log_enabled
+  audit_log_ttl_days = var.audit_log_ttl_days
 }
 
 # =============================================================================

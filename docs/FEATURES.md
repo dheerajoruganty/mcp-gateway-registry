@@ -32,6 +32,7 @@ This document provides a comprehensive overview of the MCP Gateway & Registry so
 - **Self-Signed JWT Tokens**: Human users can generate tokens for CLI tools and AI coding assistants
 - **Secure Token Management**: OAuth token refresh and validation with centralized session management
 - **MCP Server Security Scanning**: Integrated vulnerability scanning with Cisco AI Defense MCP Scanner
+- **Compliance Audit Logging**: Comprehensive audit logs for all API and MCP access events with TTL-based retention, credential masking, and admin UI for compliance monitoring
 
 ## Intelligent Tool Discovery
 - **Hybrid Search**: Combined vector similarity with tokenized keyword matching for servers, tools, and agents
