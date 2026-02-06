@@ -5,6 +5,7 @@ import {
   ChevronRightIcon,
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
+  ChevronDownIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { AuditFilters } from './AuditFilterBar';
@@ -252,7 +253,10 @@ const AuditLogTable: React.FC<AuditLogTableProps> = ({
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Timestamp
+                <span className="flex items-center gap-1">
+                  Timestamp
+                  <ChevronDownIcon className="h-3 w-3" title="Sorted by most recent first" />
+                </span>
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 User
