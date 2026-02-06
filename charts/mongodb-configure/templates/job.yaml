@@ -38,9 +38,9 @@ spec:
             - mountPath: /app/script.py
               name: script
               subPath: script.py
-            - mountPath: /app/config/scopes.yml
+            - mountPath: /app/registry-admins.json
               name: script
-              subPath: scopes.yml
+              subPath: registry-admins.json
       restartPolicy: Never
       volumes:
         - name: script
