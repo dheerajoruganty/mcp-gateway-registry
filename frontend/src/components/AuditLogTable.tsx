@@ -6,6 +6,7 @@ import {
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
   ChevronDownIcon,
+  ChevronUpIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { AuditFilters } from './AuditFilterBar';
@@ -161,8 +162,10 @@ const AuditLogTable: React.FC<AuditLogTableProps> = ({
     limit: 50,
     offset: 0,
   });
+  // Sort order: -1 = descending (newest first), 1 = ascending (oldest first)
+  const [sortOrder, setSortOrder] = useState<-1 | 1>(-1);
 
-  const fetchEvents = useCallback(async (offset: number = 0) => {
+  const fetchEvents = useCallback(async (offset: number = 0, currentSortOrder: -1 | 1 = sortOrder) => {
     setLoading(true);
     setError(null);
 
@@ -171,6 +174,7 @@ const AuditLogTable: React.FC<AuditLogTableProps> = ({
       params.set('stream', filters.stream);
       params.set('limit', pagination.limit.toString());
       params.set('offset', offset.toString());
+      params.set('sort_order', currentSortOrder.toString());
 
       if (filters.from) {
         params.set('from', new Date(filters.from).toISOString());
@@ -214,14 +218,19 @@ const AuditLogTable: React.FC<AuditLogTableProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination.limit]);
+  }, [filters, pagination.limit, sortOrder]);
 
   useEffect(() => {
-    fetchEvents(0);
-  }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
+    fetchEvents(0, sortOrder);
+  }, [filters, sortOrder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePageChange = (newOffset: number) => {
-    fetchEvents(newOffset);
+    fetchEvents(newOffset, sortOrder);
+  };
+
+  const handleSortToggle = () => {
+    const newSortOrder = sortOrder === -1 ? 1 : -1;
+    setSortOrder(newSortOrder);
   };
 
   const totalPages = Math.ceil(pagination.total / pagination.limit);
@@ -253,10 +262,18 @@ const AuditLogTable: React.FC<AuditLogTableProps> = ({
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                <span className="flex items-center gap-1">
+                <button
+                  onClick={handleSortToggle}
+                  className="flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                  title={sortOrder === -1 ? "Sorted newest first - click for oldest first" : "Sorted oldest first - click for newest first"}
+                >
                   Timestamp
-                  <ChevronDownIcon className="h-3 w-3" title="Sorted by most recent first" />
-                </span>
+                  {sortOrder === -1 ? (
+                    <ChevronDownIcon className="h-3 w-3" />
+                  ) : (
+                    <ChevronUpIcon className="h-3 w-3" />
+                  )}
+                </button>
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 User

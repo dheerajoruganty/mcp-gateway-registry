@@ -247,6 +247,12 @@ async def get_audit_events(
         ge=0,
         description="Number of events to skip",
     ),
+    sort_order: int = Query(
+        -1,
+        ge=-1,
+        le=1,
+        description="Sort order: -1 for descending (newest first), 1 for ascending (oldest first)",
+    ),
 ) -> AuditEventsResponse:
     """
     Query recent audit events from MongoDB.
@@ -286,7 +292,7 @@ async def get_audit_events(
             limit=limit,
             offset=offset,
             sort_field="timestamp",
-            sort_order=-1,  # Most recent first
+            sort_order=sort_order,
         )
         
         logger.debug(f"Found {len(events)} audit events (total: {total})")
