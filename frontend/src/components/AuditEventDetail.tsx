@@ -147,10 +147,10 @@ const AuditEventDetail: React.FC<AuditEventDetailProps> = ({ event, onClose }) =
 
       {/* MCP-specific summary row */}
       {isMcpEvent && (
-        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 grid grid-cols-2 md:grid-cols-4 gap-4 bg-blue-50/50 dark:bg-blue-900/10">
-          <div className="min-w-0">
-            <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
-              MCP Server
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 grid grid-cols-2 md:grid-cols-4 gap-2 bg-blue-50/50 dark:bg-blue-900/10">
+          <div className="min-w-0 overflow-hidden">
+            <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 truncate" title="MCP Server">
+              Server
             </div>
             <div
               className="text-sm text-gray-900 dark:text-gray-100 truncate"
@@ -159,9 +159,9 @@ const AuditEventDetail: React.FC<AuditEventDetailProps> = ({ event, onClose }) =
               {event.mcp_server?.name || '-'}
             </div>
           </div>
-          <div className="min-w-0">
-            <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
-              MCP Method
+          <div className="min-w-0 overflow-hidden">
+            <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 truncate" title="MCP Method">
+              Method
             </div>
             <div
               className="text-sm font-mono text-gray-900 dark:text-gray-100 truncate"
@@ -170,9 +170,9 @@ const AuditEventDetail: React.FC<AuditEventDetailProps> = ({ event, onClose }) =
               {event.mcp_request?.method || '-'}
             </div>
           </div>
-          <div className="min-w-0">
-            <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
-              Tool/Resource
+          <div className="min-w-0 overflow-hidden">
+            <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 truncate" title="Tool/Resource">
+              Tool
             </div>
             <div
               className="text-sm text-gray-900 dark:text-gray-100 truncate"
@@ -181,8 +181,8 @@ const AuditEventDetail: React.FC<AuditEventDetailProps> = ({ event, onClose }) =
               {event.mcp_request?.tool_name || event.mcp_request?.resource_uri || '-'}
             </div>
           </div>
-          <div className="min-w-0">
-            <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+          <div className="min-w-0 overflow-hidden">
+            <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 truncate" title="Transport">
               Transport
             </div>
             <div
