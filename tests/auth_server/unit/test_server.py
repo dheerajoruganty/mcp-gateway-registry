@@ -638,11 +638,12 @@ class TestValidateEndpoint:
             client = TestClient(server_module.app)
 
             # Act
+            # URL format: /server-name/mcp-endpoint where endpoint is mcp, sse, or messages
             response = client.get(
                 "/validate",
                 headers={
                     "Authorization": "Bearer test-token",
-                    "X-Original-URL": "https://example.com/test-server/initialize",
+                    "X-Original-URL": "https://example.com/test-server/mcp",
                 },
             )
 
@@ -691,11 +692,12 @@ class TestValidateEndpoint:
                 client = TestClient(server_module.app)
 
                 # Act
+                # URL format: /server-name/mcp-endpoint where endpoint is mcp, sse, or messages
                 response = client.get(
                     "/validate",
                     headers={
                         "Cookie": f"mcp_gateway_session={valid_session_cookie}",
-                        "X-Original-URL": "https://example.com/test-server/initialize",
+                        "X-Original-URL": "https://example.com/test-server/mcp",
                     },
                 )
 

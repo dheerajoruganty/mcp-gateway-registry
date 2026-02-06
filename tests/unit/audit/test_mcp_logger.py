@@ -69,40 +69,54 @@ class TestLogMCPAccess:
 
     @pytest.mark.asyncio
     async def test_creates_audit_record(self):
-        """log_mcp_access creates a complete audit record."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            audit_logger = AuditLogger(log_dir=tmpdir, stream_name="mcp-server-access")
-            mcp_logger = MCPLogger(audit_logger)
-            
-            identity = Identity(
-                username="test-user",
-                auth_method="oauth2",
-                credential_type="bearer_token",
-                credential_hint="abc123xyz789",
-            )
-            mcp_server = MCPServer(
-                name="weather-server",
-                path="/mcp/weather",
-                proxy_target="http://localhost:8080",
-            )
-            
-            await mcp_logger.log_mcp_access(
-                request_id="req-123",
-                identity=identity,
-                mcp_server=mcp_server,
-                request_body=b'{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "get_weather"}, "id": 1}',
-                response_status="success",
-                duration_ms=150.5,
-                mcp_session_id="session-456",
-            )
-            await audit_logger.close()
-            
-            files = list(os.listdir(tmpdir))
-            assert len(files) == 1
-            
-            with open(os.path.join(tmpdir, files[0]), "r") as f:
-                record = json.loads(f.read().strip())
-                assert record["log_type"] == "mcp_server_access"
-                assert record["mcp_request"]["method"] == "tools/call"
-                assert record["mcp_request"]["tool_name"] == "get_weather"
-                assert record["identity"]["credential_hint"] == "***xyz789"
+        """log_mcp_access creates a complete audit record via MongoDB."""
+        from unittest.mock import AsyncMock
+
+        # Create mock repository to capture the audit record
+        mock_repository = AsyncMock()
+        captured_records = []
+
+        async def capture_insert(record):
+            captured_records.append(record)
+
+        mock_repository.insert.side_effect = capture_insert
+
+        # Create AuditLogger with MongoDB enabled
+        audit_logger = AuditLogger(
+            stream_name="mcp-server-access",
+            mongodb_enabled=True,
+            audit_repository=mock_repository,
+        )
+        mcp_logger = MCPLogger(audit_logger)
+
+        identity = Identity(
+            username="test-user",
+            auth_method="oauth2",
+            credential_type="bearer_token",
+            credential_hint="abc123xyz789",
+        )
+        mcp_server = MCPServer(
+            name="weather-server",
+            path="/mcp/weather",
+            proxy_target="http://localhost:8080",
+        )
+
+        await mcp_logger.log_mcp_access(
+            request_id="req-123",
+            identity=identity,
+            mcp_server=mcp_server,
+            request_body=b'{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "get_weather"}, "id": 1}',
+            response_status="success",
+            duration_ms=150.5,
+            mcp_session_id="session-456",
+        )
+        await audit_logger.close()
+
+        # Verify audit record was captured
+        assert len(captured_records) == 1
+
+        record = captured_records[0]
+        assert record.log_type == "mcp_server_access"
+        assert record.mcp_request.method == "tools/call"
+        assert record.mcp_request.tool_name == "get_weather"
+        assert record.identity.credential_hint == "***xyz789"
