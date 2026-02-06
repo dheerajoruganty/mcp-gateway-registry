@@ -208,7 +208,10 @@ const SettingsPage: React.FC = () => {
       );
     }
 
-    // Default to Federation Peers
+    // Default to Audit Logs for admins, Federation Peers for non-admins
+    if (user?.is_admin) {
+      return <AuditLogsPage embedded />;
+    }
     return <FederationPeers onShowToast={showToast} />;
   };
 
