@@ -1181,8 +1181,10 @@ async def validate_request(request: Request):
                 elif len(path_parts) >= 1:
                     # No recognized MCP endpoint at end - use entire path as server name
                     # This handles MCP server URLs like /peer-registry-lob-1/cloudflare-docs
-                    server_name_from_url = "/".join(path_parts)
-                    endpoint_from_url = None
+                    # BUT exclude /api/ paths - those are Registry API requests, not MCP servers
+                    if path_parts[0] != "api":
+                        server_name_from_url = "/".join(path_parts)
+                        endpoint_from_url = None
 
                 logger.info(
                     f"Extracted server_name '{server_name_from_url}' and endpoint '{endpoint_from_url}' from original_url: {original_url}"
