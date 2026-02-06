@@ -2,6 +2,8 @@
 
 MCP Gateway Registry provides comprehensive audit logging for compliance, security monitoring, and operational visibility. All API requests and MCP server access events are logged to MongoDB/DocumentDB with automatic retention management.
 
+![Audit Log Viewer](img/audit-log.png)
+
 ## Overview
 
 Audit logging captures two types of events:
