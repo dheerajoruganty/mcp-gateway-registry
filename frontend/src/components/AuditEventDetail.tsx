@@ -53,12 +53,15 @@ const AuditEventDetail: React.FC<AuditEventDetailProps> = ({ event, onClose }) =
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 flex-shrink-0">
             Event Details
           </h3>
-          <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+          <span
+            className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate"
+            title={event.request_id}
+          >
             {event.request_id}
           </span>
         </div>
@@ -92,28 +95,30 @@ const AuditEventDetail: React.FC<AuditEventDetailProps> = ({ event, onClose }) =
 
       {/* Summary */}
       <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div>
+        <div className="min-w-0">
           <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
             Timestamp
           </div>
-          <div className="text-sm text-gray-900 dark:text-gray-100">
+          <div className="text-sm text-gray-900 dark:text-gray-100 truncate">
             {new Date(event.timestamp).toLocaleString()}
           </div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
             User
           </div>
-          <div className="text-sm text-gray-900 dark:text-gray-100 flex items-center gap-1">
-            {event.identity.username}
+          <div className="text-sm text-gray-900 dark:text-gray-100 flex items-center gap-1 min-w-0">
+            <span className="truncate" title={event.identity.username}>
+              {event.identity.username}
+            </span>
             {event.identity.is_admin && (
-              <span className="px-1.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 rounded">
+              <span className="px-1.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 rounded flex-shrink-0">
                 Admin
               </span>
             )}
           </div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
             Status
           </div>
@@ -127,7 +132,7 @@ const AuditEventDetail: React.FC<AuditEventDetailProps> = ({ event, onClose }) =
             </div>
           )}
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
             Duration
           </div>
@@ -143,35 +148,47 @@ const AuditEventDetail: React.FC<AuditEventDetailProps> = ({ event, onClose }) =
       {/* MCP-specific summary row */}
       {isMcpEvent && (
         <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 grid grid-cols-2 md:grid-cols-4 gap-4 bg-blue-50/50 dark:bg-blue-900/10">
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
               MCP Server
             </div>
-            <div className="text-sm text-gray-900 dark:text-gray-100">
+            <div
+              className="text-sm text-gray-900 dark:text-gray-100 truncate"
+              title={event.mcp_server?.name || '-'}
+            >
               {event.mcp_server?.name || '-'}
             </div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
               MCP Method
             </div>
-            <div className="text-sm font-mono text-gray-900 dark:text-gray-100">
+            <div
+              className="text-sm font-mono text-gray-900 dark:text-gray-100 truncate"
+              title={event.mcp_request?.method || '-'}
+            >
               {event.mcp_request?.method || '-'}
             </div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
               Tool/Resource
             </div>
-            <div className="text-sm text-gray-900 dark:text-gray-100">
+            <div
+              className="text-sm text-gray-900 dark:text-gray-100 truncate"
+              title={event.mcp_request?.tool_name || event.mcp_request?.resource_uri || '-'}
+            >
               {event.mcp_request?.tool_name || event.mcp_request?.resource_uri || '-'}
             </div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
               Transport
             </div>
-            <div className="text-sm text-gray-900 dark:text-gray-100">
+            <div
+              className="text-sm text-gray-900 dark:text-gray-100 truncate"
+              title={event.mcp_request?.transport || '-'}
+            >
               {event.mcp_request?.transport || '-'}
             </div>
           </div>
