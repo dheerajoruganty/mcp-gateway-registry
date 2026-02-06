@@ -642,8 +642,9 @@ The DocumentDB cluster is automatically provisioned by Terraform. To initialize 
 ./terraform/aws-ecs/scripts/run-documentdb-init.sh
 
 # This creates:
-# - All required collections (servers, agents, scopes, embeddings)
+# - All required collections (servers, agents, scopes, embeddings, audit_events)
 # - Database indexes for optimal query performance
+# - TTL index on audit_events for automatic log expiration (default 7 days)
 # - Initial scope configurations from auth_server/scopes.yml
 
 # 2. Verify initialization completed successfully
