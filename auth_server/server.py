@@ -1167,9 +1167,22 @@ async def validate_request(request: Request):
                 parsed_url = urlparse(original_url)
                 path = parsed_url.path.strip("/")
                 path_parts = path.split("/") if path else []
-                server_name_from_url = path_parts[0] if path_parts else None
-                # For REST API requests, the second path component is the endpoint/method
-                endpoint_from_url = path_parts[1] if len(path_parts) > 1 else None
+
+                # MCP endpoints that should be treated as endpoints, not server names
+                mcp_endpoints = {"mcp", "sse", "messages"}
+
+                # For peer/federated registries, path is: peer-name/server-name/endpoint
+                # For local servers, path is: server-name/endpoint
+                # We need to capture the full server path, excluding the MCP endpoint
+                if len(path_parts) >= 2 and path_parts[-1] in mcp_endpoints:
+                    # Last part is MCP endpoint, everything before is server path
+                    server_name_from_url = "/".join(path_parts[:-1])
+                    endpoint_from_url = path_parts[-1]
+                elif len(path_parts) >= 1:
+                    # No recognized MCP endpoint, use first part as server name
+                    server_name_from_url = path_parts[0]
+                    endpoint_from_url = path_parts[1] if len(path_parts) > 1 else None
+
                 logger.info(
                     f"Extracted server_name '{server_name_from_url}' and endpoint '{endpoint_from_url}' from original_url: {original_url}"
                 )
