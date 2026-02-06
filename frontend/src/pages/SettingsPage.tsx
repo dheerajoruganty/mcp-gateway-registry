@@ -53,15 +53,13 @@ interface SettingsCategory {
  */
 const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
-    id: 'iam',
-    label: 'IAM',
-    icon: <UsersIcon className="h-5 w-5" />,
+    id: 'audit',
+    label: 'Audit',
+    icon: <ClipboardDocumentListIcon className="h-5 w-5" />,
     items: [
-      { id: 'groups', label: 'Groups', path: '/settings/iam/groups' },
-      { id: 'users', label: 'Users', path: '/settings/iam/users' },
-      { id: 'm2m', label: 'M2M Accounts', path: '/settings/iam/m2m' },
+      { id: 'logs', label: 'Audit Logs', path: '/settings/audit/logs' },
     ],
-    disabled: true, // IAM not implemented yet
+    adminOnly: true, // Only visible to admins
   },
   {
     id: 'federation',
@@ -72,13 +70,15 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     ],
   },
   {
-    id: 'audit',
-    label: 'Audit',
-    icon: <ClipboardDocumentListIcon className="h-5 w-5" />,
+    id: 'iam',
+    label: 'IAM',
+    icon: <UsersIcon className="h-5 w-5" />,
     items: [
-      { id: 'logs', label: 'Audit Logs', path: '/settings/audit/logs' },
+      { id: 'groups', label: 'Groups', path: '/settings/iam/groups' },
+      { id: 'users', label: 'Users', path: '/settings/iam/users' },
+      { id: 'm2m', label: 'M2M Accounts', path: '/settings/iam/m2m' },
     ],
-    adminOnly: true, // Only visible to admins
+    disabled: true, // IAM not implemented yet
   },
 ];
 
@@ -101,7 +101,7 @@ const SettingsPage: React.FC = () => {
 
   // Track which categories are expanded
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(['federation']) // Federation expanded by default
+    new Set(['audit']) // Audit expanded by default
   );
 
   // Toast notification state
