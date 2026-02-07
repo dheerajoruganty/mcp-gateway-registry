@@ -417,11 +417,13 @@ async def _check_skill_health(
             }
 
     except httpx.RequestError as e:
+        # Log detailed exception on the server, but return a generic message to the client
+        logger.error("Error while checking skill health for URL %s: %s", url, e)
         response_time_ms = (time.perf_counter() - start_time) * 1000
         return {
             "healthy": False,
             "status_code": None,
-            "error": str(e),
+            "error": "Unexpected error during health check",
             "response_time_ms": round(response_time_ms, 2),
         }
 
