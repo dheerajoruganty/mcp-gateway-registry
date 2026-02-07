@@ -11,7 +11,7 @@
 
 [🚀 Get Running Now](#option-a-pre-built-images-instant-setup) | [Production Deployment](terraform/aws-ecs/README.md) | [Quick Start](#quick-start) | [Documentation](docs/) | [Enterprise Features](#enterprise-features) | [Community](#community)
 
-**Demo Videos:** ⭐ [MCP Registry CLI Demo](https://github.com/user-attachments/assets/98200866-e8bd-4ac3-bad6-c6d42b261dbe) | [Full End-to-End Functionality](https://github.com/user-attachments/assets/5ffd8e81-8885-4412-a4d4-3339bbdba4fb) | [OAuth 3-Legged Authentication](https://github.com/user-attachments/assets/3c3a570b-29e6-4dd3-b213-4175884396cc) | [Dynamic Tool Discovery](https://github.com/user-attachments/assets/cee25b31-61e4-4089-918c-c3757f84518c)
+**Demo Videos:** ⭐ [MCP Registry CLI Demo](https://github.com/user-attachments/assets/98200866-e8bd-4ac3-bad6-c6d42b261dbe) | [Full End-to-End Functionality](https://github.com/user-attachments/assets/5ffd8e81-8885-4412-a4d4-3339bbdba4fb) | [OAuth 3-Legged Authentication](https://github.com/user-attachments/assets/3c3a570b-29e6-4dd3-b213-4175884396cc) | [Dynamic Tool Discovery](https://github.com/user-attachments/assets/cee25b31-61e4-4089-918c-c3757f84518c) | [Agent Skills](https://github.com/user-attachments/assets/5d1f227a-25f8-480d-9ff9-acba2498844b)
 
 </div>
 
@@ -128,6 +128,8 @@ Interactive terminal interface for chatting with AI models and discovering MCP t
 ---
 
 ## What's New
+
+- **📚 Agent Skills Registry** - Register, discover, and manage reusable instruction sets (SKILL.md files) that enhance AI coding assistants with specialized workflows. Skills are hosted on GitHub, GitLab, or Bitbucket and registered in the MCP Gateway Registry for discovery and access control. Features include YAML frontmatter parsing for metadata extraction, health monitoring with URL accessibility checks, visibility controls (public/private/group), star ratings, semantic search integration, tool dependency validation, and a rich UI with SKILL.md content modals. Security includes SSRF protection with redirect validation. [Agent Skills Guide](docs/agent-skills-operational-guide.md) | [Architecture](docs/design/agent-skills-architecture.md)
 
 - **Compliance Audit Logging** - Comprehensive audit logging for security monitoring and compliance. Captures all Registry API and MCP Gateway access events with user identity, operation details, and timing. Features include automatic credential masking (tokens, cookies, passwords are never logged), TTL-based log retention (default 7 days, configurable), admin-only audit viewer UI with filtering and export (JSONL/CSV), and non-blocking async design. Supports SOC 2 and GDPR requirements with who/what/when/where/outcome tracking. [Audit Logging Guide](docs/audit-logging.md)
 
