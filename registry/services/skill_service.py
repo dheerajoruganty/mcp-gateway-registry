@@ -742,8 +742,11 @@ class SkillService:
         Returns:
             Dict with health status
         """
+        from datetime import UTC, datetime
+
+        normalized = normalize_skill_path(path)
         repo = self._get_repo()
-        skill = await repo.get(path)
+        skill = await repo.get(normalized)
 
         if not skill:
             return {
@@ -755,7 +758,25 @@ class SkillService:
 
         # Use raw URL for health check (more reliable, returns actual content)
         url = skill.skill_md_raw_url or skill.skill_md_url
-        return await _check_skill_health(str(url))
+        result = await _check_skill_health(str(url))
+
+        # Persist health status to database
+        health_status = "healthy" if result.get("healthy") else "unhealthy"
+        checked_time = datetime.now(UTC)
+
+        await repo.update(
+            normalized,
+            {
+                "health_status": health_status,
+                "last_checked_time": checked_time.isoformat(),
+            },
+        )
+
+        logger.info(
+            f"Updated health status for skill {normalized}: {health_status}"
+        )
+
+        return result
 
     async def update_rating(
         self,
