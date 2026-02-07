@@ -1,10 +1,10 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Dict, Any, Optional, List
-from enum import Enum
+from enum import StrEnum
 
 
-class MetricType(str, Enum):
+class MetricType(StrEnum):
     AUTH_REQUEST = "auth_request"
     TOOL_DISCOVERY = "tool_discovery"
     TOOL_EXECUTION = "tool_execution"
