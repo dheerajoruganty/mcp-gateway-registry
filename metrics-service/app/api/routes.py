@@ -19,119 +19,134 @@ async def collect_metrics(
     metric_request: MetricRequest,
     request: Request,
     response: Response,
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
 ):
     """Collect metrics from MCP components."""
     request_id = generate_request_id()
-    
+
     try:
         # Add rate limit headers
-        if hasattr(request.state, 'rate_limit_remaining') and hasattr(request.state, 'rate_limit_limit'):
+        if hasattr(request.state, "rate_limit_remaining") and hasattr(
+            request.state, "rate_limit_limit"
+        ):
             response.headers["X-RateLimit-Limit"] = str(request.state.rate_limit_limit)
             response.headers["X-RateLimit-Remaining"] = str(request.state.rate_limit_remaining)
-        
+
         # Process metrics
         result = await processor.process_metrics(metric_request, request_id, api_key)
-        
-        logger.info(f"Processed {result.accepted} metrics from {metric_request.service} (request: {request_id})")
-        
+
+        logger.info(
+            f"Processed {result.accepted} metrics from {metric_request.service} (request: {request_id})"
+        )
+
         return MetricResponse(
             status="success",
             accepted=result.accepted,
             rejected=result.rejected,
             errors=result.errors,
-            request_id=request_id
+            request_id=request_id,
         )
-        
+
     except Exception as e:
         logger.error(f"Error processing metrics: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.post("/flush")
 async def flush_metrics(
-    request: Request, 
-    response: Response,
-    api_key: str = Depends(verify_api_key)
+    request: Request, response: Response, api_key: str = Depends(verify_api_key)
 ):
     """Force flush buffered metrics to storage."""
     try:
         # Add rate limit headers
-        if hasattr(request.state, 'rate_limit_remaining') and hasattr(request.state, 'rate_limit_limit'):
+        if hasattr(request.state, "rate_limit_remaining") and hasattr(
+            request.state, "rate_limit_limit"
+        ):
             response.headers["X-RateLimit-Limit"] = str(request.state.rate_limit_limit)
             response.headers["X-RateLimit-Remaining"] = str(request.state.rate_limit_remaining)
-        
+
         await processor.force_flush()
         return {"status": "success", "message": "Metrics flushed to storage"}
     except Exception as e:
         logger.error(f"Error flushing metrics: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to flush metrics: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to flush metrics: {str(e)}")
 
 
 @router.get("/rate-limit")
 async def get_rate_limit(request: Request):
     """Get current rate limit status for the API key."""
     api_key = request.headers.get("X-API-Key")
-    
+
     if not api_key:
-        raise HTTPException(
-            status_code=401,
-            detail="API key required in X-API-Key header"
-        )
-    
+        raise HTTPException(status_code=401, detail="API key required in X-API-Key header")
+
     try:
         status = await get_rate_limit_status(api_key)
         return status
     except Exception as e:
         logger.error(f"Error getting rate limit status: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get rate limit status: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get rate limit status: {str(e)}")
 
 
 @router.get("/admin/retention/preview")
 async def get_cleanup_preview(
-    table_name: Optional[str] = None,
-    api_key: str = Depends(verify_api_key)
+    table_name: Optional[str] = None, api_key: str = Depends(verify_api_key)
 ):
-    """Preview what would be cleaned up by retention policies."""
+    """Preview what would be cleaned up by retention policies.
+
+    Args:
+        table_name: Optional table name to preview. Must be a valid table
+            with a configured retention policy.
+        api_key: API key for authentication.
+
+    Raises:
+        HTTPException: 400 if table_name is not in the allowlist.
+        HTTPException: 404 if table_name has no retention policy.
+        HTTPException: 500 for other errors.
+    """
     try:
         preview = await retention_manager.get_cleanup_preview(table_name)
         return preview
+    except ValueError as e:
+        # Security: Invalid table name - not in allowlist
+        logger.warning(f"Invalid table name in cleanup preview request: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except KeyError as e:
+        logger.warning(f"Table not found in cleanup preview request: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error getting cleanup preview: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get cleanup preview: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get cleanup preview: {str(e)}")
 
 
 @router.post("/admin/retention/cleanup")
 async def run_cleanup(
-    table_name: Optional[str] = None,
-    dry_run: bool = True,
-    api_key: str = Depends(verify_api_key)
+    table_name: Optional[str] = None, dry_run: bool = True, api_key: str = Depends(verify_api_key)
 ):
-    """Run data cleanup according to retention policies."""
+    """Run data cleanup according to retention policies.
+
+    Args:
+        table_name: Optional table name to clean. Must be in the allowlist.
+        dry_run: If True, only preview what would be deleted.
+        api_key: API key for authentication.
+
+    Raises:
+        HTTPException: 400 if table_name is not in the allowlist.
+        HTTPException: 500 for other errors.
+    """
     try:
         if table_name:
             result = await retention_manager.cleanup_table(table_name, dry_run)
         else:
             result = await retention_manager.cleanup_all_tables(dry_run)
         return result
+    except ValueError as e:
+        # Security: Invalid table name - not in allowlist
+        logger.warning(f"Invalid table name in cleanup request: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error running cleanup: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to run cleanup: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to run cleanup: {str(e)}")
 
 
 @router.get("/admin/retention/policies")
@@ -141,18 +156,15 @@ async def get_retention_policies(api_key: str = Depends(verify_api_key)):
         policies = {}
         for name, policy in retention_manager.policies.items():
             policies[name] = {
-                'table_name': policy.table_name,
-                'retention_days': policy.retention_days,
-                'is_active': policy.is_active,
-                'timestamp_column': policy.timestamp_column
+                "table_name": policy.table_name,
+                "retention_days": policy.retention_days,
+                "is_active": policy.is_active,
+                "timestamp_column": policy.timestamp_column,
             }
         return policies
     except Exception as e:
         logger.error(f"Error getting retention policies: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get retention policies: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get retention policies: {str(e)}")
 
 
 @router.put("/admin/retention/policies/{table_name}")
@@ -160,9 +172,20 @@ async def update_retention_policy(
     table_name: str,
     retention_days: int,
     is_active: bool = True,
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
 ):
-    """Update retention policy for a table."""
+    """Update retention policy for a table.
+
+    Args:
+        table_name: The table name. Must be in the allowlist of valid tables.
+        retention_days: Number of days to retain data.
+        is_active: Whether the policy is active.
+        api_key: API key for authentication.
+
+    Raises:
+        HTTPException: 400 if table_name is not in the allowlist.
+        HTTPException: 500 for other errors.
+    """
     try:
         await retention_manager.update_policy(table_name, retention_days, is_active)
         return {
@@ -170,14 +193,15 @@ async def update_retention_policy(
             "message": f"Updated retention policy for {table_name}",
             "table_name": table_name,
             "retention_days": retention_days,
-            "is_active": is_active
+            "is_active": is_active,
         }
+    except ValueError as e:
+        # Security: Invalid table name - not in allowlist
+        logger.warning(f"Invalid table name in update policy request: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error updating retention policy: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to update retention policy: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to update retention policy: {str(e)}")
 
 
 @router.get("/admin/database/stats")
@@ -188,10 +212,7 @@ async def get_database_stats(api_key: str = Depends(verify_api_key)):
         return stats
     except Exception as e:
         logger.error(f"Error getting database stats: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get database stats: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get database stats: {str(e)}")
 
 
 @router.get("/admin/database/size")
@@ -202,7 +223,4 @@ async def get_database_size(api_key: str = Depends(verify_api_key)):
         return size_info
     except Exception as e:
         logger.error(f"Error getting database size: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get database size: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get database size: {str(e)}")
