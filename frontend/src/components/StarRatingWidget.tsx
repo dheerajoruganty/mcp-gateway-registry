@@ -14,7 +14,7 @@ interface RatingInfoResponse {
 }
 
 interface StarRatingWidgetProps {
-  resourceType: 'agents' | 'servers';
+  resourceType: 'agents' | 'servers' | 'skills';
   path: string;
   initialRating?: number;
   initialCount?: number;

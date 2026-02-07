@@ -3,7 +3,7 @@
   "info": {
     "title": "MCP Gateway Registry",
     "description": "A registry and management system for Model Context Protocol (MCP) servers",
-    "version": "1.0.11"
+    "version": "v1.0.13"
   },
   "paths": {
     "/api/auth/login": {
@@ -1486,7 +1486,7 @@
           "Server Management"
         ],
         "summary": "Register Service Api",
-        "description": "Register a service via JWT Bearer Token authentication (External API).\n\nThis endpoint provides the same functionality as POST /api/internal/register\nbut uses modern JWT Bearer token authentication via nginx headers, making it\nsuitable for external service-to-service communication.\n\n**Authentication:** JWT Bearer token (via nginx X-User header)\n**Authorization:** Requires valid JWT token from auth system\n\n**Request body (form data):**\n- `name` (required): Service name\n- `description` (required): Service description\n- `path` (required): Service path (e.g., /myservice)\n- `proxy_pass_url` (required): Proxy URL (e.g., http://localhost:8000)\n- `tags` (optional): Comma-separated tags\n- `num_tools` (optional): Number of tools\n- `num_stars` (optional): Star rating\n- `is_python` (optional): Is Python server (boolean)\n- `license` (optional): License name\n- `overwrite` (optional): Overwrite if exists (boolean, default true)\n- `auth_provider` (optional): Auth provider name\n- `auth_type` (optional): Auth type (e.g., oauth, basic)\n- `supported_transports` (optional): JSON array of transports\n- `headers` (optional): JSON object of headers\n- `tool_list_json` (optional): JSON array of tool definitions\n\n**Response:**\n- `201 Created`: Service registered successfully\n- `400 Bad Request`: Invalid input data\n- `401 Unauthorized`: Missing or invalid JWT token\n- `409 Conflict`: Service already exists (unless overwrite=true)\n- `500 Internal Server Error`: Server error\n\n**Example:**\n```bash\ncurl -X POST https://registry.example.com/api/servers/register \\\n  -H \"Authorization: Bearer $JWT_TOKEN\" \\\n  -F \"name=My Service\" \\\n  -F \"description=My MCP Service\" \\\n  -F \"path=/myservice\" \\\n  -F \"proxy_pass_url=http://localhost:8000\"\n```",
+        "description": "Register a service via JWT Bearer Token authentication (External API).\n\nThis endpoint provides the same functionality as POST /api/internal/register\nbut uses modern JWT Bearer token authentication via nginx headers, making it\nsuitable for external service-to-service communication.\n\n**Authentication:** JWT Bearer token (via nginx X-User header)\n**Authorization:** Requires valid JWT token from auth system\n\n**Request body (form data):**\n- `name` (required): Service name\n- `description` (required): Service description\n- `path` (required): Service path (e.g., /myservice)\n- `proxy_pass_url` (required): Proxy URL (e.g., http://localhost:8000)\n- `tags` (optional): Comma-separated tags\n- `num_tools` (optional): Number of tools\n- `num_stars` (optional): Star rating\n- `is_python` (optional): Is Python server (boolean)\n- `license` (optional): License name\n- `overwrite` (optional): Overwrite if exists (boolean, default true)\n- `auth_provider` (optional): Auth provider name\n- `auth_type` (optional): Auth type (e.g., oauth, basic)\n- `supported_transports` (optional): JSON array of transports\n- `headers` (optional): JSON object of headers\n- `tool_list_json` (optional): JSON array of tool definitions\n- `mcp_endpoint` (optional): Full URL for custom MCP endpoint (overrides /mcp suffix)\n- `sse_endpoint` (optional): Full URL for custom SSE endpoint (overrides /sse suffix)\n- `version` (optional): Server version (e.g., v1.0.0, v2.0.0)\n- `status` (optional): Version status (stable, beta, deprecated)\n\n**Response:**\n- `201 Created`: Service registered successfully\n- `400 Bad Request`: Invalid input data\n- `401 Unauthorized`: Missing or invalid JWT token\n- `409 Conflict`: Service already exists with same version (different version auto-creates new version)\n- `500 Internal Server Error`: Server error\n\n**Example:**\n```bash\ncurl -X POST https://registry.example.com/api/servers/register \\\n  -H \"Authorization: Bearer $JWT_TOKEN\" \\\n  -F \"name=My Service\" \\\n  -F \"description=My MCP Service\" \\\n  -F \"path=/myservice\" \\\n  -F \"proxy_pass_url=http://localhost:8000\"\n```",
         "operationId": "register_service_api_api_servers_register_post",
         "requestBody": {
           "content": {
@@ -1992,7 +1992,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RatingRequest"
+                "$ref": "#/components/schemas/registry__api__server_routes__RatingRequest"
               }
             }
           }
@@ -2170,6 +2170,163 @@
         "summary": "Get Service Tools Api",
         "description": "Get tool list for a service via JWT Bearer Token authentication (External API).\n\nThis endpoint provides the same functionality as GET /tools/{service_path}\nbut uses modern JWT Bearer token authentication.\n\n**Authentication:** JWT Bearer token (via nginx X-User header)\n**Authorization:** Requires valid JWT token from auth system\n\n**Path Parameters:**\n- `service_path` (required): Service path (e.g., /myservice or /all for all services)\n\n**Response:**\nReturns the list of tools available on the service, filtered by user permissions.\n\n**Example:**\n```bash\ncurl -X GET https://registry.example.com/api/servers/tools/myservice \\\n  -H \"Authorization: Bearer $JWT_TOKEN\"\n\n# Get tools from all accessible services\ncurl -X GET https://registry.example.com/api/servers/tools/all \\\n  -H \"Authorization: Bearer $JWT_TOKEN\"\n```",
         "operationId": "get_service_tools_api_api_servers_tools__service_path__get",
+        "parameters": [
+          {
+            "name": "service_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Service Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/servers/{service_path}/versions/{version}": {
+      "delete": {
+        "tags": [
+          "Server Management"
+        ],
+        "summary": "Remove Server Version",
+        "description": "Remove a version from a server.\n\nArgs:\n    service_path: Server path (URL encoded)\n    version: Version to remove\n\nReturns:\n    Success message",
+        "operationId": "remove_server_version_api_servers__service_path__versions__version__delete",
+        "parameters": [
+          {
+            "name": "service_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Service Path"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/servers/{service_path}/versions/default": {
+      "put": {
+        "tags": [
+          "Server Management"
+        ],
+        "summary": "Set Default Version",
+        "description": "Set the default (latest) version for a server.\n\nArgs:\n    service_path: Server path (URL encoded)\n    version_data: Contains version to set as default\n\nReturns:\n    Success message",
+        "operationId": "set_default_version_api_servers__service_path__versions_default_put",
+        "parameters": [
+          {
+            "name": "service_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Service Path"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultVersion"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/servers/{service_path}/versions": {
+      "get": {
+        "tags": [
+          "Server Management"
+        ],
+        "summary": "Get Server Versions",
+        "description": "Get all versions for a server.\n\nArgs:\n    service_path: Server path (URL encoded)\n\nReturns:\n    Version information",
+        "operationId": "get_server_versions_api_servers__service_path__versions_get",
         "parameters": [
           {
             "name": "service_path",
@@ -2408,7 +2565,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RatingRequest"
+                "$ref": "#/components/schemas/registry__api__agent_routes__RatingRequest"
               }
             }
           }
@@ -2547,7 +2704,7 @@
           "Agent Management"
         ],
         "summary": "Get Agent",
-        "description": "Get a single agent by path.\n\nPublic agents are visible without special permissions.\nPrivate and group-restricted agents require authorization.\n\nArgs:\n    path: Agent path\n    user_context: Authenticated user context\n\nReturns:\n    Complete agent card\n\nRaises:\n    HTTPException: 404 if not found, 403 if not authorized",
+        "description": "Get a single agent by path.\n\nPublic agents are visible without special permissions.\nPrivate and group-restricted agents require authorization.\n\nArgs:\n    request: HTTP request object\n    path: Agent path\n    user_context: Authenticated user context\n\nReturns:\n    Complete agent card\n\nRaises:\n    HTTPException: 404 if not found, 403 if not authorized",
         "operationId": "get_agent_api_agents__path__get",
         "parameters": [
           {
@@ -2645,7 +2802,7 @@
           "Agent Management"
         ],
         "summary": "Delete Agent",
-        "description": "Delete an agent from the registry.\n\nRequires admin permission or agent ownership.\n\nArgs:\n    path: Agent path\n    user_context: Authenticated user context\n\nReturns:\n    204 No Content\n\nRaises:\n    HTTPException: 404 if not found, 403 if unauthorized",
+        "description": "Delete an agent from the registry.\n\nRequires admin permission, delete_agent UI permission, or agent ownership.\n\nArgs:\n    path: Agent path\n    user_context: Authenticated user context\n\nReturns:\n    204 No Content\n\nRaises:\n    HTTPException: 404 if not found, 403 if unauthorized",
         "operationId": "delete_agent_api_agents__path__delete",
         "parameters": [
           {
@@ -3846,6 +4003,856 @@
         ]
       }
     },
+    "/api/skills/discovery": {
+      "get": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Discovery endpoint for coding assistants",
+        "description": "Discovery endpoint optimized for coding assistants.\n\nReturns lightweight metadata for efficient loading.",
+        "operationId": "discover_skills_api_skills_discovery_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search query",
+              "title": "Query"
+            },
+            "description": "Search query"
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by tags",
+              "title": "Tags"
+            },
+            "description": "Filter by tags"
+          },
+          {
+            "name": "compatibility",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by compatibility",
+              "title": "Compatibility"
+            },
+            "description": "Filter by compatibility"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/skills": {
+      "get": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "List all skills",
+        "description": "List all registered skills with visibility filtering.",
+        "operationId": "list_skills_api_skills_get",
+        "parameters": [
+          {
+            "name": "include_disabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include disabled skills",
+              "default": false,
+              "title": "Include Disabled"
+            },
+            "description": "Include disabled skills"
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by tag",
+              "title": "Tag"
+            },
+            "description": "Filter by tag"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Skills Api Skills Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Register a new skill",
+        "description": "Register a new skill in the registry.",
+        "operationId": "register_skill_api_skills_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillRegistrationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillCard"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/skills/parse-skill-md": {
+      "post": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Parse SKILL.md content from URL",
+        "description": "Parse SKILL.md content and extract metadata.\n\nReturns name, description, version, and tags from the SKILL.md file.\nUseful for auto-populating the skill registration form.",
+        "operationId": "parse_skill_md_api_skills_parse_skill_md_post",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "URL to SKILL.md file",
+              "title": "Url"
+            },
+            "description": "URL to SKILL.md file"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Parse Skill Md Api Skills Parse Skill Md Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/skills/search": {
+      "get": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Search skills",
+        "description": "Search for skills by name, description, or tags.\n\nReturns skills matching the query with basic relevance scoring.",
+        "operationId": "search_skills_api_skills_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query",
+              "title": "Q"
+            },
+            "description": "Search query"
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated tags to filter by",
+              "title": "Tags"
+            },
+            "description": "Comma-separated tags to filter by"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Search Skills Api Skills Search Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/skills/{skill_path}/health": {
+      "get": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Check skill health",
+        "description": "Check skill health by performing HEAD request to SKILL.md URL.\n\nReturns health status, HTTP status code, and response time.",
+        "operationId": "check_skill_health_api_skills__skill_path__health_get",
+        "parameters": [
+          {
+            "name": "skill_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Skill path or name",
+              "title": "Skill Path"
+            },
+            "description": "Skill path or name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Check Skill Health Api Skills  Skill Path  Health Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/skills/{skill_path}/content": {
+      "get": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Get SKILL.md content",
+        "description": "Fetch SKILL.md content from the raw URL.\n\nThis endpoint proxies the SKILL.md content to avoid CORS issues\nwhen the frontend tries to fetch from GitHub directly.",
+        "operationId": "get_skill_content_api_skills__skill_path__content_get",
+        "parameters": [
+          {
+            "name": "skill_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Skill path or name",
+              "title": "Skill Path"
+            },
+            "description": "Skill path or name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Skill Content Api Skills  Skill Path  Content Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/skills/{skill_path}/tools": {
+      "get": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Get required tools with availability",
+        "description": "Get required tools for a skill with availability status.",
+        "operationId": "get_skill_tools_api_skills__skill_path__tools_get",
+        "parameters": [
+          {
+            "name": "skill_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Skill path or name",
+              "title": "Skill Path"
+            },
+            "description": "Skill path or name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolValidationResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/skills/{skill_path}/rating": {
+      "get": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Get skill rating",
+        "description": "Get rating information for a skill.\n\nReturns the average rating and list of individual ratings.",
+        "operationId": "get_skill_rating_api_skills__skill_path__rating_get",
+        "parameters": [
+          {
+            "name": "skill_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Skill path or name",
+              "title": "Skill Path"
+            },
+            "description": "Skill path or name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Skill Rating Api Skills  Skill Path  Rating Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/skills/{skill_path}": {
+      "get": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Get a skill by path",
+        "description": "Get a specific skill by its path.",
+        "operationId": "get_skill_api_skills__skill_path__get",
+        "parameters": [
+          {
+            "name": "skill_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Skill path or name",
+              "title": "Skill Path"
+            },
+            "description": "Skill path or name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillCard"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Update a skill",
+        "description": "Update an existing skill.",
+        "operationId": "update_skill_api_skills__skill_path__put",
+        "parameters": [
+          {
+            "name": "skill_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Skill path or name",
+              "title": "Skill Path"
+            },
+            "description": "Skill path or name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillRegistrationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillCard"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Delete a skill",
+        "description": "Delete a skill from the registry.",
+        "operationId": "delete_skill_api_skills__skill_path__delete",
+        "parameters": [
+          {
+            "name": "skill_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Skill path or name",
+              "title": "Skill Path"
+            },
+            "description": "Skill path or name"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/skills/{skill_path}/toggle": {
+      "post": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Toggle skill enabled state",
+        "description": "Toggle a skill's enabled state.",
+        "operationId": "toggle_skill_api_skills__skill_path__toggle_post",
+        "parameters": [
+          {
+            "name": "skill_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Skill path or name",
+              "title": "Skill Path"
+            },
+            "description": "Skill path or name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToggleStateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Toggle Skill Api Skills  Skill Path  Toggle Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/skills/{skill_path}/rate": {
+      "post": {
+        "tags": [
+          "skills",
+          "skills"
+        ],
+        "summary": "Rate a skill",
+        "description": "Submit a rating for a skill.\n\nUsers can rate skills from 1-5 stars. Each user can only have one\nrating per skill - submitting a new rating updates the previous one.",
+        "operationId": "rate_skill_api_skills__skill_path__rate_post",
+        "parameters": [
+          {
+            "name": "skill_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Skill path or name",
+              "title": "Skill Path"
+            },
+            "description": "Skill path or name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/registry__api__skill_routes__RatingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Rate Skill Api Skills  Skill Path  Rate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/health/ws/health_status": {
       "get": {
         "tags": [
@@ -3885,6 +4892,1622 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/federation/health": {
+      "get": {
+        "tags": [
+          "federation"
+        ],
+        "summary": "Federation Health",
+        "description": "Federation health check endpoint.\n\nThis endpoint does NOT require authentication and is used by peer registries\nto check if the federation API is available before attempting sync.\n\nReturns:\n    200 OK with status message",
+        "operationId": "federation_health_api_federation_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/federation/servers": {
+      "get": {
+        "tags": [
+          "federation"
+        ],
+        "summary": "Export Servers",
+        "description": "Export servers for federation sync.\n\nReturns servers with visibility filtering based on the peer's group membership.\nSupports pagination and incremental sync via generation numbers.\n\n**Authentication:** Requires JWT with 'federation-service' scope\n\n**Visibility filtering:**\n- public: Returned to all peers\n- group-restricted: Returned only if peer is in allowed_groups\n- internal: NEVER returned\n\n**Pagination:**\n- Use limit and offset for pagination\n- Check has_more to determine if more pages exist\n\n**Incremental sync:**\n- Use since_generation to get only changed items\n- Track sync_generation from response for next sync\n\nArgs:\n    limit: Maximum items per page\n    offset: Number of items to skip\n    since_generation: Minimum generation for incremental sync\n    user_context: Authenticated peer context\n\nReturns:\n    FederationExportResponse with filtered servers\n\nRaises:\n    HTTPException: 401 if unauthenticated, 403 if missing federation scope",
+        "operationId": "export_servers_api_federation_servers_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum items per page (default 100, max 1000)",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum items per page (default 100, max 1000)"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of items to skip (default 0)",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of items to skip (default 0)"
+          },
+          {
+            "name": "since_generation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return only items with generation > this value (for incremental sync)",
+              "title": "Since Generation"
+            },
+            "description": "Return only items with generation > this value (for incremental sync)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FederationExportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/federation/agents": {
+      "get": {
+        "tags": [
+          "federation"
+        ],
+        "summary": "Export Agents",
+        "description": "Export agents for federation sync.\n\nReturns agents with visibility filtering based on the peer's group membership.\nSupports pagination and incremental sync via generation numbers.\n\n**Authentication:** Requires JWT with 'federation-service' scope\n\n**Visibility filtering:**\n- public: Returned to all peers\n- group-restricted: Returned only if peer is in allowed_groups\n- internal: NEVER returned\n\n**Pagination:**\n- Use limit and offset for pagination\n- Check has_more to determine if more pages exist\n\n**Incremental sync:**\n- Use since_generation to get only changed items\n- Track sync_generation from response for next sync\n\nArgs:\n    limit: Maximum items per page\n    offset: Number of items to skip\n    since_generation: Minimum generation for incremental sync\n    user_context: Authenticated peer context\n\nReturns:\n    FederationExportResponse with filtered agents\n\nRaises:\n    HTTPException: 401 if unauthenticated, 403 if missing federation scope",
+        "operationId": "export_agents_api_federation_agents_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum items per page (default 100, max 1000)",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum items per page (default 100, max 1000)"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of items to skip (default 0)",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of items to skip (default 0)"
+          },
+          {
+            "name": "since_generation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return only items with generation > this value (for incremental sync)",
+              "title": "Since Generation"
+            },
+            "description": "Return only items with generation > this value (for incremental sync)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FederationExportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/federation/security-scans": {
+      "get": {
+        "tags": [
+          "federation"
+        ],
+        "summary": "Export Security Scans",
+        "description": "Export security scan results for federation sync.\n\nReturns security scan results only for servers that are visible to the peer\nbased on the server's visibility settings. This ensures peers only receive\nsecurity information for servers they can access.\n\n**Authentication:** Requires JWT with 'federation-service' or 'federation/read' scope\n\n**Visibility filtering:**\n- Only returns scans for servers with visibility=public\n- Returns scans for group-restricted servers only if peer is in allowed_groups\n- Never returns scans for internal servers\n\n**Pagination:**\n- Use limit and offset for pagination\n- Check has_more to determine if more pages exist\n\nArgs:\n    limit: Maximum items per page\n    offset: Number of items to skip\n    user_context: Authenticated peer context\n\nReturns:\n    FederationExportResponse with security scan results\n\nRaises:\n    HTTPException: 401 if unauthenticated, 403 if missing federation scope",
+        "operationId": "export_security_scans_api_federation_security_scans_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum items per page (default 100, max 1000)",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum items per page (default 100, max 1000)"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of items to skip (default 0)",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of items to skip (default 0)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FederationExportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/peers": {
+      "get": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "List Peers",
+        "description": "List all peer registries with optional filtering by enabled status.\n\nArgs:\n    enabled: If True, return only enabled peers. If False, return only disabled peers.\n            If None, return all peers.\n    user_context: Authenticated user context\n\nReturns:\n    List of peer registry configurations\n\nExample:\n    GET /api/peers\n    GET /api/peers?enabled=true",
+        "operationId": "list_peers_api_peers_get",
+        "parameters": [
+          {
+            "name": "enabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PeerRegistryConfig"
+                  },
+                  "title": "Response List Peers Api Peers Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Create Peer",
+        "description": "Create a new peer registry configuration.\n\nArgs:\n    config: Peer registry configuration to create\n    user_context: Authenticated user context\n\nReturns:\n    Created peer registry configuration\n\nRaises:\n    HTTPException: 409 if peer_id already exists\n    HTTPException: 400 if validation fails\n\nExample:\n    POST /api/peers\n    {\n        \"peer_id\": \"central-registry\",\n        \"name\": \"Central MCP Registry\",\n        \"endpoint\": \"https://central.registry.company.com\",\n        \"enabled\": true,\n        \"sync_mode\": \"all\",\n        \"sync_interval_minutes\": 30\n    }",
+        "operationId": "create_peer_api_peers_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeerRegistryConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeerRegistryConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/peers/sync": {
+      "post": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Sync All Peers",
+        "description": "Trigger synchronization for all (or enabled) peers.\n\nArgs:\n    enabled_only: If True, only sync enabled peers (default: True)\n    user_context: Authenticated user context\n\nReturns:\n    Dictionary mapping peer_id to SyncResult\n\nExample:\n    POST /api/peers/sync\n    POST /api/peers/sync?enabled_only=false",
+        "operationId": "sync_all_peers_api_peers_sync_post",
+        "parameters": [
+          {
+            "name": "enabled_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If True, only sync enabled peers",
+              "default": true,
+              "title": "Enabled Only"
+            },
+            "description": "If True, only sync enabled peers"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/SyncResult"
+                  },
+                  "title": "Response Sync All Peers Api Peers Sync Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/peers/connections/all": {
+      "get": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Get All Connections",
+        "description": "Get all federation connection history.\n\nReturns a list of all federation connections from all peers, useful for\nmonitoring overall federation activity.\n\nArgs:\n    since: Only return connections after this timestamp\n    limit: Maximum entries to return (default: 100, max: 1000)\n    user_context: Authenticated user context\n\nReturns:\n    List of all connection logs\n\nExample:\n    GET /api/peers/connections/all\n    GET /api/peers/connections/all?limit=50",
+        "operationId": "get_all_connections_api_peers_connections_all_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only return connections after this timestamp",
+              "title": "Since"
+            },
+            "description": "Only return connections after this timestamp"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum entries to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum entries to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FederationConnectionLog"
+                  },
+                  "title": "Response Get All Connections Api Peers Connections All Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/peers/shared-resources": {
+      "get": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Get Shared Resources",
+        "description": "Get summary of resources shared with each peer.\n\nReturns statistics about what has been shared with each peer,\nincluding connection counts and resource totals.\n\nArgs:\n    user_context: Authenticated user context\n\nReturns:\n    Dictionary mapping peer_id to PeerSyncSummary\n\nExample:\n    GET /api/peers/shared-resources",
+        "operationId": "get_shared_resources_api_peers_shared_resources_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/PeerSyncSummary"
+                  },
+                  "type": "object",
+                  "title": "Response Get Shared Resources Api Peers Shared Resources Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/peers/{peer_id}": {
+      "get": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Get Peer",
+        "description": "Get a specific peer by ID.\n\nArgs:\n    peer_id: Peer identifier\n    user_context: Authenticated user context\n\nReturns:\n    Peer registry configuration\n\nRaises:\n    HTTPException: 404 if peer not found\n\nExample:\n    GET /api/peers/central-registry",
+        "operationId": "get_peer_api_peers__peer_id__get",
+        "parameters": [
+          {
+            "name": "peer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Peer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeerRegistryConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Update Peer",
+        "description": "Update an existing peer configuration.\n\nArgs:\n    peer_id: Peer identifier\n    updates: Dictionary of fields to update\n    user_context: Authenticated user context\n\nReturns:\n    Updated peer registry configuration\n\nRaises:\n    HTTPException: 404 if peer not found\n    HTTPException: 400 if validation fails\n\nExample:\n    PUT /api/peers/central-registry\n    {\n        \"enabled\": false,\n        \"sync_interval_minutes\": 60\n    }",
+        "operationId": "update_peer_api_peers__peer_id__put",
+        "parameters": [
+          {
+            "name": "peer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Peer Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Updates"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeerRegistryConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Delete Peer",
+        "description": "Delete a peer registry configuration.\n\nArgs:\n    peer_id: Peer identifier\n    user_context: Authenticated user context\n\nRaises:\n    HTTPException: 404 if peer not found\n\nExample:\n    DELETE /api/peers/central-registry",
+        "operationId": "delete_peer_api_peers__peer_id__delete",
+        "parameters": [
+          {
+            "name": "peer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Peer Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/peers/{peer_id}/sync": {
+      "post": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Sync Peer",
+        "description": "Trigger synchronization for a specific peer.\n\nArgs:\n    peer_id: Peer identifier\n    user_context: Authenticated user context\n\nReturns:\n    Sync result with statistics\n\nRaises:\n    HTTPException: 404 if peer not found\n    HTTPException: 400 if peer is disabled\n\nExample:\n    POST /api/peers/central-registry/sync",
+        "operationId": "sync_peer_api_peers__peer_id__sync_post",
+        "parameters": [
+          {
+            "name": "peer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Peer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/peers/{peer_id}/status": {
+      "get": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Get Peer Status",
+        "description": "Get sync status for a specific peer.\n\nArgs:\n    peer_id: Peer identifier\n    user_context: Authenticated user context\n\nReturns:\n    Peer sync status with health and history\n\nRaises:\n    HTTPException: 404 if peer not found\n\nExample:\n    GET /api/peers/central-registry/status",
+        "operationId": "get_peer_status_api_peers__peer_id__status_get",
+        "parameters": [
+          {
+            "name": "peer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Peer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeerSyncStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/peers/{peer_id}/enable": {
+      "post": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Enable Peer",
+        "description": "Enable a peer registry.\n\nArgs:\n    peer_id: Peer identifier\n    user_context: Authenticated user context\n\nReturns:\n    Updated peer registry configuration\n\nRaises:\n    HTTPException: 404 if peer not found\n\nExample:\n    POST /api/peers/central-registry/enable",
+        "operationId": "enable_peer_api_peers__peer_id__enable_post",
+        "parameters": [
+          {
+            "name": "peer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Peer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeerRegistryConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/peers/{peer_id}/disable": {
+      "post": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Disable Peer",
+        "description": "Disable a peer registry.\n\nArgs:\n    peer_id: Peer identifier\n    user_context: Authenticated user context\n\nReturns:\n    Updated peer registry configuration\n\nRaises:\n    HTTPException: 404 if peer not found\n\nExample:\n    POST /api/peers/central-registry/disable",
+        "operationId": "disable_peer_api_peers__peer_id__disable_post",
+        "parameters": [
+          {
+            "name": "peer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Peer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeerRegistryConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/peers/{peer_id}/connections": {
+      "get": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Get Peer Connections",
+        "description": "Get connection history for a specific peer.\n\nReturns a list of federation connections from this peer, useful for\ndebugging and monitoring federation sync operations.\n\nArgs:\n    peer_id: Peer identifier\n    since: Only return connections after this timestamp\n    limit: Maximum entries to return (default: 100, max: 1000)\n    user_context: Authenticated user context\n\nReturns:\n    List of connection logs for the peer\n\nExample:\n    GET /api/peers/central-registry/connections\n    GET /api/peers/central-registry/connections?since=2024-01-01T00:00:00Z",
+        "operationId": "get_peer_connections_api_peers__peer_id__connections_get",
+        "parameters": [
+          {
+            "name": "peer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Peer Id"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only return connections after this timestamp",
+              "title": "Since"
+            },
+            "description": "Only return connections after this timestamp"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum entries to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum entries to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FederationConnectionLog"
+                  },
+                  "title": "Response Get Peer Connections Api Peers  Peer Id  Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/peers/{peer_id}/shared-resources": {
+      "get": {
+        "tags": [
+          "peer-management"
+        ],
+        "summary": "Get Peer Shared Resources",
+        "description": "Get summary of resources shared with a specific peer.\n\nArgs:\n    peer_id: Peer identifier\n    user_context: Authenticated user context\n\nReturns:\n    PeerSyncSummary for the specified peer\n\nRaises:\n    HTTPException: 404 if peer has no connection history\n\nExample:\n    GET /api/peers/central-registry/shared-resources",
+        "operationId": "get_peer_shared_resources_api_peers__peer_id__shared_resources_get",
+        "parameters": [
+          {
+            "name": "peer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Peer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeerSyncSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/audit/events": {
+      "get": {
+        "tags": [
+          "Audit Logs",
+          "Audit Logs"
+        ],
+        "summary": "Get Audit Events",
+        "description": "Query recent audit events from MongoDB.\n\nReturns paginated audit events matching the specified filters.\nAll filters are optional and can be combined.\n\nRequires admin access.",
+        "operationId": "get_audit_events_api_audit_events_get",
+        "parameters": [
+          {
+            "name": "stream",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(registry_api|mcp_access)$",
+              "description": "Log stream type",
+              "default": "registry_api",
+              "title": "Stream"
+            },
+            "description": "Log stream type"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start of time range (ISO 8601)",
+              "title": "From"
+            },
+            "description": "Start of time range (ISO 8601)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End of time range (ISO 8601)",
+              "title": "To"
+            },
+            "description": "End of time range (ISO 8601)"
+          },
+          {
+            "name": "username",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by username",
+              "title": "Username"
+            },
+            "description": "Filter by username"
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by operation type",
+              "title": "Operation"
+            },
+            "description": "Filter by operation type"
+          },
+          {
+            "name": "resource_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by resource type",
+              "title": "Resource Type"
+            },
+            "description": "Filter by resource type"
+          },
+          {
+            "name": "resource_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by resource ID",
+              "title": "Resource Id"
+            },
+            "description": "Filter by resource ID"
+          },
+          {
+            "name": "status_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 599,
+                  "minimum": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum HTTP status code",
+              "title": "Status Min"
+            },
+            "description": "Minimum HTTP status code"
+          },
+          {
+            "name": "status_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 599,
+                  "minimum": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum HTTP status code",
+              "title": "Status Max"
+            },
+            "description": "Maximum HTTP status code"
+          },
+          {
+            "name": "auth_decision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(ALLOW|DENY|NOT_REQUIRED)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by authorization decision",
+              "title": "Auth Decision"
+            },
+            "description": "Filter by authorization decision"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Maximum events per page",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Maximum events per page"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of events to skip",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of events to skip"
+          },
+          {
+            "name": "sort_order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1,
+              "minimum": -1,
+              "description": "Sort order: -1 for descending (newest first), 1 for ascending (oldest first)",
+              "default": -1,
+              "title": "Sort Order"
+            },
+            "description": "Sort order: -1 for descending (newest first), 1 for ascending (oldest first)"
+          },
+          {
+            "name": "mcp_gateway_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mcp Gateway Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/audit/events/{request_id}": {
+      "get": {
+        "tags": [
+          "Audit Logs",
+          "Audit Logs"
+        ],
+        "summary": "Get Audit Event",
+        "description": "Get a single audit event by request_id.\n\nReturns the complete audit event record including all fields.\n\nRequires admin access.",
+        "operationId": "get_audit_event_api_audit_events__request_id__get",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "mcp_gateway_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mcp Gateway Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Audit Event Api Audit Events  Request Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/audit/export": {
+      "get": {
+        "tags": [
+          "Audit Logs",
+          "Audit Logs"
+        ],
+        "summary": "Export Audit Events",
+        "description": "Export filtered audit events as JSONL or CSV file.\n\nReturns a downloadable file containing audit events matching\nthe specified filters.\n\nRequires admin access.",
+        "operationId": "export_audit_events_api_audit_export_get",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(jsonl|csv)$",
+              "description": "Export format: jsonl or csv",
+              "default": "jsonl",
+              "title": "Format"
+            },
+            "description": "Export format: jsonl or csv"
+          },
+          {
+            "name": "stream",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(registry_api|mcp_access)$",
+              "description": "Log stream type",
+              "default": "registry_api",
+              "title": "Stream"
+            },
+            "description": "Log stream type"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start of time range (ISO 8601)",
+              "title": "From"
+            },
+            "description": "Start of time range (ISO 8601)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End of time range (ISO 8601)",
+              "title": "To"
+            },
+            "description": "End of time range (ISO 8601)"
+          },
+          {
+            "name": "username",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by username",
+              "title": "Username"
+            },
+            "description": "Filter by username"
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by operation type",
+              "title": "Operation"
+            },
+            "description": "Filter by operation type"
+          },
+          {
+            "name": "resource_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by resource type",
+              "title": "Resource Type"
+            },
+            "description": "Filter by resource type"
+          },
+          {
+            "name": "resource_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by resource ID",
+              "title": "Resource Id"
+            },
+            "description": "Filter by resource ID"
+          },
+          {
+            "name": "status_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 599,
+                  "minimum": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum HTTP status code",
+              "title": "Status Min"
+            },
+            "description": "Minimum HTTP status code"
+          },
+          {
+            "name": "status_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 599,
+                  "minimum": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum HTTP status code",
+              "title": "Status Max"
+            },
+            "description": "Maximum HTTP status code"
+          },
+          {
+            "name": "auth_decision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(ALLOW|DENY|NOT_REQUIRED)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by authorization decision",
+              "title": "Auth Decision"
+            },
+            "description": "Filter by authorization decision"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 1,
+              "description": "Maximum events to export",
+              "default": 10000,
+              "title": "Limit"
+            },
+            "description": "Maximum events to export"
+          },
+          {
+            "name": "mcp_gateway_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mcp Gateway Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -4407,8 +7030,8 @@
           "visibility": {
             "type": "string",
             "title": "Visibility",
-            "description": "Visibility: public, private, or group-restricted",
-            "default": "public"
+            "description": "Visibility: public, group-restricted, or internal (default)",
+            "default": "internal"
           }
         },
         "type": "object",
@@ -4497,6 +7120,16 @@
               }
             ],
             "title": "Match Context"
+          },
+          "sync_metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4603,6 +7236,43 @@
         "type": "object",
         "title": "AsorFederationConfig",
         "description": "ASOR federation configuration."
+      },
+      "AuditEventsResponse": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Total number of matching events"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "Maximum events per page"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset",
+            "description": "Number of events skipped"
+          },
+          "events": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Events",
+            "description": "List of audit events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "events"
+        ],
+        "title": "AuditEventsResponse",
+        "description": "Response model for paginated audit events."
       },
       "Body_add_server_to_groups_api_api_servers_groups_add_post": {
         "properties": {
@@ -4744,6 +7414,44 @@
             "type": "string",
             "title": "License",
             "default": "N/A"
+          },
+          "mcp_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcp Endpoint"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility",
+            "default": "public"
+          },
+          "allowed_groups": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Groups"
           }
         },
         "type": "object",
@@ -4919,6 +7627,22 @@
               }
             ],
             "title": "Tool List Json"
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility",
+            "default": "public"
+          },
+          "allowed_groups": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Groups"
           }
         },
         "type": "object",
@@ -5094,6 +7818,61 @@
               }
             ],
             "title": "Tool List Json"
+          },
+          "mcp_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcp Endpoint"
+          },
+          "sse_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sse Endpoint"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           }
         },
         "type": "object",
@@ -5147,6 +7926,55 @@
             "type": "string",
             "title": "License",
             "default": "N/A"
+          },
+          "mcp_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcp Endpoint"
+          },
+          "sse_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sse Endpoint"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "visibility": {
+            "type": "string",
+            "title": "Visibility",
+            "default": "public"
+          },
+          "allowed_groups": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Groups"
           }
         },
         "type": "object",
@@ -5224,6 +8052,93 @@
         "type": "object",
         "title": "Body_toggle_service_route_api_toggle__service_path__post"
       },
+      "CompatibilityRequirement": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "product",
+              "tool",
+              "api",
+              "environment"
+            ],
+            "title": "Type",
+            "description": "Type of requirement"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target",
+            "description": "Target identifier (e.g., 'claude-code', 'python>=3.10')"
+          },
+          "min_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Version"
+          },
+          "max_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Version"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "description": "False = optional enhancement",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "target"
+        ],
+        "title": "CompatibilityRequirement",
+        "description": "Machine-readable compatibility constraint."
+      },
+      "DiscoveryResponse": {
+        "properties": {
+          "skills": {
+            "items": {
+              "$ref": "#/components/schemas/SkillTier1_Metadata"
+            },
+            "type": "array",
+            "title": "Skills"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "default": 0
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size",
+            "default": 100
+          }
+        },
+        "type": "object",
+        "required": [
+          "skills",
+          "total_count"
+        ],
+        "title": "DiscoveryResponse",
+        "description": "Response for coding assistant discovery endpoint."
+      },
       "ErrorResponse": {
         "properties": {
           "error": {
@@ -5251,6 +8166,137 @@
         "type": "object",
         "title": "FederationConfig",
         "description": "Root federation configuration."
+      },
+      "FederationConnectionLog": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "When the connection occurred"
+          },
+          "peer_id": {
+            "type": "string",
+            "title": "Peer Id",
+            "description": "ID of the connecting peer"
+          },
+          "peer_name": {
+            "type": "string",
+            "title": "Peer Name",
+            "description": "Display name of the connecting peer",
+            "default": ""
+          },
+          "client_id": {
+            "type": "string",
+            "title": "Client Id",
+            "description": "OAuth2 client_id from the token"
+          },
+          "endpoint": {
+            "type": "string",
+            "title": "Endpoint",
+            "description": "API endpoint accessed"
+          },
+          "items_requested": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Items Requested",
+            "description": "Number of items requested/returned",
+            "default": 0
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the request succeeded",
+            "default": true
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error message if request failed"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id",
+            "description": "Unique request identifier for correlation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "peer_id",
+          "client_id",
+          "endpoint"
+        ],
+        "title": "FederationConnectionLog",
+        "description": "Record of a federation connection from a peer."
+      },
+      "FederationExportResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "List of items (servers or agents) to sync"
+          },
+          "sync_generation": {
+            "type": "integer",
+            "title": "Sync Generation",
+            "description": "Current generation number for incremental sync"
+          },
+          "total_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Count",
+            "description": "Total number of items available"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Whether more items are available (pagination)",
+            "default": false
+          },
+          "registry_id": {
+            "type": "string",
+            "title": "Registry Id",
+            "description": "ID of the source registry"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sync_generation",
+          "total_count",
+          "registry_id"
+        ],
+        "title": "FederationExportResponse",
+        "description": "Response model for federation export API endpoints.\n\nContains items to be synced by peer registries along with\nmetadata for incremental sync support.",
+        "example": {
+          "has_more": false,
+          "items": [
+            {
+              "name": "Finance Tools",
+              "path": "/finance-tools"
+            }
+          ],
+          "registry_id": "central-registry",
+          "sync_generation": 100,
+          "total_count": 42
+        }
       },
       "GroupCreateRequest": {
         "properties": {
@@ -5588,18 +8634,339 @@
         "title": "PaginationMetadata",
         "description": "Pagination information for server lists."
       },
-      "RatingRequest": {
+      "PeerRegistryConfig": {
         "properties": {
-          "rating": {
+          "peer_id": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Peer Id",
+            "description": "Unique identifier for this peer registry"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Human-readable display name for the peer"
+          },
+          "endpoint": {
+            "type": "string",
+            "title": "Endpoint",
+            "description": "Base URL of the peer registry API"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Whether sync from this peer is enabled",
+            "default": true
+          },
+          "sync_mode": {
+            "type": "string",
+            "enum": [
+              "all",
+              "whitelist",
+              "tag_filter"
+            ],
+            "title": "Sync Mode",
+            "description": "Sync mode: all items, whitelist only, or tag-based filtering",
+            "default": "all"
+          },
+          "whitelist_servers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Whitelist Servers",
+            "description": "Server paths to sync when sync_mode is 'whitelist'"
+          },
+          "whitelist_agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Whitelist Agents",
+            "description": "Agent paths to sync when sync_mode is 'whitelist'"
+          },
+          "tag_filters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tag Filters",
+            "description": "Tags to filter by when sync_mode is 'tag_filter'"
+          },
+          "sync_interval_minutes": {
             "type": "integer",
-            "title": "Rating"
+            "maximum": 1440.0,
+            "minimum": 5.0,
+            "title": "Sync Interval Minutes",
+            "description": "Sync interval in minutes (5-1440)",
+            "default": 60
+          },
+          "federation_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Federation Token",
+            "description": "Federation static token from the remote peer registry. Used as Bearer token for sync requests when the peer has FEDERATION_STATIC_TOKEN_AUTH_ENABLED=true."
+          },
+          "expected_client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Client Id",
+            "description": "Azure AD/Keycloak client_id (azp claim) that identifies this peer"
+          },
+          "expected_issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Issuer",
+            "description": "Expected token issuer URL (for cross-tenant validation)"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "When this peer config was created"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At",
+            "description": "When this peer config was last updated"
           }
         },
         "type": "object",
         "required": [
-          "rating"
+          "peer_id",
+          "name",
+          "endpoint"
         ],
-        "title": "RatingRequest"
+        "title": "PeerRegistryConfig",
+        "description": "Configuration for a peer registry connection.\n\nDefines how to connect to and sync from a peer registry,\nincluding endpoint, sync mode, and filtering options.",
+        "example": {
+          "enabled": true,
+          "endpoint": "https://central.registry.company.com",
+          "expected_client_id": "uuid-central-1111-2222-3333",
+          "expected_issuer": "https://login.microsoftonline.com/tenant-id/v2.0",
+          "name": "Central MCP Registry",
+          "peer_id": "central-registry",
+          "sync_interval_minutes": 30,
+          "sync_mode": "all"
+        }
+      },
+      "PeerSyncStatus": {
+        "properties": {
+          "peer_id": {
+            "type": "string",
+            "title": "Peer Id",
+            "description": "ID of the peer registry"
+          },
+          "is_healthy": {
+            "type": "boolean",
+            "title": "Is Healthy",
+            "description": "Whether the peer is currently reachable",
+            "default": false
+          },
+          "last_health_check": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Health Check",
+            "description": "When health was last checked"
+          },
+          "last_successful_sync": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Successful Sync",
+            "description": "When last successful sync completed"
+          },
+          "last_sync_attempt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync Attempt",
+            "description": "When last sync was attempted"
+          },
+          "current_generation": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Current Generation",
+            "description": "Current sync generation number",
+            "default": 0
+          },
+          "total_servers_synced": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Servers Synced",
+            "description": "Total number of servers from this peer",
+            "default": 0
+          },
+          "total_agents_synced": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Agents Synced",
+            "description": "Total number of agents from this peer",
+            "default": 0
+          },
+          "sync_in_progress": {
+            "type": "boolean",
+            "title": "Sync In Progress",
+            "description": "Whether a sync is currently running",
+            "default": false
+          },
+          "consecutive_failures": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Consecutive Failures",
+            "description": "Number of consecutive sync failures",
+            "default": 0
+          },
+          "sync_history": {
+            "items": {
+              "$ref": "#/components/schemas/SyncHistoryEntry"
+            },
+            "type": "array",
+            "title": "Sync History",
+            "description": "Recent sync history (max 100 entries)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "peer_id"
+        ],
+        "title": "PeerSyncStatus",
+        "description": "Current sync status for a peer registry.\n\nTracks the state of synchronization including last sync time,\nhealth status, and recent sync history.",
+        "example": {
+          "consecutive_failures": 0,
+          "current_generation": 100,
+          "is_healthy": true,
+          "last_health_check": "2024-01-15T10:35:00Z",
+          "last_successful_sync": "2024-01-15T10:30:15Z",
+          "peer_id": "central-registry",
+          "sync_in_progress": false,
+          "total_agents_synced": 15,
+          "total_servers_synced": 42
+        }
+      },
+      "PeerSyncSummary": {
+        "properties": {
+          "peer_id": {
+            "type": "string",
+            "title": "Peer Id",
+            "description": "ID of the peer"
+          },
+          "peer_name": {
+            "type": "string",
+            "title": "Peer Name",
+            "description": "Display name of the peer",
+            "default": ""
+          },
+          "total_connections": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Connections",
+            "description": "Total number of connections from this peer",
+            "default": 0
+          },
+          "last_connection": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Connection",
+            "description": "Timestamp of last connection"
+          },
+          "servers_shared": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Servers Shared",
+            "description": "Number of servers shared with this peer",
+            "default": 0
+          },
+          "agents_shared": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Agents Shared",
+            "description": "Number of agents shared with this peer",
+            "default": 0
+          },
+          "successful_requests": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Successful Requests",
+            "description": "Number of successful requests",
+            "default": 0
+          },
+          "failed_requests": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Failed Requests",
+            "description": "Number of failed requests",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "peer_id"
+        ],
+        "title": "PeerSyncSummary",
+        "description": "Summary of resources shared with a peer."
       },
       "Repository": {
         "properties": {
@@ -5663,7 +9030,8 @@
                   "enum": [
                     "mcp_server",
                     "tool",
-                    "a2a_agent"
+                    "a2a_agent",
+                    "skill"
                   ]
                 },
                 "type": "array"
@@ -5696,6 +9064,12 @@
             "type": "string",
             "title": "Query"
           },
+          "search_mode": {
+            "type": "string",
+            "title": "Search Mode",
+            "description": "Search mode: 'hybrid' (semantic+lexical) or 'lexical-only'",
+            "default": "hybrid"
+          },
           "servers": {
             "items": {
               "$ref": "#/components/schemas/ServerSearchResult"
@@ -5717,6 +9091,13 @@
             "type": "array",
             "title": "Agents"
           },
+          "skills": {
+            "items": {
+              "$ref": "#/components/schemas/SkillSearchResult"
+            },
+            "type": "array",
+            "title": "Skills"
+          },
           "total_servers": {
             "type": "integer",
             "title": "Total Servers",
@@ -5730,6 +9111,11 @@
           "total_agents": {
             "type": "integer",
             "title": "Total Agents",
+            "default": 0
+          },
+          "total_skills": {
+            "type": "integer",
+            "title": "Total Skills",
             "default": 0
           }
         },
@@ -5946,6 +9332,16 @@
             },
             "type": "array",
             "title": "Matching Tools"
+          },
+          "sync_metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -5955,6 +9351,937 @@
           "relevance_score"
         ],
         "title": "ServerSearchResult"
+      },
+      "SetDefaultVersion": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "SetDefaultVersion",
+        "description": "Request model for setting default version."
+      },
+      "SkillCard": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "Unique skill path (e.g., /skills/pdf-processing)"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Skill name: lowercase alphanumeric and hyphens only"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Description",
+            "description": "What the skill does and when to use it"
+          },
+          "skill_md_url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Skill Md Url",
+            "description": "URL to the SKILL.md file as provided by the user"
+          },
+          "skill_md_raw_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Md Raw Url",
+            "description": "Raw URL for fetching SKILL.md content (auto-translated from skill_md_url)"
+          },
+          "repository_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Url",
+            "description": "URL to the git repository containing the skill"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License",
+            "description": "License name or reference to bundled license file"
+          },
+          "compatibility": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compatibility",
+            "description": "Human-readable environment requirements"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/CompatibilityRequirement"
+            },
+            "type": "array",
+            "title": "Requirements",
+            "description": "Machine-readable compatibility requirements"
+          },
+          "target_agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Agents",
+            "description": "Target coding assistants (e.g., ['claude-code', 'cursor'])"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkillMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Additional metadata (author, version, etc.)"
+          },
+          "allowed_tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolReference"
+            },
+            "type": "array",
+            "title": "Allowed Tools",
+            "description": "Tools the skill may use with capabilities"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Tags for categorization and search"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/VisibilityEnum",
+            "description": "Visibility scope",
+            "default": "public"
+          },
+          "allowed_groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Groups",
+            "description": "Groups allowed to view (when visibility=group)"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner",
+            "description": "Owner email/username for private visibility"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "description": "Whether the skill is enabled",
+            "default": true
+          },
+          "registry_name": {
+            "type": "string",
+            "title": "Registry Name",
+            "description": "Registry this skill belongs to",
+            "default": "local"
+          },
+          "health_status": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "unhealthy",
+              "unknown"
+            ],
+            "title": "Health Status",
+            "description": "Health status from last SKILL.md accessibility check",
+            "default": "unknown"
+          },
+          "last_checked_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked Time",
+            "description": "When health was last checked"
+          },
+          "num_stars": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Num Stars",
+            "description": "Average rating (1-5 stars)",
+            "default": 0.0
+          },
+          "rating_details": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rating Details",
+            "description": "List of individual user ratings with user and rating fields"
+          },
+          "content_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Version",
+            "description": "Hash of SKILL.md for cache validation"
+          },
+          "content_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Updated At",
+            "description": "When SKILL.md content was last updated"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "name",
+          "description",
+          "skill_md_url"
+        ],
+        "title": "SkillCard",
+        "description": "Full skill profile following Agent Skills specification."
+      },
+      "SkillMetadata": {
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "extra": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extra"
+          }
+        },
+        "type": "object",
+        "title": "SkillMetadata",
+        "description": "Optional metadata for skills."
+      },
+      "SkillRegistrationRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Description"
+          },
+          "skill_md_url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Skill Md Url",
+            "description": "URL to SKILL.md file"
+          },
+          "repository_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Url"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "Skill version (e.g., 1.0.0)"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "compatibility": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compatibility"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/CompatibilityRequirement"
+            },
+            "type": "array",
+            "title": "Requirements"
+          },
+          "target_agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Agents"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "allowed_tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolReference"
+            },
+            "type": "array",
+            "title": "Allowed Tools"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/VisibilityEnum",
+            "default": "public"
+          },
+          "allowed_groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "skill_md_url"
+        ],
+        "title": "SkillRegistrationRequest",
+        "description": "Request model for skill registration."
+      },
+      "SkillSearchResult": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "skill_name": {
+            "type": "string",
+            "title": "Skill Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "skill_md_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Md Url"
+          },
+          "skill_md_raw_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Md Raw Url"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "default": false
+          },
+          "relevance_score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Relevance Score"
+          },
+          "match_context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "skill_name",
+          "relevance_score"
+        ],
+        "title": "SkillSearchResult"
+      },
+      "SkillTier1_Metadata": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "skill_md_url": {
+            "type": "string",
+            "title": "Skill Md Url"
+          },
+          "skill_md_raw_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Md Raw Url",
+            "description": "Raw URL for fetching SKILL.md content"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "compatibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compatibility"
+          },
+          "target_agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Agents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "name",
+          "description",
+          "skill_md_url"
+        ],
+        "title": "SkillTier1_Metadata",
+        "description": "Tier 1: Always available, ~100 tokens."
+      },
+      "SyncHistoryEntry": {
+        "properties": {
+          "sync_id": {
+            "type": "string",
+            "title": "Sync Id",
+            "description": "Unique identifier for this sync operation"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At",
+            "description": "When the sync operation started"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "When the sync operation completed"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the sync completed successfully",
+            "default": false
+          },
+          "servers_synced": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Servers Synced",
+            "description": "Number of servers synced",
+            "default": 0
+          },
+          "agents_synced": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Agents Synced",
+            "description": "Number of agents synced",
+            "default": 0
+          },
+          "servers_orphaned": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Servers Orphaned",
+            "description": "Number of servers marked as orphaned",
+            "default": 0
+          },
+          "agents_orphaned": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Agents Orphaned",
+            "description": "Number of agents marked as orphaned",
+            "default": 0
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error message if sync failed"
+          },
+          "sync_generation": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Sync Generation",
+            "description": "Generation number used for this sync",
+            "default": 0
+          },
+          "full_sync": {
+            "type": "boolean",
+            "title": "Full Sync",
+            "description": "Whether this was a full sync (vs incremental)",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "sync_id",
+          "started_at"
+        ],
+        "title": "SyncHistoryEntry",
+        "description": "Record of a single sync operation.\n\nCaptures the outcome of a sync attempt including success/failure,\nitems synced, and any errors encountered.",
+        "example": {
+          "agents_orphaned": 1,
+          "agents_synced": 15,
+          "completed_at": "2024-01-15T10:30:15Z",
+          "full_sync": false,
+          "servers_orphaned": 0,
+          "servers_synced": 42,
+          "started_at": "2024-01-15T10:30:00Z",
+          "success": true,
+          "sync_generation": 100,
+          "sync_id": "sync-2024-01-15-103000"
+        }
+      },
+      "SyncMetadata": {
+        "properties": {
+          "is_federated": {
+            "type": "boolean",
+            "title": "Is Federated",
+            "default": false
+          },
+          "source_peer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Peer Id"
+          },
+          "synced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced At"
+          },
+          "original_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Path"
+          },
+          "is_orphaned": {
+            "type": "boolean",
+            "title": "Is Orphaned",
+            "default": false
+          },
+          "orphaned_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orphaned At"
+          },
+          "is_read_only": {
+            "type": "boolean",
+            "title": "Is Read Only",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "SyncMetadata",
+        "description": "Metadata for items synced from peer registries."
+      },
+      "SyncResult": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the sync completed successfully"
+          },
+          "peer_id": {
+            "type": "string",
+            "title": "Peer Id",
+            "description": "ID of the peer that was synced"
+          },
+          "servers_synced": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Servers Synced",
+            "description": "Number of servers synced",
+            "default": 0
+          },
+          "agents_synced": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Agents Synced",
+            "description": "Number of agents synced",
+            "default": 0
+          },
+          "servers_orphaned": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Servers Orphaned",
+            "description": "Number of servers marked as orphaned",
+            "default": 0
+          },
+          "agents_orphaned": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Agents Orphaned",
+            "description": "Number of agents marked as orphaned",
+            "default": 0
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error message if sync failed"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Duration Seconds",
+            "description": "Duration of the sync operation in seconds",
+            "default": 0.0
+          },
+          "new_generation": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "New Generation",
+            "description": "New generation number after sync",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "peer_id"
+        ],
+        "title": "SyncResult",
+        "description": "Result of a sync operation.\n\nReturned by sync methods to indicate success/failure and\nprovide details about what was synced."
+      },
+      "ToggleStateRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "New enabled state"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "ToggleStateRequest",
+        "description": "Request model for toggling skill state."
+      },
+      "ToolReference": {
+        "properties": {
+          "tool_name": {
+            "type": "string",
+            "title": "Tool Name",
+            "description": "Tool name (e.g., 'Read', 'Bash')"
+          },
+          "server_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Path",
+            "description": "MCP server path (e.g., '/servers/claude-tools')"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities",
+            "description": "Capability filters (e.g., ['git:*'])"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tool_name"
+        ],
+        "title": "ToolReference",
+        "description": "Reference to a tool with optional filtering."
       },
       "ToolSearchResult": {
         "properties": {
@@ -6020,6 +10347,41 @@
           "relevance_score"
         ],
         "title": "ToolSearchResult"
+      },
+      "ToolValidationResult": {
+        "properties": {
+          "all_available": {
+            "type": "boolean",
+            "title": "All Available"
+          },
+          "missing_tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Tools"
+          },
+          "available_tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Tools"
+          },
+          "mcp_servers_required": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Mcp Servers Required"
+          }
+        },
+        "type": "object",
+        "required": [
+          "all_available"
+        ],
+        "title": "ToolValidationResult",
+        "description": "Result of tool availability validation."
       },
       "UserDeleteResponse": {
         "properties": {
@@ -6148,6 +10510,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
@@ -6157,6 +10526,56 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VisibilityEnum": {
+        "type": "string",
+        "enum": [
+          "public",
+          "private",
+          "group"
+        ],
+        "title": "VisibilityEnum",
+        "description": "Visibility options for skills."
+      },
+      "registry__api__agent_routes__RatingRequest": {
+        "properties": {
+          "rating": {
+            "type": "integer",
+            "title": "Rating"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rating"
+        ],
+        "title": "RatingRequest"
+      },
+      "registry__api__server_routes__RatingRequest": {
+        "properties": {
+          "rating": {
+            "type": "integer",
+            "title": "Rating"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rating"
+        ],
+        "title": "RatingRequest"
+      },
+      "registry__api__skill_routes__RatingRequest": {
+        "properties": {
+          "rating": {
+            "type": "integer",
+            "title": "Rating"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rating"
+        ],
+        "title": "RatingRequest",
+        "description": "Request model for rating a skill."
       }
     },
     "securitySchemes": {

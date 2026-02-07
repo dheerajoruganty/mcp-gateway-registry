@@ -486,6 +486,103 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
             logger.error(f"Failed to index agent in search: {e}", exc_info=True)
 
 
+    async def index_skill(
+        self,
+        path: str,
+        skill: Any,
+        is_enabled: bool = False,
+    ) -> None:
+        """Index a skill for semantic search.
+
+        Args:
+            path: Skill path (e.g., /skills/pdf-processing)
+            skill: SkillCard object
+            is_enabled: Whether skill is enabled
+        """
+        collection = await self._get_collection()
+
+        # Compose text for embedding
+        text_parts = [
+            skill.name,
+            skill.description,
+        ]
+
+        if skill.tags:
+            text_parts.append(f"Tags: {', '.join(skill.tags)}")
+
+        if skill.compatibility:
+            text_parts.append(f"Compatibility: {skill.compatibility}")
+
+        if skill.target_agents:
+            text_parts.append(f"For: {', '.join(skill.target_agents)}")
+
+        if skill.metadata and skill.metadata.author:
+            text_parts.append(f"Author: {skill.metadata.author}")
+
+        text_for_embedding = " ".join(filter(None, text_parts))
+
+        # Generate embedding
+        try:
+            model = await self._get_embedding_model()
+            embedding = model.encode([text_for_embedding])[0].tolist()
+        except Exception as e:
+            logger.warning(
+                "Embedding model unavailable, indexing skill '%s' without embeddings: %s",
+                skill.name,
+                e,
+            )
+            embedding = []
+
+        # Handle visibility enum
+        visibility_value = skill.visibility
+        if hasattr(visibility_value, 'value'):
+            visibility_value = visibility_value.value
+
+        # Build search document
+        search_doc = {
+            "_id": path,
+            "entity_type": "skill",
+            "path": path,
+            "name": skill.name,
+            "description": skill.description,
+            "tags": skill.tags or [],
+            "is_enabled": is_enabled,
+            "visibility": visibility_value,
+            "allowed_groups": skill.allowed_groups or [],
+            "owner": skill.owner,
+            "health_status": skill.health_status,
+            "last_checked_time": skill.last_checked_time.isoformat()
+            if skill.last_checked_time
+            else None,
+            "text_for_embedding": text_for_embedding,
+            "embedding": embedding,
+            "embedding_metadata": embedding_config.get_embedding_metadata(),
+            "metadata": {
+                "skill_md_url": str(skill.skill_md_url),
+                "skill_md_raw_url": str(skill.skill_md_raw_url)
+                if skill.skill_md_raw_url
+                else None,
+                "author": skill.metadata.author if skill.metadata else None,
+                "version": skill.metadata.version if skill.metadata else None,
+                "compatibility": skill.compatibility,
+                "target_agents": skill.target_agents or [],
+                "registry_name": skill.registry_name,
+            },
+            "indexed_at": skill.updated_at or skill.created_at,
+        }
+
+        # Upsert to search collection
+        try:
+            await collection.replace_one(
+                {"_id": path},
+                search_doc,
+                upsert=True
+            )
+            logger.info(f"Indexed skill for search: {path}")
+        except Exception as e:
+            logger.error(f"Failed to index skill in search: {e}", exc_info=True)
+
+
     def _calculate_cosine_similarity(
         self,
         vec1: list[float],
@@ -661,6 +758,7 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
             servers = []
             agents = []
             tools = []
+            skills = []
 
             for item in scored_docs:
                 doc = item["doc"]
@@ -672,9 +770,11 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
                     agents.append(item)
                 elif entity_type == "mcp_tool" and len(tools) < 3:
                     tools.append(item)
+                elif entity_type == "skill" and len(skills) < 3:
+                    skills.append(item)
 
             # Format results to match the API contract
-            grouped_results = {"servers": [], "tools": [], "agents": []}
+            grouped_results = {"servers": [], "tools": [], "agents": [], "skills": []}
 
             tool_count = 0
             for item in servers:
@@ -758,11 +858,34 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
                 }
                 grouped_results["tools"].append(result_entry)
 
+            for item in skills:
+                doc = item["doc"]
+                relevance_score = item["relevance_score"]
+                metadata = doc.get("metadata", {})
+
+                result_entry = {
+                    "entity_type": "skill",
+                    "path": doc.get("path"),
+                    "skill_name": doc.get("name"),
+                    "description": doc.get("description"),
+                    "tags": doc.get("tags", []),
+                    "skill_md_url": metadata.get("skill_md_url"),
+                    "version": metadata.get("version"),
+                    "author": metadata.get("author"),
+                    "visibility": doc.get("visibility", "public"),
+                    "owner": doc.get("owner"),
+                    "is_enabled": doc.get("is_enabled", False),
+                    "relevance_score": relevance_score,
+                    "match_context": doc.get("description"),
+                }
+                grouped_results["skills"].append(result_entry)
+
             logger.info(
                 f"Client-side search returned "
                 f"{len(grouped_results['servers'])} servers, "
                 f"{len(grouped_results['tools'])} tools, "
-                f"{len(grouped_results['agents'])} agents "
+                f"{len(grouped_results['agents'])} agents, "
+                f"{len(grouped_results['skills'])} skills "
                 f"from {len(all_docs)} total documents (top 3 per type)"
             )
 
@@ -770,7 +893,7 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
 
         except Exception as e:
             logger.error(f"Failed to perform client-side search: {e}", exc_info=True)
-            return {"servers": [], "tools": [], "agents": []}
+            return {"servers": [], "tools": [], "agents": [], "skills": []}
 
 
     async def _lexical_only_search(
@@ -797,7 +920,7 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
 
         if not query_tokens:
             logger.info("Lexical search: no valid tokens from query '%s'", query)
-            return {"servers": [], "tools": [], "agents": []}
+            return {"servers": [], "tools": [], "agents": [], "skills": []}
 
         escaped_tokens = [re.escape(token) for token in query_tokens]
         token_regex = "|".join(escaped_tokens)
@@ -847,10 +970,11 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
         Returns:
             Grouped search results dict with servers, tools, agents lists
         """
-        grouped_results = {"servers": [], "tools": [], "agents": []}
+        grouped_results = {"servers": [], "tools": [], "agents": [], "skills": []}
         server_count = 0
         agent_count = 0
         tool_count = 0
+        skill_count = 0
 
         for doc in results:
             entity_type = doc.get("entity_type")
@@ -929,6 +1053,26 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
                 }
                 grouped_results["tools"].append(result_entry)
                 tool_count += 1
+
+            elif entity_type == "skill" and skill_count < 3:
+                metadata = doc.get("metadata", {})
+                result_entry = {
+                    "entity_type": "skill",
+                    "path": doc.get("path"),
+                    "skill_name": doc.get("name"),
+                    "description": doc.get("description"),
+                    "tags": doc.get("tags", []),
+                    "skill_md_url": metadata.get("skill_md_url"),
+                    "version": metadata.get("version"),
+                    "author": metadata.get("author"),
+                    "visibility": doc.get("visibility", "public"),
+                    "owner": doc.get("owner"),
+                    "is_enabled": doc.get("is_enabled", False),
+                    "relevance_score": relevance_score,
+                    "match_context": doc.get("description"),
+                }
+                grouped_results["skills"].append(result_entry)
+                skill_count += 1
 
         return grouped_results
 
@@ -1163,10 +1307,11 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
             scored_results.sort(key=lambda x: x[1], reverse=True)
 
             # Group results: top 3 per entity type
-            grouped_results = {"servers": [], "tools": [], "agents": []}
+            grouped_results = {"servers": [], "tools": [], "agents": [], "skills": []}
             server_count = 0
             agent_count = 0
             tool_count = 0
+            skill_count = 0
 
             for doc, relevance_score in scored_results:
                 entity_type = doc.get("entity_type")
@@ -1177,6 +1322,8 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
                 elif entity_type == "a2a_agent" and agent_count >= 3:
                     continue
                 elif entity_type == "mcp_tool" and tool_count >= 3:
+                    continue
+                elif entity_type == "skill" and skill_count >= 3:
                     continue
 
                 if entity_type == "mcp_server":
@@ -1257,6 +1404,26 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
                     grouped_results["tools"].append(result_entry)
                     tool_count += 1
 
+                elif entity_type == "skill":
+                    metadata = doc.get("metadata", {})
+                    result_entry = {
+                        "entity_type": "skill",
+                        "path": doc.get("path"),
+                        "skill_name": doc.get("name"),
+                        "description": doc.get("description"),
+                        "tags": doc.get("tags", []),
+                        "skill_md_url": metadata.get("skill_md_url"),
+                        "version": metadata.get("version"),
+                        "author": metadata.get("author"),
+                        "visibility": doc.get("visibility", "public"),
+                        "owner": doc.get("owner"),
+                        "is_enabled": doc.get("is_enabled", False),
+                        "relevance_score": relevance_score,
+                        "match_context": doc.get("description"),
+                    }
+                    grouped_results["skills"].append(result_entry)
+                    skill_count += 1
+
             # Sort each group by relevance_score (descending) to ensure highest matches
             # appear first. This is needed because the DB sorts by text_boost only,
             # but relevance_score combines both vector similarity and text boost.
@@ -1269,12 +1436,16 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
             grouped_results["agents"].sort(
                 key=lambda x: x.get("relevance_score", 0), reverse=True
             )
+            grouped_results["skills"].sort(
+                key=lambda x: x.get("relevance_score", 0), reverse=True
+            )
 
             logger.info(
                 f"Hybrid search for '{query}' returned "
                 f"{len(grouped_results['servers'])} servers, "
                 f"{len(grouped_results['tools'])} tools, "
-                f"{len(grouped_results['agents'])} agents (top 3 per type)"
+                f"{len(grouped_results['agents'])} agents, "
+                f"{len(grouped_results['skills'])} skills (top 3 per type)"
             )
 
             return grouped_results
@@ -1303,4 +1474,4 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
                 )
 
             logger.error(f"Failed to perform hybrid search: {e}", exc_info=True)
-            return {"servers": [], "tools": [], "agents": []}
+            return {"servers": [], "tools": [], "agents": [], "skills": []}
