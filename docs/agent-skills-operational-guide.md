@@ -71,31 +71,24 @@ pdftotext document.pdf output.txt
 
 **Using the API:**
 
-```bash
-curl -X POST https://your-registry.com/api/skills \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{
-    "name": "pdf-processing",
-    "description": "Convert and manipulate PDF documents",
-    "skill_md_url": "https://github.com/org/repo/blob/main/skills/pdf-processing/SKILL.md",
-    "visibility": "public",
-    "tags": ["pdf", "documents", "conversion"]
-  }'
-```
+For API details, see the OpenAPI specification at [api/openapi.json](../api/openapi.json). Use the `registry_management.py` CLI for Python-based commands (see [CLI Commands](#cli-commands) section below).
 
 ### Step 3: Verify Registration
 
-Check that the skill is registered and healthy:
+Check that the skill is registered and healthy using the CLI:
 
 ```bash
 # Get skill details
-curl https://your-registry.com/api/skills/pdf-processing \
-  -H "Authorization: Bearer <token>"
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-get --path pdf-processing
 
 # Check skill health
-curl https://your-registry.com/api/skills/pdf-processing/health \
-  -H "Authorization: Bearer <token>"
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-health --path pdf-processing
 ```
 
 ## Managing Skills
@@ -104,59 +97,51 @@ curl https://your-registry.com/api/skills/pdf-processing/health \
 
 **UI:** Navigate to the Skills section in the dashboard.
 
-**API:**
+**CLI:**
 ```bash
-# List all enabled skills
-curl https://your-registry.com/api/skills \
-  -H "Authorization: Bearer <token>"
-
-# Include disabled skills
-curl "https://your-registry.com/api/skills?include_disabled=true" \
-  -H "Authorization: Bearer <token>"
-
-# Filter by tag
-curl "https://your-registry.com/api/skills?tag=pdf" \
-  -H "Authorization: Bearer <token>"
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-list
 ```
+
+For custom curl commands with query parameters (e.g., `include_disabled`, `tag`), see [api/openapi.json](../api/openapi.json).
 
 ### Update a Skill
 
 **UI:** Click the edit (pencil) icon on a skill card.
 
-**API:**
-```bash
-curl -X PUT https://your-registry.com/api/skills/pdf-processing \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{
-    "description": "Updated description",
-    "tags": ["pdf", "documents", "conversion", "utilities"]
-  }'
-```
+**API:** For update endpoints, see the OpenAPI specification at [api/openapi.json](../api/openapi.json).
 
 ### Enable/Disable Skills
 
 **UI:** Use the toggle switch on the skill card.
 
-**API:**
+**CLI:**
 ```bash
 # Disable a skill
-curl -X PUT https://your-registry.com/api/skills/pdf-processing/disable \
-  -H "Authorization: Bearer <token>"
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-toggle --path pdf-processing --enabled false
 
 # Enable a skill
-curl -X PUT https://your-registry.com/api/skills/pdf-processing/enable \
-  -H "Authorization: Bearer <token>"
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-toggle --path pdf-processing --enabled true
 ```
 
 ### Delete a Skill
 
 **UI:** Click the delete (trash) icon on a skill card.
 
-**API:**
+**CLI:**
 ```bash
-curl -X DELETE https://your-registry.com/api/skills/pdf-processing \
-  -H "Authorization: Bearer <token>"
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-delete --path pdf-processing
 ```
 
 ## Health Monitoring
@@ -167,13 +152,15 @@ The registry verifies that SKILL.md files are accessible:
 
 **UI:** Click the refresh icon on a skill card to check health.
 
-**API:**
+**CLI:**
 ```bash
-curl https://your-registry.com/api/skills/pdf-processing/health \
-  -H "Authorization: Bearer <token>"
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-health --path pdf-processing
 ```
 
-Response:
+Response example:
 ```json
 {
   "healthy": true,
@@ -196,25 +183,27 @@ Response:
 
 **UI:** Click the star rating widget on a skill card.
 
-**API:**
+**CLI:**
 ```bash
-curl -X POST https://your-registry.com/api/skills/pdf-processing/rate \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"rating": 5}'
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-rate --path pdf-processing --rating 5
 ```
 
 ### View Ratings
 
 **UI:** Rating is displayed on the skill card.
 
-**API:**
+**CLI:**
 ```bash
-curl https://your-registry.com/api/skills/pdf-processing/rating \
-  -H "Authorization: Bearer <token>"
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-rating --path pdf-processing
 ```
 
-Response:
+Response example:
 ```json
 {
   "num_stars": 4.5,
@@ -237,13 +226,15 @@ The modal displays:
 - Links to GitHub source
 - Copy and download buttons
 
-**API:**
+**CLI:**
 ```bash
-curl https://your-registry.com/api/skills/pdf-processing/content \
-  -H "Authorization: Bearer <token>"
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-content --path pdf-processing
 ```
 
-Response:
+Response example:
 ```json
 {
   "content": "---\nname: pdf-processing\n...",
@@ -257,13 +248,9 @@ Skills can reference required MCP server tools. Validate tool availability:
 
 **UI:** Click the wrench icon on a skill card.
 
-**API:**
-```bash
-curl https://your-registry.com/api/skills/pdf-processing/tools \
-  -H "Authorization: Bearer <token>"
-```
+**API:** For tool validation endpoints, see [api/openapi.json](../api/openapi.json).
 
-Response:
+Response example:
 ```json
 {
   "all_available": true,
@@ -290,22 +277,10 @@ Response:
 
 ### Set Visibility
 
-```bash
-# Make skill private
-curl -X PUT https://your-registry.com/api/skills/pdf-processing \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"visibility": "private"}'
-
-# Make skill visible to specific groups
-curl -X PUT https://your-registry.com/api/skills/pdf-processing \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{
-    "visibility": "group",
-    "allowed_groups": ["engineering", "devops"]
-  }'
-```
+For visibility update endpoints, see [api/openapi.json](../api/openapi.json). Visibility options are:
+- `public` - Visible to all authenticated users
+- `private` - Visible only to the owner
+- `group` - Visible to specified groups (requires `allowed_groups` parameter)
 
 ## Search and Discovery
 
@@ -313,48 +288,62 @@ curl -X PUT https://your-registry.com/api/skills/pdf-processing \
 
 **UI:** Use the search bar in the Skills section.
 
-**API:**
+**CLI:**
 ```bash
-# Search by keyword
-curl "https://your-registry.com/api/skills/search?q=pdf" \
-  -H "Authorization: Bearer <token>"
-
-# Filter by multiple criteria
-curl "https://your-registry.com/api/skills/search?q=document&tags=pdf,conversion" \
-  -H "Authorization: Bearer <token>"
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-search --query "pdf"
 ```
+
+For advanced search with multiple filters, see [api/openapi.json](../api/openapi.json).
 
 ## Integration with AI Assistants
 
 ### Claude Code Integration
 
-Skills can be loaded into Claude Code using slash commands:
+Skills in Claude Code are stored as SKILL.md files in skill directories. To use a skill from the registry:
+
+1. **Download the skill content** to your local skills directory:
+
+```bash
+# Global skills directory
+mkdir -p ~/.claude/skills/pdf-processing
+curl -H "Authorization: Bearer <token>" \
+  https://your-registry.com/api/skills/pdf-processing/content \
+  | jq -r '.content' > ~/.claude/skills/pdf-processing/SKILL.md
+
+# Or project-level skills
+mkdir -p .claude/skills/pdf-processing
+curl -H "Authorization: Bearer <token>" \
+  https://your-registry.com/api/skills/pdf-processing/content \
+  | jq -r '.content' > .claude/skills/pdf-processing/SKILL.md
+```
+
+2. **Invoke the skill** using the slash command (folder name becomes the command):
 
 ```
-/skill pdf-processing
+/pdf-processing
 ```
 
-Or via the Claude Code configuration:
-
-```json
-{
-  "skills": [
-    "https://your-registry.com/api/skills/pdf-processing"
-  ]
-}
-```
+See [Claude Code Skills Documentation](https://code.claude.com/docs/en/skills) for more details.
 
 ### Cursor Integration
 
-Add skills to your Cursor configuration:
+Cursor uses Agent Skills stored in `.agents/skills/` directories. To use a skill from the registry:
 
-```json
-{
-  "ai.skills": [
-    "https://your-registry.com/api/skills/pdf-processing/content"
-  ]
-}
+1. **Download the skill content** to your project's skills directory:
+
+```bash
+mkdir -p .agents/skills/pdf-processing
+curl -H "Authorization: Bearer <token>" \
+  https://your-registry.com/api/skills/pdf-processing/content \
+  | jq -r '.content' > .agents/skills/pdf-processing/SKILL.md
 ```
+
+2. **Regenerate AGENTS.md** if using custom rules (required after adding new skills)
+
+See [Cursor Agent Skills Documentation](https://cursor.com/docs/context/skills) for more details.
 
 ## Troubleshooting
 
@@ -409,9 +398,167 @@ Add skills to your Cursor configuration:
 - Use group visibility for team-specific skills
 - Make public for community sharing
 
+## CLI Commands
+
+The `registry_management.py` CLI provides commands for managing skills from the command line.
+
+### Common Parameters
+
+Global parameters must come **before** the subcommand:
+
+| Parameter | Description |
+|-----------|-------------|
+| `--registry-url` | Registry base URL (default: http://localhost:8000) |
+| `--token-file` | Path to JSON file containing access token |
+
+### Register Skills from Anthropic Skills Repository
+
+Register coding, documentation, and spreadsheet skills from the official [anthropics/skills](https://github.com/anthropics/skills) repository:
+
+```bash
+# Set common variables
+REGISTRY_URL="https://your-registry.com"
+TOKEN_FILE="/path/to/.token"
+
+# Register doc-coauthoring skill (collaborative documentation)
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-register \
+  --name doc-coauthoring \
+  --url "https://github.com/anthropics/skills/blob/main/skills/doc-coauthoring/SKILL.md" \
+  --description "Guide users through structured workflow for co-authoring documentation" \
+  --tags docs,authoring,collaboration \
+  --visibility public
+
+# Register docx skill (Word document handling)
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-register \
+  --name docx \
+  --url "https://github.com/anthropics/skills/blob/main/skills/docx/SKILL.md" \
+  --description "Create and manipulate Microsoft Word documents" \
+  --tags docs,word,docx,documents \
+  --visibility public
+
+# Register xlsx skill (Excel spreadsheet handling)
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-register \
+  --name xlsx \
+  --url "https://github.com/anthropics/skills/blob/main/skills/xlsx/SKILL.md" \
+  --description "Create and manipulate Excel spreadsheets" \
+  --tags spreadsheet,excel,xlsx,data \
+  --visibility public
+
+# Register pdf skill (PDF document handling)
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-register \
+  --name pdf \
+  --url "https://github.com/anthropics/skills/blob/main/skills/pdf/SKILL.md" \
+  --description "Create and manipulate PDF documents" \
+  --tags pdf,documents,conversion \
+  --visibility public
+
+# Register mcp-builder skill (MCP server development)
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-register \
+  --name mcp-builder \
+  --url "https://github.com/anthropics/skills/blob/main/skills/mcp-builder/SKILL.md" \
+  --description "Build MCP servers and tools for AI assistant integrations" \
+  --tags mcp,coding,development,servers \
+  --visibility public
+```
+
+### Other Skill CLI Commands
+
+```bash
+# List all skills
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-list
+
+# Get skill details
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-get --path doc-coauthoring
+
+# Check skill health
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-health --path doc-coauthoring
+
+# Get SKILL.md content
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-content --path doc-coauthoring
+
+# Search for skills
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-search --query "document"
+
+# Toggle skill enabled/disabled
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-toggle --path doc-coauthoring --enabled false
+
+# Rate a skill (1-5 stars)
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-rate --path doc-coauthoring --rating 5
+
+# Get skill rating
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-rating --path doc-coauthoring
+
+# Delete a skill
+uv run python api/registry_management.py \
+  --registry-url "$REGISTRY_URL" \
+  --token-file "$TOKEN_FILE" \
+  skill-delete --path doc-coauthoring
+```
+
+### Token File Format
+
+The token file should be a JSON file with the following structure:
+
+```json
+{
+  "tokens": {
+    "access_token": "eyJ..."
+  }
+}
+```
+
+Or the simpler format:
+
+```json
+{
+  "access_token": "eyJ..."
+}
+```
+
 ## API Reference
 
-See [API Reference](api-reference.md) for complete endpoint documentation.
+For complete API endpoint documentation, see:
+- **OpenAPI Specification**: [api/openapi.json](../api/openapi.json) - Full API spec for writing custom curl commands
+- **API Reference**: [API Reference](api-reference.md) - Human-readable endpoint documentation
 
 ## Related Documentation
 

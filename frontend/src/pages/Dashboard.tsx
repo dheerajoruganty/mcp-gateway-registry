@@ -417,6 +417,7 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
   const semanticServers = semanticResults?.servers ?? [];
   const semanticTools = semanticResults?.tools ?? [];
   const semanticAgents = semanticResults?.agents ?? [];
+  const semanticSkills = semanticResults?.skills ?? [];
   const semanticDisplayQuery = semanticResults?.query || committedQuery || searchTerm;
   const semanticSectionVisible = semanticEnabled;
   const shouldShowFallbackGrid =
@@ -425,7 +426,8 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
       (!semanticLoading &&
         semanticServers.length === 0 &&
         semanticTools.length === 0 &&
-        semanticAgents.length === 0));
+        semanticAgents.length === 0 &&
+        semanticSkills.length === 0));
 
   // Filter servers based on activeFilter and searchTerm
   const filteredServers = useMemo(() => {
@@ -1958,6 +1960,7 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                 servers={semanticServers}
                 tools={semanticTools}
                 agents={semanticAgents}
+                skills={semanticSkills}
               />
 
               {shouldShowFallbackGrid && (

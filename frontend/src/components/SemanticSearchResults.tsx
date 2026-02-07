@@ -1,7 +1,22 @@
-import React, { useState, useMemo } from 'react';
-import { ArrowPathIcon, CogIcon, InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import React, { useState, useMemo, useCallback } from 'react';
+import {
+  ArrowPathIcon,
+  CogIcon,
+  InformationCircleIcon,
+  XMarkIcon,
+  ArrowTopRightOnSquareIcon,
+  ClipboardIcon,
+  ArrowDownTrayIcon
+} from '@heroicons/react/24/outline';
 import axios from 'axios';
-import { SemanticServerHit, SemanticToolHit, SemanticAgentHit } from '../hooks/useSemanticSearch';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import {
+  SemanticServerHit,
+  SemanticToolHit,
+  SemanticAgentHit,
+  SemanticSkillHit
+} from '../hooks/useSemanticSearch';
 import ServerConfigModal from './ServerConfigModal';
 import AgentDetailsModal from './AgentDetailsModal';
 import type { Server } from './ServerCard';
@@ -14,6 +29,7 @@ interface SemanticSearchResultsProps {
   servers: SemanticServerHit[];
   tools: SemanticToolHit[];
   agents: SemanticAgentHit[];
+  skills: SemanticSkillHit[];
 }
 
 interface ToolSchemaModalProps {
@@ -69,6 +85,342 @@ const ToolSchemaModal: React.FC<ToolSchemaModalProps> = ({
   );
 };
 
+// Helper function to parse YAML frontmatter from markdown
+const parseYamlFrontmatter = (content: string): { frontmatter: Record<string, string> | null; body: string } => {
+  const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/;
+  const match = content.match(frontmatterRegex);
+
+  if (match) {
+    const yamlContent = match[1];
+    const body = match[2];
+    const frontmatter: Record<string, string> = {};
+    const lines = yamlContent.split('\n');
+    for (const line of lines) {
+      const colonIndex = line.indexOf(':');
+      if (colonIndex > 0) {
+        const key = line.substring(0, colonIndex).trim();
+        const value = line.substring(colonIndex + 1).trim();
+        if (key && value) {
+          frontmatter[key] = value;
+        }
+      }
+    }
+    return { frontmatter: Object.keys(frontmatter).length > 0 ? frontmatter : null, body };
+  }
+  return { frontmatter: null, body: content };
+};
+
+
+interface ServerDetailsModalProps {
+  server: SemanticServerHit;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const ServerDetailsModal: React.FC<ServerDetailsModalProps> = ({
+  server,
+  isOpen,
+  onClose
+}) => {
+  if (!isOpen) return null;
+
+  const isFederatedServer = server.sync_metadata?.is_federated === true;
+  const peerRegistryId = isFederatedServer && server.sync_metadata?.source_peer_id
+    ? server.sync_metadata.source_peer_id.replace('peer-registry-', '').replace('peer-', '').toUpperCase()
+    : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {server.server_name}
+              </h3>
+              {isFederatedServer && peerRegistryId && (
+                <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200 border border-cyan-200 dark:border-cyan-700">
+                  {peerRegistryId}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{server.path}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg transition-colors"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-4 overflow-auto flex-1 space-y-4">
+          {/* Description */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+              Description
+            </p>
+            <p className="text-sm text-gray-700 dark:text-gray-200">
+              {server.description || 'No description available.'}
+            </p>
+          </div>
+
+          {/* Tags */}
+          {server.tags && server.tags.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                Tags
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {server.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-2.5 py-1 text-xs rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tools */}
+          {server.matching_tools && server.matching_tools.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                Tools ({server.matching_tools.length})
+              </p>
+              <ul className="space-y-2">
+                {server.matching_tools.map((tool) => (
+                  <li key={tool.tool_name} className="text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg">
+                    <span className="font-medium text-gray-900 dark:text-white">{tool.tool_name}</span>
+                    {tool.description && (
+                      <p className="text-gray-600 dark:text-gray-300 mt-1 text-xs">
+                        {tool.description}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Status */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+              Status
+            </p>
+            <div className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${
+                server.is_enabled
+                  ? 'bg-green-400 shadow-lg shadow-green-400/30'
+                  : 'bg-gray-300 dark:bg-gray-600'
+              }`} />
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                {server.is_enabled ? 'Enabled' : 'Disabled'}
+              </span>
+            </div>
+          </div>
+
+          {/* Relevance Score */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+              Match Score
+            </p>
+            <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200 px-3 py-1 text-xs font-semibold">
+              {Math.round(Math.min(server.relevance_score, 1) * 100)}% match
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+interface SkillContentModalProps {
+  skill: SemanticSkillHit;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const SkillContentModal: React.FC<SkillContentModalProps> = ({
+  skill,
+  isOpen,
+  onClose
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [content, setContent] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch content when modal opens
+  React.useEffect(() => {
+    if (!isOpen) {
+      setContent(null);
+      setError(null);
+      return;
+    }
+
+    const fetchContent = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // skill.path is like "/skills/doc-coauthoring", need just "/doc-coauthoring"
+        const apiPath = skill.path.startsWith('/skills/')
+          ? skill.path.replace('/skills/', '/')
+          : skill.path;
+        const response = await axios.get(`/api/skills${apiPath}/content`);
+        setContent(response.data.content);
+      } catch (err: any) {
+        console.error('Failed to fetch SKILL.md content:', err);
+        setError(err.response?.data?.detail || 'Failed to load SKILL.md content');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchContent();
+  }, [isOpen, skill.path]);
+
+  if (!isOpen) return null;
+
+  const handleCopy = () => {
+    if (content) {
+      navigator.clipboard.writeText(content);
+    }
+  };
+
+  const handleDownload = () => {
+    if (content) {
+      const blob = new Blob([content], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${skill.skill_name || 'skill'}.md`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const { frontmatter, body } = content ? parseYamlFrontmatter(content) : { frontmatter: null, body: '' };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              {skill.skill_name}
+            </h3>
+            <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200 border border-amber-200 dark:border-amber-600">
+              SKILL
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg transition-colors"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-4 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+          {skill.skill_md_url && (
+            <a
+              href={skill.skill_md_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-sm text-amber-700 dark:text-amber-300 hover:underline"
+            >
+              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+              View on GitHub
+            </a>
+          )}
+          {content && (
+            <>
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                title="Copy to clipboard"
+              >
+                <ClipboardIcon className="h-4 w-4" />
+                Copy
+              </button>
+              <button
+                onClick={handleDownload}
+                className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                title="Download SKILL.md"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4" />
+                Download
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="p-4 overflow-auto flex-1">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 text-gray-500">
+              <p className="text-red-500">{error}</p>
+              {skill.skill_md_url && (
+                <p className="mt-2 text-sm">
+                  Try visiting the{' '}
+                  <a
+                    href={skill.skill_md_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-amber-600 hover:underline"
+                  >
+                    source URL
+                  </a>{' '}
+                  directly.
+                </p>
+              )}
+            </div>
+          ) : content ? (
+            <>
+              {/* YAML Frontmatter Table */}
+              {frontmatter && (
+                <div className="mb-6 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {Object.entries(frontmatter).map(([key, value]) => (
+                        <tr key={key} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
+                          <td className="px-4 py-2 bg-gray-50 dark:bg-gray-900/50 font-medium text-gray-700 dark:text-gray-300 w-1/4">
+                            {key}
+                          </td>
+                          <td className="px-4 py-2 text-gray-900 dark:text-white">
+                            {value}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {/* Markdown Body */}
+              <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-amber-800 dark:prose-headings:text-amber-200 prose-a:text-amber-600 dark:prose-a:text-amber-400 prose-code:bg-gray-100 dark:prose-code:bg-gray-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-100 dark:prose-pre:bg-gray-900">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-12 text-gray-500">
+              <p>Could not load SKILL.md content.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 const formatPercent = (value: number) => `${Math.round(Math.min(value, 1) * 100)}%`;
 
 const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
@@ -77,10 +429,13 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
   error,
   servers,
   tools,
-  agents
+  agents,
+  skills
 }) => {
-  const hasResults = servers.length > 0 || tools.length > 0 || agents.length > 0;
+  const hasResults = servers.length > 0 || tools.length > 0 || agents.length > 0 || skills.length > 0;
   const [configServer, setConfigServer] = useState<SemanticServerHit | null>(null);
+  const [detailsServer, setDetailsServer] = useState<SemanticServerHit | null>(null);
+  const [detailsSkill, setDetailsSkill] = useState<SemanticSkillHit | null>(null);
   const [detailsAgent, setDetailsAgent] = useState<SemanticAgentHit | null>(null);
   const [agentDetailsData, setAgentDetailsData] = useState<any>(null);
   const [agentDetailsLoading, setAgentDetailsLoading] = useState(false);
@@ -224,6 +579,14 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
                     <p className="text-sm text-gray-500 dark:text-gray-300">{server.path}</p>
                   </div>
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDetailsServer(server)}
+                      className="p-2 text-gray-400 hover:text-purple-600 dark:hover:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-700/30 rounded-lg transition-colors"
+                      title="View server details"
+                    >
+                      <InformationCircleIcon className="h-4 w-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => setConfigServer(server)}
@@ -442,6 +805,85 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
           </div>
         </section>
       )}
+
+      {skills.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Matching Skills <span className="text-sm font-normal text-gray-500">({skills.length})</span>
+            </h4>
+          </div>
+          <div
+            className="grid"
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}
+          >
+            {skills.map((skill) => (
+              <div
+                key={skill.path}
+                className="rounded-2xl border-2 border-amber-200 dark:border-amber-700 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 p-5 shadow-sm hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-base font-semibold text-gray-900 dark:text-white">
+                        {skill.skill_name}
+                      </p>
+                      <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200 border border-amber-200 dark:border-amber-600">
+                        SKILL
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {skill.visibility || 'public'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDetailsSkill(skill)}
+                      className="p-2 text-gray-400 hover:text-amber-600 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-700/30 rounded-lg transition-colors"
+                      title="View SKILL.md content"
+                    >
+                      <InformationCircleIcon className="h-4 w-4" />
+                    </button>
+                    <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200 px-3 py-1 text-xs font-semibold">
+                      {formatPercent(skill.relevance_score)} match
+                    </span>
+                  </div>
+                </div>
+
+                <p className="mt-3 text-sm text-gray-600 dark:text-gray-300 line-clamp-3">
+                  {skill.description || skill.match_context || 'No description available.'}
+                </p>
+
+                {skill.tags && skill.tags.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {skill.tags.slice(0, 6).map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-2.5 py-1 text-[11px] rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-4 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                  <div className="flex items-center gap-2">
+                    {skill.author && (
+                      <span>by {skill.author}</span>
+                    )}
+                    {skill.version && (
+                      <span className="text-amber-600 dark:text-amber-400">v{skill.version}</span>
+                    )}
+                  </div>
+                  <span>{skill.is_enabled ? 'Enabled' : 'Disabled'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
 
     {configServer && (
@@ -478,6 +920,22 @@ const SemanticSearchResults: React.FC<SemanticSearchResultsProps> = ({
         schema={selectedToolSchema.schema}
         isOpen
         onClose={() => setSelectedToolSchema(null)}
+      />
+    )}
+
+    {detailsServer && (
+      <ServerDetailsModal
+        server={detailsServer}
+        isOpen
+        onClose={() => setDetailsServer(null)}
+      />
+    )}
+
+    {detailsSkill && (
+      <SkillContentModal
+        skill={detailsSkill}
+        isOpen
+        onClose={() => setDetailsSkill(null)}
       />
     )}
     </>

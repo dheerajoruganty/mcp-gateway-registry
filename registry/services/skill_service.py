@@ -595,6 +595,8 @@ class SkillService:
                 registry_name=s.registry_name,
                 owner=s.owner,
                 num_stars=s.num_stars,
+                health_status=s.health_status,
+                last_checked_time=s.last_checked_time,
             )
             for s in skills
         ]

@@ -97,6 +97,8 @@ class SkillSearchResult(BaseModel):
     visibility: str | None = None
     owner: str | None = None
     is_enabled: bool = False
+    health_status: Literal["healthy", "unhealthy", "unknown"] = "unknown"
+    last_checked_time: str | None = None
     relevance_score: float = Field(..., ge=0.0, le=1.0)
     match_context: str | None = None
 
@@ -380,6 +382,8 @@ async def semantic_search(
                 visibility=visibility,
                 owner=owner,
                 is_enabled=skill.get("is_enabled", False),
+                health_status=skill.get("health_status", "unknown"),
+                last_checked_time=skill.get("last_checked_time"),
                 relevance_score=skill.get("relevance_score", 0.0),
                 match_context=skill.get("match_context"),
             )

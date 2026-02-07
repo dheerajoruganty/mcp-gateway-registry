@@ -550,11 +550,18 @@ class DocumentDBSearchRepository(SearchRepositoryBase):
             "visibility": visibility_value,
             "allowed_groups": skill.allowed_groups or [],
             "owner": skill.owner,
+            "health_status": skill.health_status,
+            "last_checked_time": skill.last_checked_time.isoformat()
+            if skill.last_checked_time
+            else None,
             "text_for_embedding": text_for_embedding,
             "embedding": embedding,
             "embedding_metadata": embedding_config.get_embedding_metadata(),
             "metadata": {
                 "skill_md_url": str(skill.skill_md_url),
+                "skill_md_raw_url": str(skill.skill_md_raw_url)
+                if skill.skill_md_raw_url
+                else None,
                 "author": skill.metadata.author if skill.metadata else None,
                 "version": skill.metadata.version if skill.metadata else None,
                 "compatibility": skill.compatibility,

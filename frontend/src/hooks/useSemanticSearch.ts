@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 
-type EntityType = 'mcp_server' | 'tool' | 'a2a_agent';
+type EntityType = 'mcp_server' | 'tool' | 'a2a_agent' | 'skill';
 
-const DEFAULT_ENTITY_TYPES: EntityType[] = ['mcp_server', 'tool', 'a2a_agent'];
+const DEFAULT_ENTITY_TYPES: EntityType[] = ['mcp_server', 'tool', 'a2a_agent', 'skill'];
 const DEFAULT_ENTITY_TYPES_KEY = DEFAULT_ENTITY_TYPES.join('|');
 
 export interface MatchingToolHit {
@@ -62,14 +62,34 @@ export interface SemanticAgentHit {
   sync_metadata?: SyncMetadata;
 }
 
+export interface SemanticSkillHit {
+  path: string;
+  skill_name: string;
+  description?: string;
+  tags: string[];
+  skill_md_url?: string;
+  skill_md_raw_url?: string;
+  version?: string;
+  author?: string;
+  visibility?: string;
+  owner?: string;
+  is_enabled?: boolean;
+  health_status?: 'healthy' | 'unhealthy' | 'unknown';
+  last_checked_time?: string;
+  relevance_score: number;
+  match_context?: string;
+}
+
 export interface SemanticSearchResponse {
   query: string;
   servers: SemanticServerHit[];
   tools: SemanticToolHit[];
   agents: SemanticAgentHit[];
+  skills: SemanticSkillHit[];
   total_servers: number;
   total_tools: number;
   total_agents: number;
+  total_skills: number;
 }
 
 interface UseSemanticSearchOptions {
