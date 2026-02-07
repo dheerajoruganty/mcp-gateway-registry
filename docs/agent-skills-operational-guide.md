@@ -1,5 +1,11 @@
 # Agent Skills Operational Guide
 
+## Demo Video
+
+https://github.com/user-attachments/assets/5d1f227a-25f8-480d-9ff9-acba2498844b
+
+---
+
 This guide covers registering, managing, and using Agent Skills in MCP Gateway Registry.
 
 ## Overview

@@ -43,7 +43,10 @@ from ..schemas.skill_models import (
     ToolValidationResult,
     VisibilityEnum,
 )
-from ..services.skill_service import get_skill_service
+from ..services.skill_service import (
+    get_skill_service,
+    _is_safe_url,
+)
 from ..services.tool_validation_service import get_tool_validation_service
 from ..utils.path_utils import normalize_skill_path
 
@@ -184,6 +187,65 @@ async def parse_skill_md(
         )
 
 
+@router.get("/search", summary="Search skills")
+async def search_skills(
+    user_context: Annotated[dict, Depends(nginx_proxied_auth)],
+    q: str = Query(..., description="Search query"),
+    tags: str | None = Query(None, description="Comma-separated tags to filter by"),
+) -> dict:
+    """Search for skills by name, description, or tags.
+
+    Returns skills matching the query with basic relevance scoring.
+    """
+    service = get_skill_service()
+    skills = await service.list_skills_for_user(user_context)
+
+    query_lower = q.lower()
+    tag_list = [t.strip() for t in tags.split(",")] if tags else []
+
+    matching_skills = []
+    for skill in skills:
+        score = 0.0
+
+        # Match in name (highest priority)
+        if query_lower in skill.name.lower():
+            score += 0.5
+
+        # Match in description
+        if skill.description and query_lower in skill.description.lower():
+            score += 0.3
+
+        # Match in tags
+        skill_tags_lower = [t.lower() for t in (skill.tags or [])]
+        if any(query_lower in t for t in skill_tags_lower):
+            score += 0.2
+
+        # Filter by specified tags
+        if tag_list:
+            if not all(t.lower() in skill_tags_lower for t in tag_list):
+                continue
+
+        if score > 0:
+            matching_skills.append({
+                "path": skill.path,
+                "name": skill.name,
+                "description": skill.description,
+                "tags": skill.tags,
+                "visibility": skill.visibility,
+                "is_enabled": skill.is_enabled,
+                "relevance_score": score,
+            })
+
+    # Sort by relevance score descending
+    matching_skills.sort(key=lambda x: x["relevance_score"], reverse=True)
+
+    return {
+        "query": q,
+        "skills": matching_skills,
+        "total_count": len(matching_skills),
+    }
+
+
 @router.get("/{skill_path:path}/health", summary="Check skill health")
 async def check_skill_health(
     user_context: Annotated[dict, Depends(nginx_proxied_auth)],
@@ -237,11 +299,29 @@ async def get_skill_content(
             detail="No SKILL.md URL configured for this skill",
         )
 
+    # SSRF protection: validate URL before making request
+    if not _is_safe_url(str(raw_url)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL failed SSRF validation - private/internal addresses are not allowed",
+        )
+
     try:
         import httpx
 
         async with httpx.AsyncClient() as client:
             response = await client.get(str(raw_url), follow_redirects=True, timeout=30.0)
+
+            # SSRF protection: validate final URL after redirects
+            final_url = str(response.url)
+            if final_url != str(raw_url) and not _is_safe_url(final_url):
+                logger.warning(
+                    f"SSRF protection: Blocked redirect from {raw_url} to unsafe URL {final_url}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Redirect to unsafe URL blocked: {final_url}",
+                )
 
             if response.status_code >= 400:
                 raise HTTPException(
@@ -282,6 +362,36 @@ async def get_skill_tools(
 
     tool_service = get_tool_validation_service()
     return await tool_service.validate_tools_available(skill)
+
+
+@router.get("/{skill_path:path}/rating", response_model=dict, summary="Get skill rating")
+async def get_skill_rating(
+    user_context: Annotated[dict, Depends(nginx_proxied_auth)],
+    skill_path: str = Path(..., description="Skill path or name"),
+) -> dict:
+    """Get rating information for a skill.
+
+    Returns the average rating and list of individual ratings.
+    """
+    normalized_path = normalize_skill_path(skill_path)
+    service = get_skill_service()
+
+    # Check skill exists and user has access
+    skill = await service.get_skill(normalized_path)
+    if not skill:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Skill not found: {normalized_path}"
+        )
+
+    if not _user_can_access_skill(skill, user_context):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this skill"
+        )
+
+    return {
+        "num_stars": skill.num_stars,
+        "rating_details": skill.rating_details,
+    }
 
 
 @router.get("/{skill_path:path}", response_model=SkillCard, summary="Get a skill by path")
@@ -525,36 +635,6 @@ async def rate_skill(
     return {
         "message": "Rating added successfully",
         "average_rating": avg_rating,
-    }
-
-
-@router.get("/{skill_path:path}/rating", response_model=dict, summary="Get skill rating")
-async def get_skill_rating(
-    user_context: Annotated[dict, Depends(nginx_proxied_auth)],
-    skill_path: str = Path(..., description="Skill path or name"),
-) -> dict:
-    """Get rating information for a skill.
-
-    Returns the average rating and list of individual ratings.
-    """
-    normalized_path = normalize_skill_path(skill_path)
-    service = get_skill_service()
-
-    # Check skill exists and user has access
-    skill = await service.get_skill(normalized_path)
-    if not skill:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Skill not found: {normalized_path}"
-        )
-
-    if not _user_can_access_skill(skill, user_context):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this skill"
-        )
-
-    return {
-        "num_stars": skill.num_stars,
-        "rating_details": skill.rating_details,
     }
 
 

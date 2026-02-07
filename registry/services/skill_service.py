@@ -187,6 +187,16 @@ async def _validate_skill_md_url(
                 str(url), follow_redirects=True, timeout=URL_VALIDATION_TIMEOUT
             )
 
+            # SSRF protection: validate final URL after redirects
+            final_url = str(response.url)
+            if final_url != str(url) and not _is_safe_url(final_url):
+                logger.warning(
+                    f"SSRF protection: Blocked redirect from {url} to unsafe URL {final_url}"
+                )
+                raise SkillUrlValidationError(
+                    url, f"Redirect to unsafe URL blocked: {final_url}"
+                )
+
             if response.status_code >= 400:
                 raise SkillUrlValidationError(url, f"HTTP {response.status_code}")
 
@@ -244,6 +254,16 @@ async def _parse_skill_md_content(
             response = await client.get(
                 str(raw_url), follow_redirects=True, timeout=URL_VALIDATION_TIMEOUT
             )
+
+            # SSRF protection: validate final URL after redirects
+            final_url = str(response.url)
+            if final_url != str(raw_url) and not _is_safe_url(final_url):
+                logger.warning(
+                    f"SSRF protection: Blocked redirect from {raw_url} to unsafe URL {final_url}"
+                )
+                raise SkillUrlValidationError(
+                    url, f"Redirect to unsafe URL blocked: {final_url}"
+                )
 
             if response.status_code >= 400:
                 raise SkillUrlValidationError(url, f"HTTP {response.status_code}")
@@ -372,6 +392,20 @@ async def _check_skill_health(
             response = await client.head(
                 str(url), follow_redirects=True, timeout=URL_VALIDATION_TIMEOUT
             )
+
+            # SSRF protection: validate final URL after redirects
+            final_url = str(response.url)
+            if final_url != str(url) and not _is_safe_url(final_url):
+                logger.warning(
+                    f"SSRF protection: Blocked redirect from {url} to unsafe URL {final_url}"
+                )
+                response_time_ms = (time.perf_counter() - start_time) * 1000
+                return {
+                    "healthy": False,
+                    "status_code": None,
+                    "error": f"Redirect to unsafe URL blocked: {final_url}",
+                    "response_time_ms": round(response_time_ms, 2),
+                }
 
             response_time_ms = (time.perf_counter() - start_time) * 1000
 
