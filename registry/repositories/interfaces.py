@@ -839,8 +839,20 @@ class SkillRepositoryBase(ABC):
         pass
 
     @abstractmethod
-    async def list_all(self) -> List[SkillCard]:
-        """List all skills."""
+    async def list_all(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[SkillCard]:
+        """List all skills with pagination.
+
+        Args:
+            skip: Number of records to skip (offset)
+            limit: Maximum number of records to return
+
+        Returns:
+            List of SkillCard objects
+        """
         pass
 
     @abstractmethod

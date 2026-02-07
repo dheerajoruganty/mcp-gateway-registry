@@ -121,12 +121,24 @@ class DocumentDBSkillRepository(SkillRepositoryBase):
         return None
 
 
-    async def list_all(self) -> List[SkillCard]:
-        """List all skills."""
+    async def list_all(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[SkillCard]:
+        """List all skills with pagination.
+
+        Args:
+            skip: Number of records to skip (offset)
+            limit: Maximum number of records to return
+
+        Returns:
+            List of SkillCard objects
+        """
         await self.ensure_indexes()
         collection = await self._get_collection()
         skills = []
-        cursor = collection.find({})
+        cursor = collection.find({}).skip(skip).limit(limit)
         async for doc in cursor:
             try:
                 skills.append(_document_to_skill(doc))

@@ -1,33 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { Skill } from '../types/skill';
 
-export interface Skill {
-  name: string;
-  path: string;
-  description?: string;
-  skill_md_url: string;
-  version?: string;
-  author?: string;
-  visibility: 'public' | 'private' | 'group';
-  is_enabled: boolean;
-  tags?: string[];
-  owner?: string;
-  registry_name?: string;
-  target_agents?: string[];
-  allowed_tools?: Array<{
-    tool_name: string;
-    server_path?: string;
-    capabilities?: string[];
-  }>;
-  requirements?: Array<{
-    type: string;
-    target: string;
-    min_version?: string;
-    required?: boolean;
-  }>;
-  created_at?: string;
-  updated_at?: string;
-}
+export type { Skill } from '../types/skill';
 
 interface UseSkillsReturn {
   skills: Skill[];

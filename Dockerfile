@@ -29,6 +29,9 @@ COPY . /app/
 COPY docker/nginx_rev_proxy_http_only.conf /app/docker/nginx_rev_proxy_http_only.conf
 COPY docker/nginx_rev_proxy_http_and_https.conf /app/docker/nginx_rev_proxy_http_and_https.conf
 
+# Copy custom error pages for nginx
+COPY docker/502.html /usr/share/nginx/html/502.html
+
 # Make the entrypoint script executable
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 RUN chmod +x /app/docker/entrypoint.sh

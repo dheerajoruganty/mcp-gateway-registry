@@ -4,6 +4,7 @@ Service for validating tool availability for skills.
 Links allowed_tools to MCP servers in the registry.
 """
 import logging
+import time
 from typing import (
     List,
     Optional,
@@ -55,7 +56,21 @@ class ToolValidationService:
         Returns:
             ToolValidationResult with availability status
         """
+        start_time = time.perf_counter()
+        skill_path = skill.path if skill.path else "unknown"
+        required_tool_count = len(skill.allowed_tools) if skill.allowed_tools else 0
+
+        logger.info(
+            f"Starting tool validation for skill '{skill_path}' "
+            f"with {required_tool_count} required tools"
+        )
+
         if not skill.allowed_tools:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                f"Tool validation completed for skill '{skill_path}': "
+                f"all_available=True, found=0, missing=0, duration={elapsed_ms:.2f}ms"
+            )
             return ToolValidationResult(
                 all_available=True,
                 missing_tools=[],
@@ -67,6 +82,8 @@ class ToolValidationService:
         server_repo = self._get_server_repo()
         servers_dict = await server_repo.list_all()
 
+        logger.debug(f"Retrieved {len(servers_dict)} servers from repository")
+
         # Build index of available tools
         available_tools: Set[str] = set()
         server_tool_map: dict = {}
@@ -76,16 +93,25 @@ class ToolValidationService:
             if enabled_only:
                 is_enabled = await server_repo.get_state(server_path)
                 if not is_enabled:
+                    logger.debug(f"Skipping disabled server: {server_path}")
                     continue
 
             tool_list = server_info.get("tool_list", [])
+            tool_names_in_server = []
+
             for tool in tool_list:
                 tool_name = tool.get("name", "")
                 if tool_name:
                     available_tools.add(tool_name)
+                    tool_names_in_server.append(tool_name)
                     if tool_name not in server_tool_map:
                         server_tool_map[tool_name] = []
                     server_tool_map[tool_name].append(server_path)
+
+            logger.debug(
+                f"Server '{server_path}' provides {len(tool_names_in_server)} tools: "
+                f"{tool_names_in_server}"
+            )
 
         # Check each required tool
         missing: List[str] = []
@@ -98,11 +124,28 @@ class ToolValidationService:
             if tool_name in available_tools:
                 found.append(tool_name)
                 required_servers.update(server_tool_map.get(tool_name, []))
+                logger.debug(f"Tool '{tool_name}' is available")
             else:
                 missing.append(tool_name)
+                logger.debug(f"Tool '{tool_name}' is NOT available")
+
+        # Log warnings for missing tools
+        if missing:
+            logger.warning(
+                f"Skill '{skill_path}' has {len(missing)} missing tools: {missing}"
+            )
+
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        all_available = len(missing) == 0
+
+        logger.info(
+            f"Tool validation completed for skill '{skill_path}': "
+            f"all_available={all_available}, found={len(found)}, "
+            f"missing={len(missing)}, duration={elapsed_ms:.2f}ms"
+        )
 
         return ToolValidationResult(
-            all_available=len(missing) == 0,
+            all_available=all_available,
             missing_tools=missing,
             available_tools=found,
             mcp_servers_required=list(required_servers)
@@ -121,8 +164,15 @@ class ToolValidationService:
         Returns:
             List of dicts with tool info and server paths
         """
+        start_time = time.perf_counter()
+        tool_count = len(tool_refs)
+
+        logger.info(f"Looking up servers for {tool_count} tool references")
+
         server_repo = self._get_server_repo()
         servers_dict = await server_repo.list_all()
+
+        logger.debug(f"Retrieved {len(servers_dict)} servers from repository")
 
         result = []
         for tool_ref in tool_refs:
@@ -143,9 +193,26 @@ class ToolValidationService:
                             "name": server_info.get("server_name", ""),
                             "is_enabled": is_enabled
                         })
+                        logger.debug(
+                            f"Tool '{tool_ref.tool_name}' found on server "
+                            f"'{server_path}' (enabled={is_enabled})"
+                        )
                         break
 
+            if not tool_info["servers"]:
+                logger.warning(
+                    f"Tool '{tool_ref.tool_name}' not found on any server"
+                )
+
             result.append(tool_info)
+
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        tools_with_servers = sum(1 for t in result if t["servers"])
+
+        logger.info(
+            f"Server lookup completed: {tools_with_servers}/{tool_count} tools "
+            f"have servers, duration={elapsed_ms:.2f}ms"
+        )
 
         return result
 

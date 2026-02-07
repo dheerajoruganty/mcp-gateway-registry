@@ -1,8 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   SparklesIcon,
   PencilIcon,
+  TrashIcon,
   GlobeAltIcon,
   LockClosedIcon,
   UserGroupIcon,
@@ -11,36 +14,13 @@ import {
   WrenchScrewdriverIcon,
   CheckCircleIcon,
   XCircleIcon,
+  ArrowPathIcon,
+  ClockIcon,
+  ClipboardIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
-
-/**
- * Skill interface representing an Agent Skill.
- */
-export interface Skill {
-  name: string;
-  path: string;
-  description?: string;
-  skill_md_url: string;
-  version?: string;
-  author?: string;
-  visibility: 'public' | 'private' | 'group';
-  is_enabled: boolean;
-  tags?: string[];
-  owner?: string;
-  registry_name?: string;
-  target_agents?: string[];
-  allowed_tools?: Array<{
-    tool_name: string;
-    server_path?: string;
-    capabilities?: string[];
-  }>;
-  requirements?: Array<{
-    type: string;
-    target: string;
-    min_version?: string;
-    required?: boolean;
-  }>;
-}
+import { Skill } from '../types/skill';
+import StarRatingWidget from './StarRatingWidget';
 
 /**
  * Props for the SkillCard component.
@@ -49,13 +29,81 @@ interface SkillCardProps {
   skill: Skill & { [key: string]: any };
   onToggle: (path: string, enabled: boolean) => void;
   onEdit?: (skill: Skill) => void;
+  onDelete?: (path: string) => void;
   canModify?: boolean;
   canToggle?: boolean;
+  canHealthCheck?: boolean;
   onRefreshSuccess?: () => void;
   onShowToast?: (message: string, type: 'success' | 'error') => void;
   onSkillUpdate?: (path: string, updates: Partial<Skill>) => void;
   authToken?: string | null;
 }
+
+// Helper function to parse YAML frontmatter from markdown
+const parseYamlFrontmatter = (content: string): { frontmatter: Record<string, string> | null; body: string } => {
+  // Check if content starts with --- (YAML frontmatter delimiter)
+  const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/;
+  const match = content.match(frontmatterRegex);
+
+  if (match) {
+    const yamlContent = match[1];
+    const body = match[2];
+
+    // Simple YAML parsing for key: value pairs
+    const frontmatter: Record<string, string> = {};
+    const lines = yamlContent.split('\n');
+    for (const line of lines) {
+      const colonIndex = line.indexOf(':');
+      if (colonIndex > 0) {
+        const key = line.substring(0, colonIndex).trim();
+        const value = line.substring(colonIndex + 1).trim();
+        if (key && value) {
+          frontmatter[key] = value;
+        }
+      }
+    }
+
+    return { frontmatter: Object.keys(frontmatter).length > 0 ? frontmatter : null, body };
+  }
+
+  return { frontmatter: null, body: content };
+};
+
+
+// Helper function to format time since last checked
+const formatTimeSince = (timestamp: string | null | undefined): string | null => {
+  if (!timestamp) {
+    return null;
+  }
+
+  try {
+    const now = new Date();
+    const lastChecked = new Date(timestamp);
+
+    if (isNaN(lastChecked.getTime())) {
+      return null;
+    }
+
+    const diffMs = now.getTime() - lastChecked.getTime();
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) {
+      return `${diffDays}d ago`;
+    } else if (diffHours > 0) {
+      return `${diffHours}h ago`;
+    } else if (diffMinutes > 0) {
+      return `${diffMinutes}m ago`;
+    } else {
+      return `${diffSeconds}s ago`;
+    }
+  } catch (error) {
+    console.error('formatTimeSince error:', error, 'for timestamp:', timestamp);
+    return null;
+  }
+};
 
 /**
  * SkillCard component for displaying Agent Skills.
@@ -66,18 +114,43 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
   skill,
   onToggle,
   onEdit,
+  onDelete,
   canModify,
   canToggle = true,
-  onRefreshSuccess,
+  canHealthCheck = true,
   onShowToast,
   onSkillUpdate,
   authToken
 }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
-  const [fullSkillDetails, setFullSkillDetails] = useState<any>(null);
+  const [skillMdContent, setSkillMdContent] = useState<string | null>(null);
   const [loadingToolCheck, setLoadingToolCheck] = useState(false);
   const [toolCheckResult, setToolCheckResult] = useState<any>(null);
+  const [loadingHealthCheck, setLoadingHealthCheck] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<'healthy' | 'unhealthy' | 'unknown'>(
+    skill.health_status || 'unknown'
+  );
+  const [lastCheckedTime, setLastCheckedTime] = useState<string | null>(
+    skill.last_checked_time || null
+  );
+
+  // Sync health status from props when skill changes
+  useEffect(() => {
+    setHealthStatus(skill.health_status || 'unknown');
+    setLastCheckedTime(skill.last_checked_time || null);
+  }, [skill.health_status, skill.last_checked_time]);
+
+  // Extract skill name from path for API calls
+  // skill.path is like "/skills/doc-coauthoring", API routes already have /skills prefix
+  // so we need just "/doc-coauthoring" for the path parameter
+  const getSkillApiPath = (path: string) => {
+    if (path.startsWith('/skills/')) {
+      return path.replace('/skills/', '/');
+    }
+    return path;
+  };
+  const skillApiPath = getSkillApiPath(skill.path);
 
   const getVisibilityIcon = () => {
     switch (skill.visibility) {
@@ -104,22 +177,28 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
   const handleViewDetails = useCallback(async () => {
     setShowDetails(true);
     setLoadingDetails(true);
+    setSkillMdContent(null);
+
     try {
+      // Fetch SKILL.md content via backend proxy to avoid CORS issues
       const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
       const response = await axios.get(
-        `/api/skills${skill.path}`,
+        `/api/skills${skillApiPath}/content`,
         headers ? { headers } : undefined
       );
-      setFullSkillDetails(response.data);
-    } catch (error) {
-      console.error('Failed to fetch skill details:', error);
+      setSkillMdContent(response.data.content);
+    } catch (error: any) {
+      console.error('Failed to fetch SKILL.md content:', error);
       if (onShowToast) {
-        onShowToast('Failed to load skill details', 'error');
+        onShowToast(
+          error.response?.data?.detail || 'Failed to load SKILL.md content',
+          'error'
+        );
       }
     } finally {
       setLoadingDetails(false);
     }
-  }, [skill.path, authToken, onShowToast]);
+  }, [skillApiPath, authToken, onShowToast]);
 
   const handleCheckTools = useCallback(async () => {
     if (loadingToolCheck) return;
@@ -128,7 +207,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
     try {
       const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
       const response = await axios.get(
-        `/api/skills${skill.path}/tools`,
+        `/api/skills${skillApiPath}/tools`,
         headers ? { headers } : undefined
       );
       setToolCheckResult(response.data);
@@ -150,18 +229,47 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
     }
   }, [skill.path, authToken, loadingToolCheck, onShowToast]);
 
-  const handleCopyDetails = useCallback(
-    async (data: any) => {
-      try {
-        await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
-        onShowToast?.('Skill JSON copied to clipboard!', 'success');
-      } catch (error) {
-        console.error('Failed to copy JSON:', error);
-        onShowToast?.('Failed to copy JSON', 'error');
+  const handleRefreshHealth = useCallback(async () => {
+    if (loadingHealthCheck) return;
+
+    setLoadingHealthCheck(true);
+    try {
+      const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+      const response = await axios.get(
+        `/api/skills${skillApiPath}/health`,
+        headers ? { headers } : undefined
+      );
+
+      const newStatus = response.data.healthy ? 'healthy' : 'unhealthy';
+      setHealthStatus(newStatus);
+      setLastCheckedTime(new Date().toISOString());
+
+      // Update parent if callback provided
+      if (onSkillUpdate) {
+        onSkillUpdate(skill.path, {
+          health_status: newStatus,
+          last_checked_time: new Date().toISOString()
+        } as any);
       }
-    },
-    [onShowToast]
-  );
+
+      if (onShowToast) {
+        onShowToast(
+          response.data.healthy
+            ? 'SKILL.md is accessible'
+            : `SKILL.md check failed: ${response.data.error || 'Unknown error'}`,
+          response.data.healthy ? 'success' : 'error'
+        );
+      }
+    } catch (error: any) {
+      console.error('Failed to check skill health:', error);
+      setHealthStatus('unhealthy');
+      if (onShowToast) {
+        onShowToast('Failed to check skill health', 'error');
+      }
+    } finally {
+      setLoadingHealthCheck(false);
+    }
+  }, [skill.path, authToken, loadingHealthCheck, onShowToast, onSkillUpdate]);
 
   return (
     <>
@@ -200,13 +308,22 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
 
             <div className="flex items-center gap-1">
               {canModify && (
-                <button
-                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-all duration-200 flex-shrink-0"
-                  onClick={() => onEdit?.(skill)}
-                  title="Edit skill"
-                >
-                  <PencilIcon className="h-4 w-4" />
-                </button>
+                <>
+                  <button
+                    className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-all duration-200 flex-shrink-0"
+                    onClick={() => onEdit?.(skill)}
+                    title="Edit skill"
+                  >
+                    <PencilIcon className="h-4 w-4" />
+                  </button>
+                  <button
+                    className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all duration-200 flex-shrink-0"
+                    onClick={() => onDelete?.(skillApiPath)}
+                    title="Delete skill"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </>
               )}
 
               {/* Tool Check Button */}
@@ -231,7 +348,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
               <button
                 onClick={handleViewDetails}
                 className="p-2 text-gray-400 hover:text-amber-600 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-700/50 rounded-lg transition-all duration-200 flex-shrink-0"
-                title="View skill details (JSON)"
+                title="View SKILL.md content"
               >
                 <InformationCircleIcon className="h-4 w-4" />
               </button>
@@ -305,6 +422,15 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
               </div>
             </div>
 
+            {/* Rating Widget */}
+            <StarRatingWidget
+              resourceType="skills"
+              path={skillApiPath}
+              initialRating={skill.num_stars || 0}
+              authToken={authToken}
+              onShowToast={onShowToast}
+            />
+
             {/* SKILL.md Link */}
             {skill.skill_md_url && (
               <a
@@ -335,31 +461,75 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
                   {skill.is_enabled ? 'Enabled' : 'Disabled'}
                 </span>
               </div>
+
+              <div className="w-px h-4 bg-amber-200 dark:bg-amber-600" />
+
+              {/* Health Status */}
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${
+                  healthStatus === 'healthy'
+                    ? 'bg-emerald-400 shadow-lg shadow-emerald-400/30'
+                    : healthStatus === 'unhealthy'
+                    ? 'bg-red-400 shadow-lg shadow-red-400/30'
+                    : 'bg-amber-400 shadow-lg shadow-amber-400/30'
+                }`} />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {healthStatus === 'healthy' ? 'Healthy' :
+                   healthStatus === 'unhealthy' ? 'Unhealthy' : 'Unknown'}
+                </span>
+              </div>
             </div>
 
-            {/* Toggle Switch */}
-            {canToggle && (
-              <label className="relative inline-flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={skill.is_enabled}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    onToggle(skill.path, e.target.checked);
-                  }}
-                  className="sr-only peer"
-                />
-                <div className={`relative w-12 h-6 rounded-full transition-colors duration-200 ease-in-out ${
-                  skill.is_enabled
-                    ? 'bg-amber-600'
-                    : 'bg-gray-300 dark:bg-gray-600'
-                }`}>
-                  <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform duration-200 ease-in-out ${
-                    skill.is_enabled ? 'translate-x-6' : 'translate-x-0'
-                  }`} />
-                </div>
-              </label>
-            )}
+            {/* Controls */}
+            <div className="flex items-center gap-3">
+              {/* Last Checked */}
+              {(() => {
+                const timeText = formatTimeSince(lastCheckedTime);
+                return lastCheckedTime && timeText ? (
+                  <div className="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5">
+                    <ClockIcon className="h-3.5 w-3.5" />
+                    <span>{timeText}</span>
+                  </div>
+                ) : null;
+              })()}
+
+              {/* Refresh Health Button */}
+              {canHealthCheck && (
+                <button
+                  onClick={handleRefreshHealth}
+                  disabled={loadingHealthCheck}
+                  className="p-2.5 text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all duration-200 disabled:opacity-50"
+                  title="Check SKILL.md accessibility"
+                  aria-label={`Check health for ${skill.name}`}
+                >
+                  <ArrowPathIcon className={`h-4 w-4 ${loadingHealthCheck ? 'animate-spin' : ''}`} />
+                </button>
+              )}
+
+              {/* Toggle Switch */}
+              {canToggle && (
+                <label className="relative inline-flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={skill.is_enabled}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      onToggle(skillApiPath, e.target.checked);
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className={`relative w-12 h-6 rounded-full transition-colors duration-200 ease-in-out ${
+                    skill.is_enabled
+                      ? 'bg-amber-600'
+                      : 'bg-gray-300 dark:bg-gray-600'
+                  }`}>
+                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform duration-200 ease-in-out ${
+                      skill.is_enabled ? 'translate-x-6' : 'translate-x-0'
+                    }`} />
+                  </div>
+                </label>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -367,10 +537,10 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
       {/* Skill Details Modal */}
       {showDetails && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Skill Details: {skill.name}
+                {skill.name}
               </h3>
               <button
                 onClick={() => setShowDetails(false)}
@@ -382,25 +552,106 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
               </button>
             </div>
 
+            {/* Action buttons */}
+            <div className="flex items-center gap-4 mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+              {skill.skill_md_url && (
+                <a
+                  href={skill.skill_md_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-sm text-amber-700 dark:text-amber-300 hover:underline"
+                >
+                  <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+                  View on GitHub
+                </a>
+              )}
+              {skillMdContent && (
+                <>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(skillMdContent);
+                      if (onShowToast) {
+                        onShowToast('SKILL.md copied to clipboard', 'success');
+                      }
+                    }}
+                    className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    <ClipboardIcon className="h-4 w-4" />
+                    Copy
+                  </button>
+                  <button
+                    onClick={() => {
+                      const blob = new Blob([skillMdContent], { type: 'text/markdown' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `${skill.name || 'skill'}.md`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                    title="Download SKILL.md"
+                  >
+                    <ArrowDownTrayIcon className="h-4 w-4" />
+                    Download
+                  </button>
+                </>
+              )}
+            </div>
+
             {loadingDetails ? (
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
               </div>
-            ) : fullSkillDetails ? (
-              <div className="space-y-4">
-                <pre className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg overflow-x-auto text-xs font-mono text-gray-800 dark:text-gray-200">
-                  {JSON.stringify(fullSkillDetails, null, 2)}
-                </pre>
-                <button
-                  onClick={() => handleCopyDetails(fullSkillDetails)}
-                  className="w-full px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors"
-                >
-                  Copy JSON
-                </button>
-              </div>
+            ) : skillMdContent ? (
+              (() => {
+                const { frontmatter, body } = parseYamlFrontmatter(skillMdContent);
+                return (
+                  <>
+                    {/* YAML Frontmatter Table */}
+                    {frontmatter && (
+                      <div className="mb-6 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                        <table className="w-full text-sm">
+                          <tbody>
+                            {Object.entries(frontmatter).map(([key, value]) => (
+                              <tr key={key} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
+                                <td className="px-4 py-2 bg-gray-50 dark:bg-gray-900/50 font-medium text-gray-700 dark:text-gray-300 w-1/4">
+                                  {key}
+                                </td>
+                                <td className="px-4 py-2 text-gray-900 dark:text-white">
+                                  {value}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {/* Markdown Body */}
+                    <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-amber-800 dark:prose-headings:text-amber-200 prose-a:text-amber-600 dark:prose-a:text-amber-400 prose-code:bg-gray-100 dark:prose-code:bg-gray-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-100 dark:prose-pre:bg-gray-900">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
+                    </div>
+                  </>
+                );
+              })()
             ) : (
               <div className="text-center py-12 text-gray-500">
-                No details available
+                <p>Could not load SKILL.md content.</p>
+                <p className="mt-2 text-sm">
+                  Try visiting the{' '}
+                  <a
+                    href={skill.skill_md_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-amber-600 hover:underline"
+                  >
+                    source URL
+                  </a>{' '}
+                  directly.
+                </p>
               </div>
             )}
           </div>

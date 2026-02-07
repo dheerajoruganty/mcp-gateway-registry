@@ -1,0 +1,50 @@
+/**
+ * Shared Skill type definitions for the MCP Gateway Registry frontend.
+ */
+
+/**
+ * Represents a tool allowed by a skill.
+ */
+export interface AllowedTool {
+  tool_name: string;
+  server_path?: string;
+  capabilities?: string[];
+}
+
+
+/**
+ * Represents a requirement for a skill.
+ */
+export interface SkillRequirement {
+  type: string;
+  target: string;
+  min_version?: string;
+  required?: boolean;
+}
+
+
+/**
+ * Skill interface representing an Agent Skill.
+ */
+export interface Skill {
+  name: string;
+  path: string;
+  description?: string;
+  skill_md_url: string;
+  skill_md_raw_url?: string;
+  version?: string;
+  author?: string;
+  visibility: 'public' | 'private' | 'group';
+  is_enabled: boolean;
+  tags?: string[];
+  owner?: string;
+  registry_name?: string;
+  target_agents?: string[];
+  allowed_tools?: AllowedTool[];
+  requirements?: SkillRequirement[];
+  num_stars?: number;
+  health_status?: 'healthy' | 'unhealthy' | 'unknown';
+  last_checked_time?: string;
+  created_at?: string;
+  updated_at?: string;
+}
