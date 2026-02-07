@@ -242,8 +242,18 @@ async def _parse_skill_md_content(
     # Translate URL to get both user-provided and raw URL
     user_url, raw_url = translate_skill_url(url)
 
+    # Normalize to string for further validation
+    raw_url_str = str(raw_url)
+
+    # Basic scheme/hostname validation before SSRF/IP checks
+    parsed_raw = urlparse(raw_url_str)
+    if parsed_raw.scheme not in {"http", "https"} or not parsed_raw.hostname:
+        raise SkillUrlValidationError(
+            url, "URL must use http/https scheme and include a hostname"
+        )
+
     # SSRF protection - check the raw URL we'll actually fetch
-    if not _is_safe_url(raw_url):
+    if not _is_safe_url(raw_url_str):
         raise SkillUrlValidationError(
             url, "URL failed SSRF validation - private/internal addresses are not allowed"
         )
@@ -252,7 +262,7 @@ async def _parse_skill_md_content(
         async with httpx.AsyncClient() as client:
             # Fetch from raw URL
             response = await client.get(
-                str(raw_url), follow_redirects=True, timeout=URL_VALIDATION_TIMEOUT
+                raw_url_str, follow_redirects=True, timeout=URL_VALIDATION_TIMEOUT
             )
 
             # SSRF protection: validate final URL after redirects
