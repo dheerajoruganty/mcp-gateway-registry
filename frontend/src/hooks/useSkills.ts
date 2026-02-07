@@ -36,6 +36,7 @@ export const useSkills = (): UseSkillsReturn => {
         path: skillInfo.path,
         description: skillInfo.description || '',
         skill_md_url: skillInfo.skill_md_url || '',
+        skill_md_raw_url: skillInfo.skill_md_raw_url || '',
         version: skillInfo.version,
         author: skillInfo.author,
         visibility: skillInfo.visibility || 'public',
@@ -46,6 +47,9 @@ export const useSkills = (): UseSkillsReturn => {
         target_agents: skillInfo.target_agents || [],
         allowed_tools: skillInfo.allowed_tools || [],
         requirements: skillInfo.requirements || [],
+        num_stars: skillInfo.num_stars || 0,
+        health_status: skillInfo.health_status || 'unknown',
+        last_checked_time: skillInfo.last_checked_time,
         created_at: skillInfo.created_at,
         updated_at: skillInfo.updated_at,
       }));
