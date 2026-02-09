@@ -36,8 +36,8 @@ from registry.audit.routes import router as audit_router
 
 # Import auth dependencies
 from registry.auth.dependencies import (
-    enhanced_auth,
     get_ui_permissions_for_user,
+    nginx_proxied_auth,
 )
 
 # Import services for initialization
@@ -445,7 +445,7 @@ app.openapi = custom_openapi
 
 # Add user info endpoint for React auth context
 @app.get("/api/auth/me")
-async def get_current_user(user_context: Dict[str, Any] = Depends(enhanced_auth)):
+async def get_current_user(user_context: Dict[str, Any] = Depends(nginx_proxied_auth)):
     """Get current user information for React auth context"""
     # Get user's scopes
     user_scopes = user_context.get("scopes", [])
