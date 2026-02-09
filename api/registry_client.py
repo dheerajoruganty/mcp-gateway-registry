@@ -760,6 +760,89 @@ class GroupDeleteResponse(BaseModel):
     deleted: bool = Field(True, description="Deletion status")
 
 
+# ==========================================
+# Agent Skills Models
+# ==========================================
+
+
+class SkillRegistrationRequest(BaseModel):
+    """Request model for registering a skill."""
+
+    name: str = Field(..., description="Skill name (lowercase alphanumeric with hyphens)")
+    skill_md_url: str = Field(..., description="URL to SKILL.md file")
+    description: Optional[str] = Field(None, description="Skill description")
+    tags: List[str] = Field(default_factory=list, description="Tags for categorization")
+    visibility: str = Field(default="public", description="Visibility: public, private, group")
+    allowed_groups: List[str] = Field(default_factory=list, description="Groups for group visibility")
+
+
+class SkillCard(BaseModel):
+    """Response model for a skill."""
+
+    name: str = Field(..., description="Skill name")
+    path: str = Field(..., description="Skill path (e.g., /skills/pdf-processing)")
+    description: Optional[str] = Field(None, description="Skill description")
+    skill_md_url: str = Field(..., description="URL to SKILL.md file")
+    skill_md_raw_url: Optional[str] = Field(None, description="Raw content URL")
+    version: Optional[str] = Field(None, description="Skill version")
+    author: Optional[str] = Field(None, description="Skill author")
+    visibility: str = Field(default="public", description="Visibility level")
+    is_enabled: bool = Field(default=True, description="Whether skill is enabled")
+    tags: List[str] = Field(default_factory=list, description="Tags")
+    owner: Optional[str] = Field(None, description="Skill owner")
+    registry_name: Optional[str] = Field(None, description="Source registry")
+    num_stars: float = Field(default=0, description="Average rating")
+    health_status: str = Field(default="unknown", description="Health status")
+    created_at: Optional[str] = Field(None, description="Creation timestamp")
+    updated_at: Optional[str] = Field(None, description="Last update timestamp")
+
+
+class SkillListResponse(BaseModel):
+    """Response model for listing skills."""
+
+    skills: List[SkillCard] = Field(default_factory=list, description="List of skills")
+    total_count: int = Field(0, description="Total number of skills")
+
+
+class SkillHealthResponse(BaseModel):
+    """Response model for skill health check."""
+
+    path: str = Field(..., description="Skill path")
+    healthy: bool = Field(..., description="Whether SKILL.md is accessible")
+    status_code: Optional[int] = Field(None, description="HTTP status code")
+    error: Optional[str] = Field(None, description="Error message if unhealthy")
+    response_time_ms: Optional[float] = Field(None, description="Response time in ms")
+
+
+class SkillContentResponse(BaseModel):
+    """Response model for skill content."""
+
+    content: str = Field(..., description="SKILL.md content")
+    url: str = Field(..., description="URL content was fetched from")
+
+
+class SkillSearchResponse(BaseModel):
+    """Response model for skill search."""
+
+    query: str = Field(..., description="Search query")
+    skills: List[Dict[str, Any]] = Field(default_factory=list, description="Matching skills")
+    total_count: int = Field(0, description="Total matches")
+
+
+class SkillToggleResponse(BaseModel):
+    """Response model for skill toggle."""
+
+    path: str = Field(..., description="Skill path")
+    is_enabled: bool = Field(..., description="New enabled state")
+
+
+class SkillRatingResponse(BaseModel):
+    """Response model for skill rating."""
+
+    num_stars: float = Field(..., description="Average rating")
+    rating_details: List[Dict[str, Any]] = Field(default_factory=list, description="Individual ratings")
+
+
 class RegistryClient:
     """
     MCP Gateway Registry API client.
@@ -831,13 +914,14 @@ class RegistryClient:
         logger.debug(f"{method} {url}")
 
         # Determine content type based on endpoint
-        # Agent, Management, Search, Federation, version, and group import endpoints use JSON
+        # Agent, Management, Search, Federation, Skills, version, and group import endpoints use JSON
         # Server registration uses form data
         if (endpoint.startswith("/api/agents") or
             endpoint.startswith("/api/management") or
             endpoint.startswith("/api/search") or
             endpoint.startswith("/api/federation") or
             endpoint.startswith("/api/peers") or
+            endpoint.startswith("/api/skills") or
             endpoint == "/api/servers/groups/import" or
             "/versions" in endpoint):
             # Send as JSON for agent, management, search, federation, and import endpoints
@@ -2880,3 +2964,343 @@ class RegistryClient:
         result = response.json()
         logger.info("Retrieved shared resources summary")
         return result
+
+    # ==========================================
+    # Agent Skills Management Methods
+    # ==========================================
+
+    def register_skill(
+        self,
+        request: SkillRegistrationRequest
+    ) -> SkillCard:
+        """
+        Register a new Agent Skill.
+
+        Args:
+            request: Skill registration request
+
+        Returns:
+            SkillCard with registered skill details
+
+        Raises:
+            requests.HTTPError: If skill already exists (409) or validation fails (400/422)
+        """
+        logger.info(f"Registering skill: {request.name}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint="/api/skills",
+            data=request.model_dump(exclude_none=True)
+        )
+
+        result = response.json()
+        logger.info(f"Skill registered successfully: {result.get('name')} at {result.get('path')}")
+        return SkillCard(**result)
+
+    def list_skills(
+        self,
+        include_disabled: bool = False,
+        tag: Optional[str] = None
+    ) -> SkillListResponse:
+        """
+        List all Agent Skills.
+
+        Args:
+            include_disabled: Include disabled skills
+            tag: Filter by tag
+
+        Returns:
+            SkillListResponse with list of skills
+
+        Raises:
+            requests.HTTPError: If request fails
+        """
+        logger.info("Listing skills")
+
+        params = {}
+        if include_disabled:
+            params["include_disabled"] = "true"
+        if tag:
+            params["tag"] = tag
+
+        response = self._make_request(
+            method="GET",
+            endpoint="/api/skills",
+            params=params if params else None
+        )
+
+        result = response.json()
+        skills = [SkillCard(**s) for s in result.get("skills", [])]
+        logger.info(f"Retrieved {len(skills)} skills")
+        return SkillListResponse(skills=skills, total_count=result.get("total_count", len(skills)))
+
+    def get_skill(
+        self,
+        path: str
+    ) -> SkillCard:
+        """
+        Get details for a specific skill.
+
+        Args:
+            path: Skill path or name
+
+        Returns:
+            SkillCard with skill details
+
+        Raises:
+            requests.HTTPError: If skill not found (404)
+        """
+        # Normalize path - remove /skills/ prefix if present
+        api_path = path.replace("/skills/", "/") if path.startswith("/skills/") else f"/{path}"
+        logger.info(f"Getting skill: {api_path}")
+
+        response = self._make_request(
+            method="GET",
+            endpoint=f"/api/skills{api_path}"
+        )
+
+        result = response.json()
+        logger.info(f"Retrieved skill: {result.get('name')}")
+        return SkillCard(**result)
+
+    def update_skill(
+        self,
+        path: str,
+        request: SkillRegistrationRequest
+    ) -> SkillCard:
+        """
+        Update an existing skill.
+
+        Args:
+            path: Skill path or name
+            request: Updated skill data
+
+        Returns:
+            Updated SkillCard
+
+        Raises:
+            requests.HTTPError: If skill not found (404) or validation fails
+        """
+        api_path = path.replace("/skills/", "/") if path.startswith("/skills/") else f"/{path}"
+        logger.info(f"Updating skill: {api_path}")
+
+        response = self._make_request(
+            method="PUT",
+            endpoint=f"/api/skills{api_path}",
+            data=request.model_dump(exclude_none=True)
+        )
+
+        result = response.json()
+        logger.info(f"Skill updated: {result.get('name')}")
+        return SkillCard(**result)
+
+    def delete_skill(
+        self,
+        path: str
+    ) -> bool:
+        """
+        Delete a skill.
+
+        Args:
+            path: Skill path or name
+
+        Returns:
+            True if deleted successfully
+
+        Raises:
+            requests.HTTPError: If skill not found (404) or permission denied (403)
+        """
+        api_path = path.replace("/skills/", "/") if path.startswith("/skills/") else f"/{path}"
+        logger.info(f"Deleting skill: {api_path}")
+
+        self._make_request(
+            method="DELETE",
+            endpoint=f"/api/skills{api_path}"
+        )
+
+        logger.info(f"Skill deleted: {api_path}")
+        return True
+
+    def toggle_skill(
+        self,
+        path: str,
+        enabled: bool
+    ) -> SkillToggleResponse:
+        """
+        Toggle skill enabled/disabled state.
+
+        Args:
+            path: Skill path or name
+            enabled: New enabled state
+
+        Returns:
+            SkillToggleResponse with new state
+
+        Raises:
+            requests.HTTPError: If skill not found (404)
+        """
+        api_path = path.replace("/skills/", "/") if path.startswith("/skills/") else f"/{path}"
+        logger.info(f"Toggling skill {api_path} to enabled={enabled}")
+
+        response = self._make_request(
+            method="POST",
+            endpoint=f"/api/skills{api_path}/toggle",
+            data={"enabled": enabled}
+        )
+
+        result = response.json()
+        logger.info(f"Skill toggled: {result.get('path')} -> enabled={result.get('is_enabled')}")
+        return SkillToggleResponse(**result)
+
+    def check_skill_health(
+        self,
+        path: str
+    ) -> SkillHealthResponse:
+        """
+        Check skill health (SKILL.md accessibility).
+
+        Args:
+            path: Skill path or name
+
+        Returns:
+            SkillHealthResponse with health status
+
+        Raises:
+            requests.HTTPError: If skill not found (404)
+        """
+        api_path = path.replace("/skills/", "/") if path.startswith("/skills/") else f"/{path}"
+        logger.info(f"Checking health for skill: {api_path}")
+
+        response = self._make_request(
+            method="GET",
+            endpoint=f"/api/skills{api_path}/health"
+        )
+
+        result = response.json()
+        logger.info(f"Skill health: {result.get('path')} -> healthy={result.get('healthy')}")
+        return SkillHealthResponse(**result)
+
+    def get_skill_content(
+        self,
+        path: str
+    ) -> SkillContentResponse:
+        """
+        Get SKILL.md content for a skill.
+
+        Args:
+            path: Skill path or name
+
+        Returns:
+            SkillContentResponse with content
+
+        Raises:
+            requests.HTTPError: If skill not found (404) or content unavailable
+        """
+        api_path = path.replace("/skills/", "/") if path.startswith("/skills/") else f"/{path}"
+        logger.info(f"Getting content for skill: {api_path}")
+
+        response = self._make_request(
+            method="GET",
+            endpoint=f"/api/skills{api_path}/content"
+        )
+
+        result = response.json()
+        content_len = len(result.get("content", ""))
+        logger.info(f"Retrieved skill content: {content_len} characters")
+        return SkillContentResponse(**result)
+
+    def search_skills(
+        self,
+        query: str,
+        tags: Optional[str] = None
+    ) -> SkillSearchResponse:
+        """
+        Search for skills by query.
+
+        Args:
+            query: Search query
+            tags: Optional comma-separated tags filter
+
+        Returns:
+            SkillSearchResponse with matching skills
+
+        Raises:
+            requests.HTTPError: If request fails
+        """
+        logger.info(f"Searching skills: query='{query}', tags={tags}")
+
+        params = {"q": query}
+        if tags:
+            params["tags"] = tags
+
+        response = self._make_request(
+            method="GET",
+            endpoint="/api/skills/search",
+            params=params
+        )
+
+        result = response.json()
+        logger.info(f"Found {result.get('total_count', 0)} skills matching '{query}'")
+        return SkillSearchResponse(**result)
+
+    def rate_skill(
+        self,
+        path: str,
+        rating: int
+    ) -> Dict[str, Any]:
+        """
+        Rate a skill (1-5 stars).
+
+        Args:
+            path: Skill path or name
+            rating: Rating value (1-5)
+
+        Returns:
+            Rating response with average rating
+
+        Raises:
+            requests.HTTPError: If skill not found (404) or invalid rating (400)
+        """
+        if not 1 <= rating <= 5:
+            raise ValueError("Rating must be between 1 and 5")
+
+        api_path = path.replace("/skills/", "/") if path.startswith("/skills/") else f"/{path}"
+        logger.info(f"Rating skill {api_path}: {rating} stars")
+
+        response = self._make_request(
+            method="POST",
+            endpoint=f"/api/skills{api_path}/rate",
+            data={"rating": rating}
+        )
+
+        result = response.json()
+        logger.info(f"Skill rated: avg={result.get('average_rating')}")
+        return result
+
+    def get_skill_rating(
+        self,
+        path: str
+    ) -> SkillRatingResponse:
+        """
+        Get rating information for a skill.
+
+        Args:
+            path: Skill path or name
+
+        Returns:
+            SkillRatingResponse with rating details
+
+        Raises:
+            requests.HTTPError: If skill not found (404)
+        """
+        api_path = path.replace("/skills/", "/") if path.startswith("/skills/") else f"/{path}"
+        logger.info(f"Getting rating for skill: {api_path}")
+
+        response = self._make_request(
+            method="GET",
+            endpoint=f"/api/skills{api_path}/rating"
+        )
+
+        result = response.json()
+        logger.info(f"Skill rating: {result.get('num_stars')} stars")
+        return SkillRatingResponse(**result)
