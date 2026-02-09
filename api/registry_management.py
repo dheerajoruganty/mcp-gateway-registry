@@ -224,6 +224,14 @@ from registry_client import (
     GroupCreateRequest,
     GroupSummary,
     GroupDeleteResponse,
+    SkillRegistrationRequest,
+    SkillCard,
+    SkillListResponse,
+    SkillHealthResponse,
+    SkillContentResponse,
+    SkillSearchResponse,
+    SkillToggleResponse,
+    SkillRatingResponse,
 )
 
 # Configure logging
@@ -1849,6 +1857,333 @@ def cmd_agent_rescan(args: argparse.Namespace) -> int:
         return 1
 
 
+# ==========================================
+# Agent Skills Command Handlers
+# ==========================================
+
+
+def cmd_skill_register(args: argparse.Namespace) -> int:
+    """
+    Register a new Agent Skill.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        request = SkillRegistrationRequest(
+            name=args.name,
+            skill_md_url=args.url,
+            description=args.description if hasattr(args, 'description') else None,
+            tags=args.tags.split(",") if hasattr(args, 'tags') and args.tags else [],
+            visibility=args.visibility if hasattr(args, 'visibility') else "public",
+        )
+
+        client = _create_client(args)
+        skill = client.register_skill(request)
+
+        logger.info(f"Skill registered successfully: {skill.name} at {skill.path}")
+        print(json.dumps({
+            "message": "Skill registered successfully",
+            "skill": {
+                "name": skill.name,
+                "path": skill.path,
+                "description": skill.description,
+                "skill_md_url": skill.skill_md_url,
+                "is_enabled": skill.is_enabled,
+            }
+        }, indent=2))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Skill registration failed: {e}")
+        return 1
+
+
+def cmd_skill_list(args: argparse.Namespace) -> int:
+    """
+    List all Agent Skills.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.list_skills(
+            include_disabled=args.include_disabled if hasattr(args, 'include_disabled') else False,
+            tag=args.tag if hasattr(args, 'tag') else None
+        )
+
+        if args.debug:
+            print(json.dumps([s.model_dump() for s in response.skills], indent=2, default=str))
+            return 0
+
+        if not response.skills:
+            logger.info("No skills found")
+            return 0
+
+        logger.info(f"Found {len(response.skills)} skills:\n")
+        for skill in response.skills:
+            status = "[+]" if skill.is_enabled else "[-]"
+            health = f"({skill.health_status})" if skill.health_status else ""
+            print(f"{status} {skill.name} {health}")
+            print(f"    Path: {skill.path}")
+            if skill.description:
+                print(f"    {skill.description[:80]}...")
+            if skill.tags:
+                print(f"    Tags: {', '.join(skill.tags)}")
+            print()
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"List skills failed: {e}")
+        return 1
+
+
+def cmd_skill_get(args: argparse.Namespace) -> int:
+    """
+    Get details for a specific skill.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        skill = client.get_skill(args.path)
+
+        logger.info(f"Retrieved skill: {skill.name}")
+        print(json.dumps({
+            "name": skill.name,
+            "path": skill.path,
+            "description": skill.description,
+            "skill_md_url": skill.skill_md_url,
+            "skill_md_raw_url": skill.skill_md_raw_url,
+            "version": skill.version,
+            "author": skill.author,
+            "visibility": skill.visibility,
+            "is_enabled": skill.is_enabled,
+            "tags": skill.tags,
+            "owner": skill.owner,
+            "num_stars": skill.num_stars,
+            "health_status": skill.health_status,
+            "created_at": skill.created_at,
+            "updated_at": skill.updated_at,
+        }, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Get skill failed: {e}")
+        return 1
+
+
+def cmd_skill_delete(args: argparse.Namespace) -> int:
+    """
+    Delete a skill.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        client.delete_skill(args.path)
+
+        logger.info(f"Skill deleted: {args.path}")
+        print(json.dumps({"message": "Skill deleted successfully", "path": args.path}, indent=2))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Delete skill failed: {e}")
+        return 1
+
+
+def cmd_skill_toggle(args: argparse.Namespace) -> int:
+    """
+    Toggle skill enabled/disabled state.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.toggle_skill(args.path, args.enable)
+
+        state = "enabled" if response.is_enabled else "disabled"
+        logger.info(f"Skill {state}: {response.path}")
+        print(json.dumps({"path": response.path, "is_enabled": response.is_enabled}, indent=2))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Toggle skill failed: {e}")
+        return 1
+
+
+def cmd_skill_health(args: argparse.Namespace) -> int:
+    """
+    Check skill health (SKILL.md accessibility).
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.check_skill_health(args.path)
+
+        status = "HEALTHY" if response.healthy else "UNHEALTHY"
+        logger.info(f"Skill health: {status}")
+        print(json.dumps({
+            "path": response.path,
+            "healthy": response.healthy,
+            "status_code": response.status_code,
+            "error": response.error,
+            "response_time_ms": response.response_time_ms,
+        }, indent=2))
+        return 0 if response.healthy else 1
+
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return 1
+
+
+def cmd_skill_content(args: argparse.Namespace) -> int:
+    """
+    Get SKILL.md content for a skill.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.get_skill_content(args.path)
+
+        if hasattr(args, 'raw') and args.raw:
+            # Output raw content only
+            print(response.content)
+        else:
+            logger.info(f"Retrieved content from: {response.url}")
+            print(f"--- SKILL.md ({len(response.content)} chars) ---")
+            print(response.content)
+            print("--- END ---")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Get content failed: {e}")
+        return 1
+
+
+def cmd_skill_search(args: argparse.Namespace) -> int:
+    """
+    Search for skills.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.search_skills(
+            query=args.query,
+            tags=args.tags if hasattr(args, 'tags') else None
+        )
+
+        if args.debug:
+            print(json.dumps(response.model_dump(), indent=2, default=str))
+            return 0
+
+        logger.info(f"Found {response.total_count} skills matching '{args.query}':\n")
+        for skill in response.skills:
+            print(f"  {skill.get('name')} ({skill.get('path')})")
+            if skill.get('description'):
+                print(f"      {skill.get('description')[:60]}...")
+            print(f"      Score: {skill.get('relevance_score', 0):.2f}")
+            print()
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Search skills failed: {e}")
+        return 1
+
+
+def cmd_skill_rate(args: argparse.Namespace) -> int:
+    """
+    Rate a skill (1-5 stars).
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        if not 1 <= args.rating <= 5:
+            logger.error("Rating must be between 1 and 5")
+            return 1
+
+        client = _create_client(args)
+        response = client.rate_skill(args.path, args.rating)
+
+        logger.info(f"Skill rated: {args.rating} stars")
+        print(json.dumps({
+            "message": response.get("message"),
+            "average_rating": response.get("average_rating"),
+        }, indent=2))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Rate skill failed: {e}")
+        return 1
+
+
+def cmd_skill_rating(args: argparse.Namespace) -> int:
+    """
+    Get rating information for a skill.
+
+    Args:
+        args: Command arguments
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    try:
+        client = _create_client(args)
+        response = client.get_skill_rating(args.path)
+
+        logger.info(f"Skill rating: {response.num_stars} stars")
+        print(json.dumps({
+            "num_stars": response.num_stars,
+            "rating_details": response.rating_details,
+        }, indent=2, default=str))
+        return 0
+
+    except Exception as e:
+        logger.error(f"Get rating failed: {e}")
+        return 1
+
+
 def cmd_anthropic_list_servers(args: argparse.Namespace) -> int:
     """
     List all servers using Anthropic Registry API v0.1.
@@ -3460,6 +3795,165 @@ Examples:
         help="Output raw JSON"
     )
 
+    # ==========================================
+    # Agent Skills Commands
+    # ==========================================
+
+    # Skill register command
+    skill_register_parser = subparsers.add_parser(
+        "skill-register",
+        help="Register a new Agent Skill"
+    )
+    skill_register_parser.add_argument(
+        "--name",
+        required=True,
+        help="Skill name (lowercase alphanumeric with hyphens)"
+    )
+    skill_register_parser.add_argument(
+        "--url",
+        required=True,
+        help="URL to SKILL.md file"
+    )
+    skill_register_parser.add_argument(
+        "--description",
+        help="Skill description"
+    )
+    skill_register_parser.add_argument(
+        "--tags",
+        help="Comma-separated tags"
+    )
+    skill_register_parser.add_argument(
+        "--visibility",
+        choices=["public", "private", "group"],
+        default="public",
+        help="Visibility level (default: public)"
+    )
+
+    # Skill list command
+    skill_list_parser = subparsers.add_parser(
+        "skill-list",
+        help="List all Agent Skills"
+    )
+    skill_list_parser.add_argument(
+        "--include-disabled",
+        action="store_true",
+        help="Include disabled skills"
+    )
+    skill_list_parser.add_argument(
+        "--tag",
+        help="Filter by tag"
+    )
+
+    # Skill get command
+    skill_get_parser = subparsers.add_parser(
+        "skill-get",
+        help="Get skill details"
+    )
+    skill_get_parser.add_argument(
+        "--path",
+        required=True,
+        help="Skill path or name (e.g., pdf-processing)"
+    )
+
+    # Skill delete command
+    skill_delete_parser = subparsers.add_parser(
+        "skill-delete",
+        help="Delete a skill"
+    )
+    skill_delete_parser.add_argument(
+        "--path",
+        required=True,
+        help="Skill path or name"
+    )
+
+    # Skill toggle command
+    skill_toggle_parser = subparsers.add_parser(
+        "skill-toggle",
+        help="Toggle skill enabled/disabled state"
+    )
+    skill_toggle_parser.add_argument(
+        "--path",
+        required=True,
+        help="Skill path or name"
+    )
+    skill_toggle_parser.add_argument(
+        "--enable",
+        type=lambda x: x.lower() == 'true',
+        required=True,
+        help="Enable (true) or disable (false)"
+    )
+
+    # Skill health command
+    skill_health_parser = subparsers.add_parser(
+        "skill-health",
+        help="Check skill health (SKILL.md accessibility)"
+    )
+    skill_health_parser.add_argument(
+        "--path",
+        required=True,
+        help="Skill path or name"
+    )
+
+    # Skill content command
+    skill_content_parser = subparsers.add_parser(
+        "skill-content",
+        help="Get SKILL.md content for a skill"
+    )
+    skill_content_parser.add_argument(
+        "--path",
+        required=True,
+        help="Skill path or name"
+    )
+    skill_content_parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Output raw content only"
+    )
+
+    # Skill search command
+    skill_search_parser = subparsers.add_parser(
+        "skill-search",
+        help="Search for skills"
+    )
+    skill_search_parser.add_argument(
+        "--query",
+        required=True,
+        help="Search query"
+    )
+    skill_search_parser.add_argument(
+        "--tags",
+        help="Comma-separated tags filter"
+    )
+
+    # Skill rate command
+    skill_rate_parser = subparsers.add_parser(
+        "skill-rate",
+        help="Rate a skill (1-5 stars)"
+    )
+    skill_rate_parser.add_argument(
+        "--path",
+        required=True,
+        help="Skill path or name"
+    )
+    skill_rate_parser.add_argument(
+        "--rating",
+        type=int,
+        required=True,
+        choices=[1, 2, 3, 4, 5],
+        help="Rating (1-5 stars)"
+    )
+
+    # Skill rating command
+    skill_rating_parser = subparsers.add_parser(
+        "skill-rating",
+        help="Get rating information for a skill"
+    )
+    skill_rating_parser.add_argument(
+        "--path",
+        required=True,
+        help="Skill path or name"
+    )
+
     # Anthropic Registry API Commands
 
     # Anthropic list servers command
@@ -3994,6 +4488,17 @@ Examples:
         "agent-rating": cmd_agent_rating,
         "agent-security-scan": cmd_agent_security_scan,
         "agent-rescan": cmd_agent_rescan,
+        # Skill commands
+        "skill-register": cmd_skill_register,
+        "skill-list": cmd_skill_list,
+        "skill-get": cmd_skill_get,
+        "skill-delete": cmd_skill_delete,
+        "skill-toggle": cmd_skill_toggle,
+        "skill-health": cmd_skill_health,
+        "skill-content": cmd_skill_content,
+        "skill-search": cmd_skill_search,
+        "skill-rate": cmd_skill_rate,
+        "skill-rating": cmd_skill_rating,
         "anthropic-list": cmd_anthropic_list_servers,
         "anthropic-versions": cmd_anthropic_list_versions,
         "anthropic-get": cmd_anthropic_get_server,

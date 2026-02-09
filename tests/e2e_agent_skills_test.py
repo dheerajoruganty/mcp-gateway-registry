@@ -2,9 +2,8 @@
 """
 End-to-End Test Script for Agent Skills API.
 
-This script exercises all Agent Skills related API endpoints and produces
-a report at the end. It uses a real SKILL.md file for testing and cleans
-up by deleting the skill after tests complete.
+This script exercises all Agent Skills related API endpoints using
+the RegistryClient and produces a report at the end.
 
 Usage:
     # Run with defaults (localhost, .token)
@@ -16,8 +15,8 @@ Usage:
     # Run with custom token file
     uv run python tests/e2e_agent_skills_test.py --token-file /path/to/token
 
-    # Run with both custom options
-    uv run python tests/e2e_agent_skills_test.py --registry-url https://myregistry.com --token-file /path/to/token
+    # Run with debug output
+    uv run python tests/e2e_agent_skills_test.py --debug
 """
 
 import argparse
@@ -36,7 +35,20 @@ from typing import (
     Optional,
 )
 
-import requests
+# Add api directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "api"))
+
+from registry_client import (
+    RegistryClient,
+    SkillRegistrationRequest,
+    SkillCard,
+    SkillListResponse,
+    SkillHealthResponse,
+    SkillContentResponse,
+    SkillSearchResponse,
+    SkillToggleResponse,
+    SkillRatingResponse,
+)
 
 
 # Configure logging
@@ -74,7 +86,7 @@ class TestResult:
 
 
 class AgentSkillsE2ETest:
-    """End-to-end test runner for Agent Skills API."""
+    """End-to-end test runner for Agent Skills API using RegistryClient."""
 
     def __init__(
         self,
@@ -87,17 +99,9 @@ class AgentSkillsE2ETest:
             registry_url: Base URL of the registry
             token: JWT authentication token
         """
-        self.registry_url = registry_url.rstrip("/")
-        self.token = token
+        self.client = RegistryClient(registry_url, token)
         self.results: List[TestResult] = []
         self.skill_path: Optional[str] = None
-
-    def _get_headers(self) -> Dict[str, str]:
-        """Get request headers with authentication."""
-        return {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-        }
 
     def _record_result(
         self,
@@ -117,56 +121,35 @@ class AgentSkillsE2ETest:
         )
         self.results.append(result)
 
-        status_symbol = {
-            TestStatus.PASSED: "[PASS]",
-            TestStatus.FAILED: "[FAIL]",
-            TestStatus.SKIPPED: "[SKIP]",
-        }[status]
-
-        logger.info(f"{status_symbol} {name}: {message} ({duration_ms:.2f}ms)")
+        status_str = f"[{status.value}]"
+        logger.info(f"{status_str} {name}: {message} ({duration_ms:.2f}ms)")
 
     def test_register_skill(self) -> bool:
-        """Test skill registration."""
+        """Test registering a new skill."""
         test_name = "Register Skill"
         start_time = time.time()
 
         try:
-            payload = {
-                "name": TEST_SKILL_NAME,
-                "description": TEST_SKILL_DESCRIPTION,
-                "skill_md_url": TEST_SKILL_MD_URL,
-                "tags": TEST_SKILL_TAGS,
-                "visibility": "public",
-            }
-
-            response = requests.post(
-                f"{self.registry_url}/api/skills",
-                headers=self._get_headers(),
-                json=payload,
-                timeout=30,
+            request = SkillRegistrationRequest(
+                name=TEST_SKILL_NAME,
+                skill_md_url=TEST_SKILL_MD_URL,
+                description=TEST_SKILL_DESCRIPTION,
+                tags=TEST_SKILL_TAGS,
+                visibility="public",
             )
 
+            skill = self.client.register_skill(request)
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 201:
-                data = response.json()
-                self.skill_path = data.get("path", f"/skills/{TEST_SKILL_NAME}")
-                self._record_result(
-                    test_name,
-                    TestStatus.PASSED,
-                    duration_ms,
-                    f"Skill registered at {self.skill_path}",
-                    {"response": data},
-                )
-                return True
-            else:
-                self._record_result(
-                    test_name,
-                    TestStatus.FAILED,
-                    duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
-                )
-                return False
+            self.skill_path = skill.path
+            self._record_result(
+                test_name,
+                TestStatus.PASSED,
+                duration_ms,
+                f"Skill registered at {skill.path}",
+                {"skill": skill.model_dump()},
+            )
+            return True
 
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
@@ -184,42 +167,28 @@ class AgentSkillsE2ETest:
         start_time = time.time()
 
         try:
-            response = requests.get(
-                f"{self.registry_url}/api/skills",
-                headers=self._get_headers(),
-                timeout=30,
-            )
-
+            response = self.client.list_skills()
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 200:
-                data = response.json()
-                skills = data.get("skills", [])
-                found = any(s.get("name") == TEST_SKILL_NAME for s in skills)
+            # Check if our test skill is in the list
+            skill_names = [s.name for s in response.skills]
+            has_test_skill = TEST_SKILL_NAME in skill_names
 
-                if found:
-                    self._record_result(
-                        test_name,
-                        TestStatus.PASSED,
-                        duration_ms,
-                        f"Found {len(skills)} skills, test skill present",
-                        {"total_count": data.get("total_count", len(skills))},
-                    )
-                    return True
-                else:
-                    self._record_result(
-                        test_name,
-                        TestStatus.FAILED,
-                        duration_ms,
-                        f"Test skill not found in {len(skills)} skills",
-                    )
-                    return False
+            if has_test_skill:
+                self._record_result(
+                    test_name,
+                    TestStatus.PASSED,
+                    duration_ms,
+                    f"Found {len(response.skills)} skills, test skill present",
+                    {"total_count": response.total_count},
+                )
+                return True
             else:
                 self._record_result(
                     test_name,
                     TestStatus.FAILED,
                     duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
+                    f"Test skill not found in {len(response.skills)} skills",
                 )
                 return False
 
@@ -248,34 +217,17 @@ class AgentSkillsE2ETest:
             return False
 
         try:
-            # skill_path is like /skills/name, API is /api/skills/{path}
-            api_path = self.skill_path.replace("/skills/", "/")
-            response = requests.get(
-                f"{self.registry_url}/api/skills{api_path}",
-                headers=self._get_headers(),
-                timeout=30,
-            )
-
+            skill = self.client.get_skill(self.skill_path)
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 200:
-                data = response.json()
-                self._record_result(
-                    test_name,
-                    TestStatus.PASSED,
-                    duration_ms,
-                    f"Retrieved skill: {data.get('name')}",
-                    {"skill": data},
-                )
-                return True
-            else:
-                self._record_result(
-                    test_name,
-                    TestStatus.FAILED,
-                    duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
-                )
-                return False
+            self._record_result(
+                test_name,
+                TestStatus.PASSED,
+                duration_ms,
+                f"Retrieved skill: {skill.name}",
+                {"skill": skill.model_dump()},
+            )
+            return True
 
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
@@ -302,39 +254,25 @@ class AgentSkillsE2ETest:
             return False
 
         try:
-            api_path = self.skill_path.replace("/skills/", "/")
-            payload = {
-                "description": f"{TEST_SKILL_DESCRIPTION} (updated)",
-                "tags": TEST_SKILL_TAGS + ["updated"],
-            }
-
-            response = requests.put(
-                f"{self.registry_url}/api/skills{api_path}",
-                headers=self._get_headers(),
-                json=payload,
-                timeout=30,
+            # Note: PUT requires full request body with name and skill_md_url
+            request = SkillRegistrationRequest(
+                name=TEST_SKILL_NAME,
+                skill_md_url=TEST_SKILL_MD_URL,
+                description=f"{TEST_SKILL_DESCRIPTION} (updated)",
+                tags=TEST_SKILL_TAGS + ["updated"],
             )
 
+            updated = self.client.update_skill(self.skill_path, request)
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 200:
-                data = response.json()
-                self._record_result(
-                    test_name,
-                    TestStatus.PASSED,
-                    duration_ms,
-                    "Skill updated successfully",
-                    {"response": data},
-                )
-                return True
-            else:
-                self._record_result(
-                    test_name,
-                    TestStatus.FAILED,
-                    duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
-                )
-                return False
+            self._record_result(
+                test_name,
+                TestStatus.PASSED,
+                duration_ms,
+                "Skill updated successfully",
+                {"skill": updated.model_dump()},
+            )
+            return True
 
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
@@ -347,7 +285,7 @@ class AgentSkillsE2ETest:
             return False
 
     def test_disable_skill(self) -> bool:
-        """Test disabling skill."""
+        """Test disabling skill using toggle endpoint."""
         test_name = "Disable Skill"
         start_time = time.time()
 
@@ -361,16 +299,10 @@ class AgentSkillsE2ETest:
             return False
 
         try:
-            api_path = self.skill_path.replace("/skills/", "/")
-            response = requests.put(
-                f"{self.registry_url}/api/skills{api_path}/disable",
-                headers=self._get_headers(),
-                timeout=30,
-            )
-
+            response = self.client.toggle_skill(self.skill_path, enabled=False)
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 200:
+            if not response.is_enabled:
                 self._record_result(
                     test_name,
                     TestStatus.PASSED,
@@ -383,7 +315,7 @@ class AgentSkillsE2ETest:
                     test_name,
                     TestStatus.FAILED,
                     duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
+                    f"Skill still enabled: {response.is_enabled}",
                 )
                 return False
 
@@ -398,7 +330,7 @@ class AgentSkillsE2ETest:
             return False
 
     def test_enable_skill(self) -> bool:
-        """Test enabling skill."""
+        """Test enabling skill using toggle endpoint."""
         test_name = "Enable Skill"
         start_time = time.time()
 
@@ -412,16 +344,10 @@ class AgentSkillsE2ETest:
             return False
 
         try:
-            api_path = self.skill_path.replace("/skills/", "/")
-            response = requests.put(
-                f"{self.registry_url}/api/skills{api_path}/enable",
-                headers=self._get_headers(),
-                timeout=30,
-            )
-
+            response = self.client.toggle_skill(self.skill_path, enabled=True)
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 200:
+            if response.is_enabled:
                 self._record_result(
                     test_name,
                     TestStatus.PASSED,
@@ -434,7 +360,7 @@ class AgentSkillsE2ETest:
                     test_name,
                     TestStatus.FAILED,
                     duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
+                    f"Skill still disabled: {response.is_enabled}",
                 )
                 return False
 
@@ -463,35 +389,24 @@ class AgentSkillsE2ETest:
             return False
 
         try:
-            api_path = self.skill_path.replace("/skills/", "/")
-            response = requests.get(
-                f"{self.registry_url}/api/skills{api_path}/health",
-                headers=self._get_headers(),
-                timeout=30,
-            )
-
+            response = self.client.check_skill_health(self.skill_path)
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 200:
-                data = response.json()
-                healthy = data.get("healthy", False)
-                status = TestStatus.PASSED if healthy else TestStatus.FAILED
-                message = "SKILL.md is accessible" if healthy else f"Health check failed: {data.get('error', 'unknown')}"
-
+            if response.healthy:
                 self._record_result(
                     test_name,
-                    status,
+                    TestStatus.PASSED,
                     duration_ms,
-                    message,
-                    {"response": data},
+                    "SKILL.md is accessible",
+                    {"status_code": response.status_code},
                 )
-                return healthy
+                return True
             else:
                 self._record_result(
                     test_name,
                     TestStatus.FAILED,
                     duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
+                    f"SKILL.md not accessible: {response.error}",
                 )
                 return False
 
@@ -520,26 +435,16 @@ class AgentSkillsE2ETest:
             return False
 
         try:
-            api_path = self.skill_path.replace("/skills/", "/")
-            response = requests.get(
-                f"{self.registry_url}/api/skills{api_path}/content",
-                headers=self._get_headers(),
-                timeout=30,
-            )
-
+            response = self.client.get_skill_content(self.skill_path)
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 200:
-                data = response.json()
-                content = data.get("content", "")
-                content_length = len(content)
-
+            content_len = len(response.content)
+            if content_len > 0:
                 self._record_result(
                     test_name,
                     TestStatus.PASSED,
                     duration_ms,
-                    f"Retrieved {content_length} characters of content",
-                    {"content_length": content_length, "url": data.get("url")},
+                    f"Retrieved {content_len} characters of content",
                 )
                 return True
             else:
@@ -547,7 +452,7 @@ class AgentSkillsE2ETest:
                     test_name,
                     TestStatus.FAILED,
                     duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
+                    "Empty content returned",
                 )
                 return False
 
@@ -576,38 +481,17 @@ class AgentSkillsE2ETest:
             return False
 
         try:
-            api_path = self.skill_path.replace("/skills/", "/")
-            payload = {"rating": 5}
-
-            response = requests.post(
-                f"{self.registry_url}/api/skills{api_path}/rate",
-                headers=self._get_headers(),
-                json=payload,
-                timeout=30,
-            )
-
+            response = self.client.rate_skill(self.skill_path, rating=5)
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 200:
-                data = response.json()
-                avg_rating = data.get("average_rating", 0)
-
-                self._record_result(
-                    test_name,
-                    TestStatus.PASSED,
-                    duration_ms,
-                    f"Rated 5 stars, average: {avg_rating:.1f}",
-                    {"response": data},
-                )
-                return True
-            else:
-                self._record_result(
-                    test_name,
-                    TestStatus.FAILED,
-                    duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
-                )
-                return False
+            avg_rating = response.get("average_rating", 0)
+            self._record_result(
+                test_name,
+                TestStatus.PASSED,
+                duration_ms,
+                f"Rated 5 stars, average: {avg_rating}",
+            )
+            return True
 
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
@@ -634,36 +518,16 @@ class AgentSkillsE2ETest:
             return False
 
         try:
-            api_path = self.skill_path.replace("/skills/", "/")
-            response = requests.get(
-                f"{self.registry_url}/api/skills{api_path}/rating",
-                headers=self._get_headers(),
-                timeout=30,
-            )
-
+            response = self.client.get_skill_rating(self.skill_path)
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 200:
-                data = response.json()
-                num_stars = data.get("num_stars", 0)
-                rating_count = len(data.get("rating_details", []))
-
-                self._record_result(
-                    test_name,
-                    TestStatus.PASSED,
-                    duration_ms,
-                    f"Rating: {num_stars:.1f} stars from {rating_count} ratings",
-                    {"response": data},
-                )
-                return True
-            else:
-                self._record_result(
-                    test_name,
-                    TestStatus.FAILED,
-                    duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
-                )
-                return False
+            self._record_result(
+                test_name,
+                TestStatus.PASSED,
+                duration_ms,
+                f"Rating: {response.num_stars} stars",
+            )
+            return True
 
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
@@ -681,25 +545,15 @@ class AgentSkillsE2ETest:
         start_time = time.time()
 
         try:
-            response = requests.get(
-                f"{self.registry_url}/api/skills/search",
-                headers=self._get_headers(),
-                params={"q": "mcp builder"},
-                timeout=30,
-            )
-
+            response = self.client.search_skills(query="mcp builder")
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 200:
-                data = response.json()
-                skills = data.get("skills", [])
-
+            if response.total_count > 0:
                 self._record_result(
                     test_name,
                     TestStatus.PASSED,
                     duration_ms,
-                    f"Search returned {len(skills)} results",
-                    {"total_count": data.get("total_count", len(skills))},
+                    f"Found {response.total_count} matching skills",
                 )
                 return True
             else:
@@ -707,7 +561,7 @@ class AgentSkillsE2ETest:
                     test_name,
                     TestStatus.FAILED,
                     duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
+                    "No matching skills found",
                 )
                 return False
 
@@ -736,31 +590,16 @@ class AgentSkillsE2ETest:
             return False
 
         try:
-            api_path = self.skill_path.replace("/skills/", "/")
-            response = requests.delete(
-                f"{self.registry_url}/api/skills{api_path}",
-                headers=self._get_headers(),
-                timeout=30,
-            )
-
+            self.client.delete_skill(self.skill_path)
             duration_ms = (time.time() - start_time) * 1000
 
-            if response.status_code in [200, 204]:
-                self._record_result(
-                    test_name,
-                    TestStatus.PASSED,
-                    duration_ms,
-                    "Skill deleted successfully",
-                )
-                return True
-            else:
-                self._record_result(
-                    test_name,
-                    TestStatus.FAILED,
-                    duration_ms,
-                    f"HTTP {response.status_code}: {response.text}",
-                )
-                return False
+            self._record_result(
+                test_name,
+                TestStatus.PASSED,
+                duration_ms,
+                "Skill deleted successfully",
+            )
+            return True
 
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
@@ -772,11 +611,11 @@ class AgentSkillsE2ETest:
             )
             return False
 
-    def run_all_tests(self) -> None:
+    def run_all_tests(self) -> bool:
         """Run all tests in sequence."""
         logger.info("=" * 60)
         logger.info("Starting Agent Skills E2E Tests")
-        logger.info(f"Registry URL: {self.registry_url}")
+        logger.info(f"Registry URL: {self.client.registry_url}")
         logger.info(f"Test Skill URL: {TEST_SKILL_MD_URL}")
         logger.info("=" * 60)
 
@@ -792,68 +631,59 @@ class AgentSkillsE2ETest:
         self.test_rate_skill()
         self.test_get_rating()
         self.test_search_skills()
-
-        # Always try to cleanup
         self.test_delete_skill()
 
-    def print_report(self) -> int:
-        """Print test report and return exit code."""
+        return self._print_report()
+
+    def _print_report(self) -> bool:
+        """Print test report and return success status."""
+        passed = sum(1 for r in self.results if r.status == TestStatus.PASSED)
+        failed = sum(1 for r in self.results if r.status == TestStatus.FAILED)
+        skipped = sum(1 for r in self.results if r.status == TestStatus.SKIPPED)
+        total_time = sum(r.duration_ms for r in self.results)
+
         print("\n")
         print("=" * 70)
         print("                    AGENT SKILLS E2E TEST REPORT")
         print("=" * 70)
-        print(f"  Registry URL: {self.registry_url}")
+        print(f"  Registry URL: {self.client.registry_url}")
         print(f"  Test Run:     {datetime.now().isoformat()}")
         print("=" * 70)
-
-        passed = sum(1 for r in self.results if r.status == TestStatus.PASSED)
-        failed = sum(1 for r in self.results if r.status == TestStatus.FAILED)
-        skipped = sum(1 for r in self.results if r.status == TestStatus.SKIPPED)
-        total = len(self.results)
-        total_time = sum(r.duration_ms for r in self.results)
-
         print("\n  TEST RESULTS:")
         print("  " + "-" * 66)
 
         for result in self.results:
-            status_icon = {
-                TestStatus.PASSED: "[PASS]",
-                TestStatus.FAILED: "[FAIL]",
-                TestStatus.SKIPPED: "[SKIP]",
-            }[result.status]
+            if result.status == TestStatus.PASSED:
+                status_color = "\033[92m"  # Green
+            elif result.status == TestStatus.FAILED:
+                status_color = "\033[91m"  # Red
+            else:
+                status_color = "\033[93m"  # Yellow
 
-            status_color = {
-                TestStatus.PASSED: "\033[92m",  # Green
-                TestStatus.FAILED: "\033[91m",  # Red
-                TestStatus.SKIPPED: "\033[93m",  # Yellow
-            }[result.status]
             reset_color = "\033[0m"
+            status_str = f"{status_color}[{result.status.value}]{reset_color}"
 
-            print(f"  {status_color}{status_icon}{reset_color} {result.name:<35} {result.duration_ms:>8.2f}ms")
+            print(f"  {status_str} {result.name:35} {result.duration_ms:>10.2f}ms")
             if result.message:
                 print(f"       {result.message}")
 
         print("  " + "-" * 66)
-        print(f"\n  SUMMARY:")
-        print(f"    Total Tests:  {total}")
+        print("\n  SUMMARY:")
+        print(f"    Total Tests:  {len(self.results)}")
         print(f"    \033[92mPassed:\033[0m       {passed}")
         print(f"    \033[91mFailed:\033[0m       {failed}")
         print(f"    \033[93mSkipped:\033[0m      {skipped}")
         print(f"    Total Time:   {total_time:.2f}ms ({total_time/1000:.2f}s)")
 
-        if failed == 0 and passed > 0:
-            print("\n  \033[92m*** ALL TESTS PASSED ***\033[0m")
-            exit_code = 0
-        elif failed > 0:
+        if failed > 0:
             print(f"\n  \033[91m*** {failed} TEST(S) FAILED ***\033[0m")
-            exit_code = 1
         else:
-            print("\n  \033[93m*** NO TESTS EXECUTED ***\033[0m")
-            exit_code = 1
+            print(f"\n  \033[92m*** ALL TESTS PASSED ***\033[0m")
 
         print("=" * 70)
+        print()
 
-        return exit_code
+        return failed == 0
 
 
 def _load_token(
@@ -881,14 +711,20 @@ def _load_token(
     if not content:
         raise ValueError(f"Token file is empty: {token_file}")
 
-    # Handle JSON token files (like ingress.json)
+    # Handle JSON token files (like ingress.json or .token)
     if content.startswith("{"):
         try:
             data = json.loads(content)
-            # Try different possible token field names
+            # Try different possible token field names at top level
             for key in ["access_token", "token", "jwt"]:
                 if key in data:
                     return data[key]
+            # Check for nested tokens object (common format from auth endpoints)
+            if "tokens" in data and isinstance(data["tokens"], dict):
+                tokens = data["tokens"]
+                for key in ["access_token", "token", "jwt"]:
+                    if key in tokens:
+                        return tokens[key]
             raise ValueError(f"No token field found in JSON file: {token_file}")
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in token file: {e}") from e
@@ -897,8 +733,8 @@ def _load_token(
     return content
 
 
-def _parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
+def main() -> int:
+    """Main entry point."""
     parser = argparse.ArgumentParser(
         description="End-to-End Test Script for Agent Skills API",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -910,9 +746,9 @@ Examples:
     # Run with custom registry
     uv run python tests/e2e_agent_skills_test.py --registry-url https://myregistry.com
 
-    # Run with custom token file
-    uv run python tests/e2e_agent_skills_test.py --token-file /path/to/token
-        """,
+    # Run with debug output
+    uv run python tests/e2e_agent_skills_test.py --debug
+""",
     )
 
     parser.add_argument(
@@ -920,56 +756,36 @@ Examples:
         default="http://localhost",
         help="Registry base URL (default: http://localhost)",
     )
-
     parser.add_argument(
         "--token-file",
         default=".token",
-        help="Path to file containing JWT token (default: .token)",
+        help="Path to token file (default: .token)",
     )
-
     parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug logging",
     )
 
-    return parser.parse_args()
-
-
-def main() -> int:
-    """Main entry point."""
-    args = _parse_args()
+    args = parser.parse_args()
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Load token
     try:
         token = _load_token(args.token_file)
         logger.info(f"Loaded token from {args.token_file}")
     except (FileNotFoundError, ValueError) as e:
-        logger.error(f"Failed to load token: {e}")
-        print(f"\nError: {e}")
-        print(f"\nPlease ensure the token file exists at: {args.token_file}")
-        print("You can generate a token using the credentials provider or copy")
-        print("your JWT token to a file named '.token' in the repository root.")
+        logger.error(f"ERROR: {e}")
         return 1
 
-    # Run tests
-    tester = AgentSkillsE2ETest(
+    test_runner = AgentSkillsE2ETest(
         registry_url=args.registry_url,
         token=token,
     )
 
-    try:
-        tester.run_all_tests()
-    except KeyboardInterrupt:
-        logger.warning("Test run interrupted by user")
-    except Exception as e:
-        logger.exception(f"Unexpected error during test run: {e}")
-
-    # Print report and return exit code
-    return tester.print_report()
+    success = test_runner.run_all_tests()
+    return 0 if success else 1
 
 
 if __name__ == "__main__":
