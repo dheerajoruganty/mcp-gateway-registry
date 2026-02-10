@@ -31,6 +31,8 @@ from registry.api.federation_routes import router as federation_router
 from registry.api.federation_export_routes import router as federation_export_router
 from registry.api.peer_management_routes import router as peer_management_router
 from registry.api.skill_routes import router as skill_router
+from registry.api.virtual_server_routes import router as virtual_server_router
+from registry.api.internal_routes import router as internal_router
 from registry.health.routes import router as health_router
 from registry.audit.routes import router as audit_router
 
@@ -332,6 +334,10 @@ app = FastAPI(
         {
             "name": "skills",
             "description": "Agent Skills registration and management. Requires JWT Bearer token authentication."
+        },
+        {
+            "name": "virtual-servers",
+            "description": "Virtual MCP Server management. Aggregate tools from multiple backends into unified endpoints."
         }
     ]
 )
@@ -389,6 +395,8 @@ app.include_router(management_router, prefix="/api")
 app.include_router(search_router, prefix="/api/search", tags=["Semantic Search"])
 app.include_router(federation_router, prefix="/api", tags=["federation"])
 app.include_router(skill_router, prefix="/api", tags=["skills"])
+app.include_router(virtual_server_router, prefix="/api", tags=["virtual-servers"])
+app.include_router(internal_router, prefix="/api")
 app.include_router(health_router, prefix="/api/health", tags=["Health Monitoring"])
 app.include_router(federation_export_router)
 app.include_router(peer_management_router)
