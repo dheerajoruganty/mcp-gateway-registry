@@ -15,6 +15,52 @@ from .config import settings
 logger = logging.getLogger(__name__)
 
 
+def _ensure_mcp_compliant_schema(input_schema: dict[str, Any]) -> dict[str, Any]:
+    """Ensure inputSchema conforms to MCP spec by adding 'type': 'object' if missing.
+
+    The MCP spec requires all tool inputSchema definitions to have "type": "object"
+    at the top level. This function ensures backend tool schemas are compliant.
+
+    Args:
+        input_schema: The input schema from a backend tool
+
+    Returns:
+        MCP-compliant schema with "type": "object" at top level
+    """
+    if not input_schema:
+        return {"type": "object", "properties": {}}
+
+    # If schema already has "type": "object", return as-is
+    if input_schema.get("type") == "object":
+        return input_schema
+
+    # If schema has "type" but it's not "object", wrap it
+    if "type" in input_schema:
+        logger.warning(
+            f"Tool inputSchema has non-object type '{input_schema.get('type')}'. "
+            "Wrapping in object schema to comply with MCP spec."
+        )
+        return {
+            "type": "object",
+            "properties": {"value": input_schema}
+        }
+
+    # If no "type" field but has "properties", add "type": "object"
+    if "properties" in input_schema or "additionalProperties" in input_schema:
+        schema_copy = input_schema.copy()
+        schema_copy["type"] = "object"
+        return schema_copy
+
+    # Default: wrap unknown schema structure
+    logger.warning(
+        "Tool inputSchema missing 'type' field and has unexpected structure. "
+        "Adding 'type': 'object' to comply with MCP spec."
+    )
+    schema_copy = input_schema.copy()
+    schema_copy["type"] = "object"
+    return schema_copy
+
+
 class NginxConfigService:
     """Service for generating Nginx configuration for registered servers."""
 
@@ -764,6 +810,8 @@ map "$uri:$http_x_mcp_server_version" $versioned_backend {{
                                 description = tm.description_override or st.get("description", "")
                                 input_schema = st.get("inputSchema", st.get("input_schema", {}))
                                 break
+
+                    input_schema = _ensure_mcp_compliant_schema(input_schema)
 
                     # Per-tool scopes
                     required_scopes = scope_overrides.get(tool_display_name, [])

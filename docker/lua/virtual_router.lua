@@ -17,6 +17,23 @@ local SESSION_CACHE_TTL = 30
 local ENRICHED_CACHE_TTL = 60
 
 
+-- Ensure inputSchema has "type": "object" as required by MCP spec
+local function _ensure_mcp_schema(schema)
+    if not schema or type(schema) ~= "table" then
+        return { type = "object", properties = {} }
+    end
+    if schema.type == "object" then
+        return schema
+    end
+    if not schema.type then
+        schema.type = "object"
+        return schema
+    end
+    -- Non-object type: wrap it
+    return { type = "object", properties = { value = schema } }
+end
+
+
 -- Read and cache virtual server mapping from JSON file
 local function _get_mapping(server_id)
     local cache_key = "mapping:" .. server_id
@@ -342,7 +359,7 @@ local function _handle_tools_list(request_id, mapping, user_scopes_str, client_s
                     enriched_tools[#enriched_tools + 1] = {
                         name = display_name,
                         description = desc,
-                        inputSchema = bt.inputSchema or bt.input_schema or {},
+                        inputSchema = _ensure_mcp_schema(bt.inputSchema or bt.input_schema),
                         required_scopes = mapping_entry.required_scopes,
                     }
                 end
@@ -359,7 +376,7 @@ local function _handle_tools_list(request_id, mapping, user_scopes_str, client_s
                     enriched_tools[#enriched_tools + 1] = {
                         name = tool.name,
                         description = tool.description or "",
-                        inputSchema = tool.inputSchema or {},
+                        inputSchema = _ensure_mcp_schema(tool.inputSchema),
                         required_scopes = tool.required_scopes,
                     }
                 end
@@ -380,7 +397,7 @@ local function _handle_tools_list(request_id, mapping, user_scopes_str, client_s
             tools[#tools + 1] = {
                 name = tool.name,
                 description = tool.description or "",
-                inputSchema = tool.inputSchema or {},
+                inputSchema = _ensure_mcp_schema(tool.inputSchema),
             }
         end
     end
