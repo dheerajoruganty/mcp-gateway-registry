@@ -6,6 +6,45 @@
 --   L2: MongoDB via /_internal/sessions/ FastAPI endpoints
 local cjson = require "cjson"
 
+-- Ensure empty Lua tables serialize as JSON arrays [] not objects {}
+local empty_array_mt = cjson.empty_array_mt
+
+-- Extract JSON from an SSE-formatted response body.
+-- SSE format: "event: message\ndata: {json}\n\n"
+-- If the body is already raw JSON, return it as-is.
+local function _parse_sse_body(body)
+    if not body or body == "" then
+        return nil
+    end
+    -- If it starts with '{' or '[', it's already raw JSON
+    local first_char = string.sub(body, 1, 1)
+    if first_char == "{" or first_char == "[" then
+        return body
+    end
+    -- Extract the last "data: " line (SSE format)
+    local json_data = nil
+    for line in string.gmatch(body, "[^\r\n]+") do
+        local data = string.match(line, "^data:%s*(.+)")
+        if data then
+            json_data = data
+        end
+    end
+    return json_data
+end
+
+
+-- Force a table to serialize as a JSON array (handles empty tables -> [] not {})
+local function _as_json_array(t)
+    if type(t) ~= "table" then
+        if cjson.empty_array then return cjson.empty_array end
+        return setmetatable({}, empty_array_mt)
+    end
+    if next(t) == nil then
+        if cjson.empty_array then return cjson.empty_array end
+    end
+    return setmetatable(t, empty_array_mt)
+end
+
 local _M = {}
 
 -- Shared dict for L1 session cache and mapping cache
@@ -15,6 +54,15 @@ local session_cache = ngx.shared.virtual_server_map
 local MAPPING_CACHE_TTL = 10
 local SESSION_CACHE_TTL = 30
 local ENRICHED_CACHE_TTL = 60
+
+-- Supported MCP protocol versions (newest first for negotiation)
+local SUPPORTED_PROTOCOL_VERSIONS = {
+    ["2025-11-25"] = true,
+    ["2025-06-18"] = true,
+    ["2025-03-26"] = true,
+    ["2024-11-05"] = true,
+}
+local LATEST_PROTOCOL_VERSION = "2025-11-25"
 
 
 -- Ensure inputSchema has "type": "object" as required by MCP spec
@@ -125,7 +173,7 @@ local function _initialize_backend(backend_location)
         id = "init-" .. (ngx.var.request_id or "0"),
         method = "initialize",
         params = {
-            protocolVersion = "2024-11-05",
+            protocolVersion = LATEST_PROTOCOL_VERSION,
             capabilities = {},
             clientInfo = {
                 name = "mcp-gateway-virtual-router",
@@ -137,6 +185,8 @@ local function _initialize_backend(backend_location)
     -- Clear the client's Mcp-Session-Id so the backend sees a fresh
     -- initialize request instead of trying to resume a vs-* session.
     ngx.req.set_header("Mcp-Session-Id", "")
+    -- MCP spec requires Accept header listing both content types
+    ngx.req.set_header("Accept", "application/json, text/event-stream")
 
     local res = ngx.location.capture(backend_location, {
         method = ngx.HTTP_POST,
@@ -294,7 +344,14 @@ local function _fetch_backend_tools_list(backend_location, client_session_id, se
         return {}
     end
 
-    local ok, data = pcall(cjson.decode, res.body)
+    -- Backend may respond with SSE format (text/event-stream) or raw JSON
+    local json_body = _parse_sse_body(res.body)
+    if not json_body then
+        ngx.log(ngx.ERR, "Empty or unparseable tools/list response from ", backend_location)
+        return {}
+    end
+
+    local ok, data = pcall(cjson.decode, json_body)
     if not ok then
         ngx.log(ngx.ERR, "Failed to parse tools/list response from ", backend_location)
         return {}
@@ -391,7 +448,7 @@ local function _handle_tools_list(request_id, mapping, user_scopes_str, client_s
     end
 
     -- Scope filter: filter cached tools by user's scopes at request time
-    local tools = {}
+    local tools = setmetatable({}, empty_array_mt)
     for _, tool in ipairs(enriched_tools) do
         if _has_scopes(user_scopes_str, tool.required_scopes) then
             tools[#tools + 1] = {
@@ -402,7 +459,7 @@ local function _handle_tools_list(request_id, mapping, user_scopes_str, client_s
         end
     end
 
-    return _jsonrpc_result(request_id, { tools = tools })
+    return _jsonrpc_result(request_id, { tools = _as_json_array(tools) })
 end
 
 
@@ -417,11 +474,15 @@ local function _proxy_list_to_backends(method_name, result_key, mapping, client_
     if cached then
         local ok, data = pcall(cjson.decode, cached)
         if ok then
+            -- Ensure decoded items is always a JSON array (empty table from cache loses metatable)
+            if data.items and #data.items == 0 then
+                data.items = setmetatable({}, empty_array_mt)
+            end
             return data.items, data.lookup
         end
     end
 
-    local aggregated = {}
+    local aggregated = setmetatable({}, empty_array_mt)
     local lookup = {}
     local backend_locations = _collect_backend_locations(mapping)
 
@@ -468,7 +529,8 @@ local function _proxy_list_to_backends(method_name, result_key, mapping, client_
         end
 
         if res and res.status == 200 then
-            local ok, data = pcall(cjson.decode, res.body)
+            local json_body = _parse_sse_body(res.body)
+            local ok, data = pcall(cjson.decode, json_body or "")
             if ok and data.result and data.result[result_key] then
                 for _, item in ipairs(data.result[result_key]) do
                     aggregated[#aggregated + 1] = item
@@ -585,8 +647,48 @@ local function _proxy_to_backend(request_id, method_name, proxied_params,
 end
 
 
+-- Validate a client session ID against MongoDB (L2).
+-- Uses L1 cache to avoid repeated DB lookups.
+-- Returns true if valid, false otherwise.
+local function _validate_client_session(client_session_id)
+    if not client_session_id or client_session_id == "" then
+        return false
+    end
+
+    -- L1: fast path check (cache valid sessions for SESSION_CACHE_TTL)
+    local cache_key = "csess_valid:" .. client_session_id
+    local cached = session_cache:get(cache_key)
+    if cached == "1" then
+        return true
+    end
+
+    -- L2: validate via internal FastAPI endpoint
+    local res = ngx.location.capture(
+        "/_internal/sessions/client/" .. client_session_id,
+        { method = ngx.HTTP_GET }
+    )
+
+    if res and res.status == 200 then
+        session_cache:set(cache_key, "1", SESSION_CACHE_TTL)
+        return true
+    end
+
+    return false
+end
+
+
+-- Negotiate protocol version: if client's version is supported, echo it back;
+-- otherwise respond with our latest supported version.
+local function _negotiate_protocol_version(client_version)
+    if client_version and SUPPORTED_PROTOCOL_VERSIONS[client_version] then
+        return client_version
+    end
+    return LATEST_PROTOCOL_VERSION
+end
+
+
 -- Handle initialize method - create client session, return MCP capabilities
-local function _handle_initialize(request_id, server_id)
+local function _handle_initialize(request_id, server_id, params)
     local user_id = ngx.var.auth_user or ngx.var.auth_username or "anonymous"
     local virtual_path = "/virtual/" .. server_id
 
@@ -617,17 +719,14 @@ local function _handle_initialize(request_id, server_id)
         ngx.log(ngx.WARN, "Failed to create client session for server=", server_id)
     end
 
+    -- Negotiate protocol version with client
+    local client_version = params and params.protocolVersion
+    local negotiated_version = _negotiate_protocol_version(client_version)
+
     local result = {
-        protocolVersion = "2024-11-05",
+        protocolVersion = negotiated_version,
         capabilities = {
             tools = {
-                listChanged = false,
-            },
-            resources = {
-                subscribe = false,
-                listChanged = false,
-            },
-            prompts = {
                 listChanged = false,
             },
         },
@@ -765,6 +864,39 @@ end
 
 -- Main entry point
 function _M.route()
+    -- Per MCP Streamable HTTP 2025-11-25 spec, the client MUST include Accept header
+    -- listing both application/json and text/event-stream. Set this on the request so
+    -- all ngx.location.capture subrequests to backends inherit it.
+    ngx.req.set_header("Accept", "application/json, text/event-stream")
+
+    local request_method = ngx.var.request_method
+
+    -- Handle HTTP GET: per MCP Streamable HTTP 2025-11-25 spec section 3.3,
+    -- the server MUST either return Content-Type: text/event-stream or HTTP 405.
+    -- We do not support server-initiated SSE streams.
+    if request_method == "GET" then
+        ngx.status = 405
+        ngx.header["Allow"] = "POST"
+        return
+    end
+
+    -- Handle HTTP DELETE: session termination per MCP spec.
+    -- Return 405 Method Not Allowed to indicate we don't support client-initiated termination.
+    if request_method == "DELETE" then
+        ngx.status = 405
+        ngx.header["Content-Type"] = "application/json"
+        ngx.header["Allow"] = "POST, GET"
+        return
+    end
+
+    -- Only POST is accepted for JSON-RPC messages
+    if request_method ~= "POST" then
+        ngx.status = 405
+        ngx.header["Content-Type"] = "application/json"
+        ngx.header["Allow"] = "POST, GET, DELETE"
+        return
+    end
+
     -- Read request body
     ngx.req.read_body()
     local body = ngx.req.get_body_data()
@@ -798,11 +930,29 @@ function _M.route()
         return
     end
 
+    -- Detect JSON-RPC notifications (no "id" field) vs requests (have "id" field).
+    -- Per MCP Streamable HTTP spec, notifications and responses MUST get HTTP 202 Accepted
+    -- with no body. Only JSON-RPC requests get a JSON-RPC response.
+    local is_notification = (request_id == nil) and (method ~= nil)
+
+    -- Handle notifications: return 202 Accepted with no body per MCP spec
+    if is_notification then
+        if method == "notifications/initialized" then
+            ngx.log(ngx.INFO, "Received initialized notification for server=", server_id)
+        elseif method == "notifications/cancelled" then
+            ngx.log(ngx.INFO, "Received cancelled notification for server=", server_id)
+        else
+            ngx.log(ngx.INFO, "Received notification method=", method, " for server=", server_id)
+        end
+        ngx.status = 202
+        return
+    end
+
     -- Handle initialize: generate a client session and return capabilities
     if method == "initialize" then
         ngx.status = 200
         ngx.header["Content-Type"] = "application/json"
-        ngx.say(_handle_initialize(request_id, server_id))
+        ngx.say(_handle_initialize(request_id, server_id, params))
         return
     end
 
@@ -811,6 +961,20 @@ function _M.route()
         ngx.status = 200
         ngx.header["Content-Type"] = "application/json"
         ngx.say(_jsonrpc_result(request_id, {}))
+        return
+    end
+
+    -- Get client session ID from request header (set during initialize)
+    local client_session_id = ngx.var.http_mcp_session_id
+
+    -- Validate client session: per MCP spec, servers that require a session ID
+    -- SHOULD respond with 400 Bad Request to requests without a valid Mcp-Session-Id.
+    -- Initialize and ping are exempt; notifications already handled above with 202.
+    if not _validate_client_session(client_session_id) then
+        ngx.status = 400
+        ngx.header["Content-Type"] = "application/json"
+        ngx.say(_jsonrpc_error(request_id, -32600,
+            "Missing or invalid Mcp-Session-Id. Send an initialize request first."))
         return
     end
 
@@ -825,9 +989,6 @@ function _M.route()
 
     -- Get user scopes from auth
     local user_scopes_str = ngx.var.auth_scopes or ""
-
-    -- Get client session ID from request header (set during initialize)
-    local client_session_id = ngx.var.http_mcp_session_id
 
     -- Route based on method
     ngx.header["Content-Type"] = "application/json"
@@ -849,7 +1010,7 @@ function _M.route()
         local resources = _proxy_list_to_backends("resources/list", "resources",
             mapping, client_session_id, server_id)
         ngx.status = 200
-        ngx.say(_jsonrpc_result(request_id, { resources = resources }))
+        ngx.say(_jsonrpc_result(request_id, { resources = _as_json_array(resources) }))
 
     elseif method == "resources/read" then
         -- Enforce server-level required_scopes
@@ -870,7 +1031,7 @@ function _M.route()
         local prompts = _proxy_list_to_backends("prompts/list", "prompts",
             mapping, client_session_id, server_id)
         ngx.status = 200
-        ngx.say(_jsonrpc_result(request_id, { prompts = prompts }))
+        ngx.say(_jsonrpc_result(request_id, { prompts = _as_json_array(prompts) }))
 
     elseif method == "prompts/get" then
         -- Enforce server-level required_scopes
@@ -880,11 +1041,6 @@ function _M.route()
             return
         end
         _handle_prompts_get(request_id, params, mapping, client_session_id, server_id)
-
-    elseif method == "notifications/initialized" then
-        -- Acknowledge notification (no response needed per JSON-RPC)
-        ngx.status = 200
-        ngx.say("{}")
 
     else
         ngx.status = 200

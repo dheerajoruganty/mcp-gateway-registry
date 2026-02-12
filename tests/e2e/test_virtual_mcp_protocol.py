@@ -121,19 +121,55 @@ def _send_request(
             raw = resp.read().decode("utf-8")
             content_type = resp.headers.get("content-type", "")
             resp_headers = {k.lower(): v for k, v in resp.headers.items()}
+            resp_headers["_status"] = str(resp.status)
             parsed = _parse_response(raw, content_type)
             return parsed, resp_headers
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8")
         content_type = e.headers.get("content-type", "") if e.headers else ""
+        resp_headers = {"_status": str(e.code)}
+        if e.headers:
+            resp_headers.update({k.lower(): v for k, v in e.headers.items()})
         try:
             parsed = _parse_response(error_body, content_type)
         except (json.JSONDecodeError, ValueError):
             parsed = {"raw_error": error_body, "http_code": e.code}
+        return parsed, resp_headers
+
+
+def _send_raw_http(
+    method: str,
+    token: str,
+    session_id: Optional[str] = None,
+    body: Optional[bytes] = None,
+) -> Tuple[int, str, Dict[str, str]]:
+    """Send a raw HTTP request (GET/DELETE/POST) and return status, body, headers.
+
+    Returns:
+        Tuple of (http_status_code, response_body, response_headers_dict).
+    """
+    headers = _build_headers(token, session_id)
+    if method == "GET":
+        headers["Accept"] = "text/event-stream"
+
+    req = urllib.request.Request(
+        VIRTUAL_SERVER_ENDPOINT,
+        data=body,
+        headers=headers,
+        method=method,
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8")
+            resp_headers = {k.lower(): v for k, v in resp.headers.items()}
+            return resp.status, raw, resp_headers
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8")
         resp_headers = {}
         if e.headers:
             resp_headers = {k.lower(): v for k, v in e.headers.items()}
-        return parsed, resp_headers
+        return e.code, error_body, resp_headers
 
 
 class VirtualMCPProtocolTests:
@@ -179,7 +215,7 @@ class VirtualMCPProtocolTests:
             "id": self._next_id(),
             "method": "initialize",
             "params": {
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": "2025-11-25",
                 "capabilities": {},
                 "clientInfo": {"name": "e2e-test-client", "version": "1.0.0"},
             },
@@ -189,6 +225,9 @@ class VirtualMCPProtocolTests:
         try:
             result = body.get("result", {})
             assert "protocolVersion" in result, "Missing protocolVersion"
+            assert result["protocolVersion"] == "2025-11-25", (
+                f"Expected negotiated version '2025-11-25', got '{result['protocolVersion']}'"
+            )
             caps = result.get("capabilities", {})
             assert "tools" in caps, "Missing tools capability"
             assert "resources" in caps, "Missing resources capability"
@@ -204,6 +243,97 @@ class VirtualMCPProtocolTests:
             self._record("initialize", True)
         except AssertionError as e:
             self._record("initialize", False, str(e))
+
+    def test_01a_initialize_version_negotiation(self) -> None:
+        """Verify server echoes back supported protocol version."""
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._next_id(),
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "e2e-test-client", "version": "1.0.0"},
+            },
+        }
+        body, _ = _send_request(payload, self._token)
+
+        try:
+            result = body.get("result", {})
+            assert result.get("protocolVersion") == "2024-11-05", (
+                f"Expected '2024-11-05' echoed back, got '{result.get('protocolVersion')}'"
+            )
+            self._record("initialize version negotiation (old)", True)
+        except AssertionError as e:
+            self._record("initialize version negotiation (old)", False, str(e))
+
+    def test_01b_initialize_version_unsupported(self) -> None:
+        """Verify server returns its latest version for unsupported client version."""
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._next_id(),
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "9999-01-01",
+                "capabilities": {},
+                "clientInfo": {"name": "e2e-test-client", "version": "1.0.0"},
+            },
+        }
+        body, _ = _send_request(payload, self._token)
+
+        try:
+            result = body.get("result", {})
+            version = result.get("protocolVersion", "")
+            assert version == "2025-11-25", (
+                f"Expected server's latest version '2025-11-25', got '{version}'"
+            )
+            self._record("initialize version negotiation (unsupported)", True)
+        except AssertionError as e:
+            self._record("initialize version negotiation (unsupported)", False, str(e))
+
+    def test_01c_notifications_initialized_returns_202(self) -> None:
+        """Verify notifications/initialized returns HTTP 202 with no body."""
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+        }
+        data = json.dumps(payload).encode("utf-8")
+        status, body, _ = _send_raw_http("POST", self._token, self._session_id, data)
+
+        try:
+            assert status == 202, (
+                f"Expected HTTP 202 Accepted, got {status}"
+            )
+            assert body.strip() == "", (
+                f"Expected empty body for 202, got: '{body[:100]}'"
+            )
+            self._record("notifications/initialized -> 202", True)
+        except AssertionError as e:
+            self._record("notifications/initialized -> 202", False, str(e))
+
+    def test_01d_get_returns_405(self) -> None:
+        """Verify HTTP GET returns 405 Method Not Allowed (no SSE support)."""
+        status, _, _ = _send_raw_http("GET", self._token, self._session_id)
+
+        try:
+            assert status == 405, (
+                f"Expected HTTP 405 for GET, got {status}"
+            )
+            self._record("GET -> 405 Method Not Allowed", True)
+        except AssertionError as e:
+            self._record("GET -> 405 Method Not Allowed", False, str(e))
+
+    def test_01e_delete_returns_405(self) -> None:
+        """Verify HTTP DELETE returns 405 Method Not Allowed."""
+        status, _, _ = _send_raw_http("DELETE", self._token, self._session_id)
+
+        try:
+            assert status == 405, (
+                f"Expected HTTP 405 for DELETE, got {status}"
+            )
+            self._record("DELETE -> 405 Method Not Allowed", True)
+        except AssertionError as e:
+            self._record("DELETE -> 405 Method Not Allowed", False, str(e))
 
     def test_02_ping(self) -> None:
         """Verify ping returns empty result."""
