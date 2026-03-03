@@ -294,6 +294,7 @@ services:
       args:
         SERVER_DIR: servers/currenttime
     environment:
+      - HOST=0.0.0.0
       - PORT=8000
       - MCP_TRANSPORT=streamable-http
     ports:
@@ -324,6 +325,7 @@ services:
       args:
         SERVER_DIR: servers/mcpgw
     environment:
+      - HOST=0.0.0.0
       - PORT=8003
       - REGISTRY_BASE_URL=http://registry:7860
       - REGISTRY_USERNAME=${ADMIN_USER:-admin}

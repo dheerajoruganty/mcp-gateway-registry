@@ -5,9 +5,11 @@ This server provides an interface to get the current time in a specified timezon
 import argparse
 import logging
 import os
+from datetime import datetime
 from typing import Annotated
 
-from mcp.server.fastmcp import FastMCP
+import pytz
+from fastmcp import FastMCP
 from pydantic import Field
 
 # Configure logging
@@ -50,8 +52,7 @@ logger.info(
 )
 
 # Initialize FastMCP server
-mcp = FastMCP("CurrentTimeAPI", host="0.0.0.0", port=int(args.port))  # nosec B104
-mcp.settings.mount_path = "/currenttime"
+mcp = FastMCP("CurrentTimeAPI")
 
 
 @mcp.prompt()
@@ -78,11 +79,6 @@ can be passed as an input to the tools provided by the current_time MCP server.
 The user's location is: {location}
 """
     return system_prompt
-
-
-from datetime import datetime
-
-import pytz
 
 
 def get_current_time_in_timezone(timezone_name):
@@ -141,13 +137,16 @@ def get_config() -> str:
 
 
 def main():
-    # Log transport and endpoint information
-    endpoint = "/mcp" if args.transport == "streamable-http" else "/sse"
-    logger.info(f"Starting CurrentTime server on port {args.port} with transport {args.transport}")
-    logger.info(f"Server will be available at: http://localhost:{args.port}{endpoint}")
+    # Use configurable host with secure default (127.0.0.1)
+    # Set HOST=0.0.0.0 in environment for Docker deployments
+    host = os.environ.get("HOST", "127.0.0.1")
 
-    # Run the server with the specified transport from command line args
-    mcp.run(transport=args.transport)
+    # Log startup information
+    logger.info(f"Starting CurrentTime server on {host}:{args.port}")
+    logger.info(f"Server will be available at: http://{host}:{args.port}/mcp")
+
+    # Run the server
+    mcp.run(transport=args.transport, host=host, port=int(args.port))
 
 
 if __name__ == "__main__":

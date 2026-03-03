@@ -42,7 +42,10 @@ class DocumentDBServerRepository(ServerRepositoryBase):
         self,
         path: str,
     ) -> dict[str, Any] | None:
-        """Get server by path."""
+        """Get server by path.
+
+        Normalizes paths to match both with and without trailing slashes.
+        """
         logger.debug(
             f"DocumentDB READ: Getting server with path='{path}' from collection '{self._collection_name}'"
         )
@@ -50,6 +53,17 @@ class DocumentDBServerRepository(ServerRepositoryBase):
 
         try:
             server_info = await collection.find_one({"_id": path})
+
+            # If not found, try alternate path (with/without trailing slash)
+            if not server_info:
+                if path.endswith("/"):
+                    alternate_path = path.rstrip("/")
+                else:
+                    alternate_path = path + "/"
+
+                logger.debug(f"DocumentDB READ: Trying alternate path '{alternate_path}'")
+                server_info = await collection.find_one({"_id": alternate_path})
+
             if server_info:
                 server_info["path"] = server_info.pop("_id")
                 logger.debug(

@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     security_scan_on_registration: bool = True
     security_block_unsafe_servers: bool = True
     security_analyzers: str = "yara"  # Comma-separated: yara, llm, or yara,llm
-    security_scan_timeout: int = 60  # 1 minutes
+    security_scan_timeout: int = 60  # 1 minute
     security_add_pending_tag: bool = True
     mcp_scanner_llm_api_key: str = ""  # Optional LLM API key for advanced analysis
 

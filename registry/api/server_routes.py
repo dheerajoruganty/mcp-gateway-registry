@@ -75,6 +75,7 @@ async def _perform_security_scan_on_registration(
             api_key=scan_config.llm_api_key,
             headers=headers_json,
             timeout=scan_config.scan_timeout_seconds,
+            mcp_endpoint=server_entry.get("mcp_endpoint"),
         )
 
         # Handle unsafe servers
@@ -385,6 +386,7 @@ async def get_servers_json(
                     "sync_metadata": server_info.get("sync_metadata"),
                     "auth_scheme": server_info.get("auth_scheme", "none"),
                     "auth_header_name": server_info.get("auth_header_name"),
+                    "tool_list": server_info.get("tool_list"),
                 }
             )
 
@@ -661,8 +663,10 @@ async def register_service(
     # Broadcast health status update to WebSocket clients
     await health_service.broadcast_health_update(path)
 
-    # Security scanning if enabled
-    await _perform_security_scan_on_registration(path, proxy_pass_url, server_entry)
+    # Security scanning if enabled (non-blocking — scan is non-fatal, don't block response)
+    asyncio.create_task(
+        _perform_security_scan_on_registration(path, proxy_pass_url, server_entry)
+    )
 
     logger.info(
         f"New service registered: '{name}' at path '{path}' by user '{user_context['username']}'"
@@ -929,8 +933,10 @@ async def internal_register_service(
         logger.error(f"Failed to update scopes for server {path}: {e}")
         # Non-fatal error - server is registered but scopes not updated
 
-    # Security scanning if enabled
-    await _perform_security_scan_on_registration(path, proxy_pass_url, server_entry, headers_list)
+    # Security scanning if enabled (non-blocking — scan is non-fatal, don't block response)
+    asyncio.create_task(
+        _perform_security_scan_on_registration(path, proxy_pass_url, server_entry, headers_list)
+    )
 
     logger.warning(
         "INTERNAL REGISTER: Registration complete, returning success response"
@@ -2448,9 +2454,11 @@ async def register_service_api(
                 f"Service registered successfully via API: {path} by user {user_context.get('username')}"
             )
 
-        # Security scanning if enabled
-        await _perform_security_scan_on_registration(
-            path, proxy_pass_url, server_entry, headers_list
+        # Security scanning if enabled (non-blocking — scan is non-fatal, don't block response)
+        asyncio.create_task(
+            _perform_security_scan_on_registration(
+                path, proxy_pass_url, server_entry, headers_list
+            )
         )
 
         # Trigger async tasks for health check and FAISS sync
@@ -3567,6 +3575,7 @@ async def get_server_rating(
             )
 
     return {
+        "num_stars": server_info.get("num_stars", 0),
         "rating_details": server_info.get("rating_details", []),
     }
 
@@ -3697,6 +3706,7 @@ async def rescan_server(
             api_key=None,
             headers=None,
             timeout=None,
+            mcp_endpoint=server_info.get("mcp_endpoint"),
         )
 
         # Return the scan result data

@@ -396,6 +396,7 @@ async def update_virtual_server(
             detail=f"Virtual server not found: {normalized}",
         )
     except VirtualServerValidationError as e:
+        logger.error(f"Virtual server validation error: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),

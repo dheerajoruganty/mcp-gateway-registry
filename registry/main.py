@@ -384,6 +384,12 @@ async def lifespan(app: FastAPI):
         await peer_sync_scheduler.start()
         logger.info("Peer sync scheduler started")
 
+        # Initialize built-in demo servers (airegistry-tools)
+        # This ensures the registry management tools are always available
+        from registry.services.demo_servers_init import initialize_demo_servers
+
+        await initialize_demo_servers()
+
         # Always generate nginx configuration at startup to ensure placeholders are replaced
         # In registry-only mode, generate base config without MCP server location blocks
         if settings.nginx_updates_enabled:

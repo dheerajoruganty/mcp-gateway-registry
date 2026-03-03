@@ -1106,6 +1106,8 @@ map "$uri:$http_x_mcp_server_version" $versioned_backend {{
         proxy_set_header X-Client-Id $http_x_client_id;
         proxy_set_header X-Region $http_x_region;
 
+        # Forward MCP session ID for streamable-http transport
+        proxy_set_header Mcp-Session-Id $http_mcp_session_id;
 
         # Forward auth server response headers to backend
         proxy_set_header X-User $auth_user;

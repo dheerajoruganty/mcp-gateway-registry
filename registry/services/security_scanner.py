@@ -269,6 +269,8 @@ class SecurityScannerService:
             # Return error result
             result = SecurityScanResult(
                 server_url=server_url,
+                server_path=server_path
+                or server_url,  # Use server_path if provided, fallback to URL
                 scan_timestamp=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
                 is_safe=False,  # Treat scanner failures as unsafe
                 critical_issues=0,
@@ -283,7 +285,7 @@ class SecurityScannerService:
             )
 
             # Save error result via repository
-            await self._scan_repo.create(result)
+            await self._scan_repo.create(result.model_dump())
 
             return result
         except Exception as e:
@@ -300,6 +302,8 @@ class SecurityScannerService:
             # Return error result
             result = SecurityScanResult(
                 server_url=server_url,
+                server_path=server_path
+                or server_url,  # Use server_path if provided, fallback to URL
                 scan_timestamp=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
                 is_safe=False,  # Treat scanner failures as unsafe
                 critical_issues=0,
@@ -314,7 +318,7 @@ class SecurityScannerService:
             )
 
             # Save error result via repository
-            await self._scan_repo.create(result)
+            await self._scan_repo.create(result.model_dump())
 
             return result
 

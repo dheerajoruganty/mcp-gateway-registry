@@ -105,12 +105,25 @@ class DocumentDBSecurityScanRepository(SecurityScanRepositoryBase):
         self,
         server_path: str,
     ) -> dict[str, Any] | None:
-        """Get latest scan result for a server."""
+        """Get latest scan result for a server.
+
+        Normalizes paths to match both with and without trailing slashes.
+        """
         try:
             collection = await self._get_collection()
 
+            # Normalize path - try both with and without trailing slash
+            path_without_slash = server_path.rstrip("/")
+            path_with_slash = path_without_slash + "/"
+
             scan_doc = await collection.find_one(
-                {"server_path": server_path}, sort=[("scan_timestamp", -1)]
+                {
+                    "$or": [
+                        {"server_path": path_without_slash},
+                        {"server_path": path_with_slash},
+                    ]
+                },
+                sort=[("scan_timestamp", -1)],
             )
 
             if scan_doc:

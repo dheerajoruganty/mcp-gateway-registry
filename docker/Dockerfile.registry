@@ -51,6 +51,7 @@ COPY registry/ /app/registry/
 COPY auth_server/ /app/auth_server/
 COPY api/ /app/api/
 COPY scripts/ /app/scripts/
+COPY cli/examples/ /app/cli/examples/
 
 # Install the registry package in editable mode
 RUN . .venv/bin/activate && uv pip install -e .
@@ -102,6 +103,7 @@ COPY --from=backend-builder /app/auth_server /app/auth_server
 COPY --from=backend-builder /app/api /app/api
 COPY --from=backend-builder /app/config /app/config
 COPY --from=backend-builder /app/scripts /app/scripts
+COPY --from=backend-builder /app/cli/examples /app/cli/examples
 
 # Copy built frontend from frontend builder
 COPY --from=frontend-builder /app/frontend/build /app/frontend/build

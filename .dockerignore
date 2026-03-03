@@ -72,7 +72,8 @@ mcp-atlassian/
 terraform/
 htmlcov/
 site/
-cli/
+cli/*
+!cli/examples/
 security_scans/
 credentials-provider/
 .oauth-tokens/
