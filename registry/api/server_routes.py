@@ -2099,8 +2099,7 @@ async def generate_user_token(
             logger.info(
                 f"Session data extracted: auth_method={session_data.get('auth_method')}, "
                 f"provider={session_data.get('provider')}, "
-                f"has_access_token={bool(session_data.get('access_token'))}, "
-                f"has_refresh_token={bool(session_data.get('refresh_token'))}"
+                f"has_id_token={bool(session_data.get('id_token'))}"
             )
         except Exception as e:
             logger.warning(f"Could not get session data for tokens: {e}")

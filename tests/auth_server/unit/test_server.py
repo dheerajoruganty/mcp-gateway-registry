@@ -1579,23 +1579,31 @@ class TestOAuth2CallbackTokenStorage:
         return decoder.loads(session_cookie)
 
     def test_tokens_excluded_when_disabled(self):
-        """oauth2_callback omits tokens from session when flag is False."""
+        """oauth2_callback stores id_token but omits metadata when flag is False."""
         session_data = self._call_oauth2_callback(store_tokens=False)
 
         assert session_data["username"] == "testuser"
         assert session_data["auth_method"] == "oauth2"
+        # id_token is always stored for OIDC logout (issue #490)
+        assert session_data["id_token"] == "mock-id-token"
+        # Credentials are never stored (removed in issue #490)
         assert "access_token" not in session_data
         assert "refresh_token" not in session_data
+        # Metadata only stored when flag is True
         assert "token_expires_in" not in session_data
         assert "token_obtained_at" not in session_data
 
     def test_tokens_included_when_enabled(self):
-        """oauth2_callback includes tokens in session when flag is True."""
+        """oauth2_callback stores id_token and metadata when flag is True."""
         session_data = self._call_oauth2_callback(store_tokens=True)
 
         assert session_data["username"] == "testuser"
         assert session_data["auth_method"] == "oauth2"
-        assert session_data["access_token"] == "mock-access-token-value"
-        assert session_data["refresh_token"] == "mock-refresh-token-value"
+        # id_token is always stored for OIDC logout (issue #490)
+        assert session_data["id_token"] == "mock-id-token"
+        # Credentials are never stored (removed in issue #490)
+        assert "access_token" not in session_data
+        assert "refresh_token" not in session_data
+        # Metadata is stored when flag is True
         assert session_data["token_expires_in"] == 3600
         assert "token_obtained_at" in session_data

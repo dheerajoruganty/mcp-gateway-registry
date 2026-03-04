@@ -1,4 +1,5 @@
 import logging
+import re
 import urllib.parse
 from typing import Annotated
 
@@ -6,6 +7,7 @@ import httpx
 from fastapi import APIRouter, Cookie, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from prometheus_client import Counter
 
 from ..audit import set_audit_action
 from ..core.config import settings
@@ -13,10 +15,45 @@ from .dependencies import create_session_cookie, validate_login_credentials
 
 logger = logging.getLogger(__name__)
 
+
+# Prometheus metrics for logout observability
+logout_id_token_hint_present = Counter(
+    "registry_logout_id_token_hint_present_total",
+    "Number of Registry logout requests where id_token was successfully extracted and forwarded",
+)
+
+logout_id_token_hint_missing = Counter(
+    "registry_logout_id_token_hint_missing_total",
+    "Number of Registry logout requests where id_token was missing from session",
+)
+
+logout_jwt_validation_failed = Counter(
+    "registry_logout_jwt_validation_failed_total",
+    "Number of Registry logout requests where id_token failed JWT format validation",
+)
+
+logout_url_length_warning = Counter(
+    "registry_logout_url_length_warning_total",
+    "Number of Registry logout requests where the logout URL exceeded recommended length",
+)
+
 router = APIRouter()
 
 # Templates (will be injected via dependency later, but for now keep it simple)
 templates = Jinja2Templates(directory=settings.templates_dir)
+
+
+def _validate_jwt_format(token: str) -> bool:
+    """Validate that a token matches JWT format (header.payload.signature).
+
+    Args:
+        token: The token string to validate
+
+    Returns:
+        True if token matches JWT format, False otherwise
+    """
+    jwt_pattern = r"^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$"
+    return bool(re.match(jwt_pattern, token))
 
 
 async def get_oauth2_providers():
@@ -257,7 +294,49 @@ async def logout_handler(
                 redirect_uri = f"{scheme}://{host}/logout"
 
             logout_url = f"{auth_external_url}/oauth2/logout/{provider}?redirect_uri={redirect_uri}"
-            logger.info(f"Redirecting to {provider} logout: {logout_url}")
+
+            # Extract id_token from session and append as id_token_hint if present
+            # This enables proper SSO session termination for Keycloak and Entra ID
+            if session:
+                try:
+                    from itsdangerous import URLSafeTimedSerializer
+
+                    serializer = URLSafeTimedSerializer(settings.secret_key)
+                    session_data = serializer.loads(
+                        session, max_age=settings.session_max_age_seconds
+                    )
+                    id_token = session_data.get("id_token")
+
+                    if id_token:
+                        # Validate JWT format before forwarding
+                        if not _validate_jwt_format(id_token):
+                            logger.debug("id_token failed JWT format validation, not forwarding")
+                            logout_jwt_validation_failed.inc()
+                        else:
+                            # URL encode the token
+                            encoded_token = urllib.parse.quote(id_token, safe="")
+
+                            # Append id_token_hint to logout URL
+                            logout_url = f"{logout_url}&id_token_hint={encoded_token}"
+
+                            # Validate URL length (warn if > 2000 chars)
+                            if len(logout_url) > 2000:
+                                logger.debug(
+                                    f"Logout URL length ({len(logout_url)}) exceeds recommended limit (2000)"
+                                )
+                                logout_url_length_warning.inc()
+
+                            logger.debug("id_token extracted and forwarded, has_id_token=True")
+                            logout_id_token_hint_present.inc()
+                    else:
+                        logger.debug("id_token not found in session, has_id_token=False")
+                        logout_id_token_hint_missing.inc()
+
+                except Exception as e:
+                    logger.debug(f"Could not extract id_token from session: {e}")
+                    logout_id_token_hint_missing.inc()
+
+            logger.debug(f"Redirecting to {provider} logout")
             response = RedirectResponse(url=logout_url, status_code=status.HTTP_303_SEE_OTHER)
             response.delete_cookie(settings.session_cookie_name)
 

@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import TokenGeneration from './pages/TokenGeneration';
 import RegisterPage from './pages/RegisterPage';
 import Login from './pages/Login';
+import Logout from './pages/Logout';
 import OAuthCallback from './pages/OAuthCallback';
 import ProtectedRoute from './components/ProtectedRoute';
 import SettingsPage from './pages/SettingsPage';
@@ -28,6 +29,7 @@ function App() {
         <Router basename={getBasename()}>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/logout" element={<Logout />} />
             <Route path="/auth/callback" element={<OAuthCallback />} />
             <Route path="/" element={
               <ProtectedRoute>

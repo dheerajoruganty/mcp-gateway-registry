@@ -2646,8 +2646,6 @@ async def oauth2_callback(
             logger.info(f"Mapped user info: {mapped_user}")
 
         # Create session cookie compatible with registry
-        # OAuth tokens are conditionally stored based on OAUTH_STORE_TOKENS_IN_SESSION
-        # Disable for large tokens (e.g., Entra ID) to avoid cookie size limits (4096 bytes)
         session_data = {
             "username": mapped_user["username"],
             "email": mapped_user.get("email"),
@@ -2655,13 +2653,16 @@ async def oauth2_callback(
             "groups": mapped_user.get("groups", []),
             "provider": provider,
             "auth_method": "oauth2",
+            # Always store id_token for OIDC logout (not a credential, just identity info)
+            # Required for proper SSO logout with id_token_hint parameter
+            "id_token": token_data.get("id_token"),
         }
 
+        # Optionally store token metadata (legacy flag, not needed for security)
+        # Note: access_token and refresh_token are never stored (removed in issue #490)
         if OAUTH_STORE_TOKENS_IN_SESSION:
             session_data.update(
                 {
-                    "access_token": token_data.get("access_token"),
-                    "refresh_token": token_data.get("refresh_token"),
                     "token_expires_in": token_data.get("expires_in"),
                     "token_obtained_at": int(time.time()),
                 }
@@ -2810,7 +2811,12 @@ def map_user_info(user_info: dict, provider_config: dict) -> dict:
 
 
 @app.get("/oauth2/logout/{provider}")
-async def oauth2_logout(provider: str, request: Request, redirect_uri: str = None):
+async def oauth2_logout(
+    provider: str,
+    request: Request,
+    redirect_uri: str = None,
+    id_token_hint: str | None = None,
+):
     """Initiate OAuth2 logout flow to clear provider session"""
     try:
         if provider not in OAUTH2_CONFIG.get("providers", {}):
@@ -2852,16 +2858,32 @@ async def oauth2_logout(provider: str, request: Request, redirect_uri: str = Non
                 "client_id": provider_config["client_id"],
                 "post_logout_redirect_uri": full_redirect_uri,
             }
+            if id_token_hint:
+                logout_params["id_token_hint"] = id_token_hint
+            logger.debug(
+                f"Keycloak logout params built: has_id_token_hint={bool(id_token_hint)}"
+            )
+        elif "login.microsoftonline.com" in logout_url or "entra" in provider.lower():
+            # Entra ID logout parameters
+            logout_params = {
+                "post_logout_redirect_uri": full_redirect_uri,
+            }
+            if id_token_hint:
+                logout_params["id_token_hint"] = id_token_hint
+            logger.debug(
+                f"Entra ID logout params built: has_id_token_hint={bool(id_token_hint)}"
+            )
         else:
-            # Cognito logout parameters
+            # Cognito logout parameters (no id_token_hint support)
             logout_params = {
                 "client_id": provider_config["client_id"],
                 "logout_uri": full_redirect_uri,
             }
+            logger.debug("Cognito logout params built (no id_token_hint)")
 
         logout_redirect_url = f"{logout_url}?{urllib.parse.urlencode(logout_params)}"
 
-        logger.info(f"Redirecting to {provider} logout: {logout_redirect_url}")
+        logger.info(f"Redirecting to {provider} logout")
         return RedirectResponse(url=logout_redirect_url, status_code=302)
 
     except HTTPException:

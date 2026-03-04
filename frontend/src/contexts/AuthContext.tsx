@@ -113,13 +113,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logout = async () => {
-    try {
-      await axios.post('/api/auth/logout');
-    } catch (error) {
-      // Ignore errors during logout
-    } finally {
-      setUser(null);
-    }
+    // Clear user state immediately for responsive UI
+    setUser(null);
+    // Perform full-page redirect to logout endpoint
+    // This allows the browser to follow the redirect chain: Registry → Auth-server → IdP → Registry
+    // Using window.location.href avoids CORS issues with cross-origin redirects
+    window.location.href = `${getBaseURL()}/api/auth/logout`;
   };
 
   const value = {
