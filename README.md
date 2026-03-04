@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/github/license/agentic-community/mcp-gateway-registry?style=flat)](https://github.com/agentic-community/mcp-gateway-registry/blob/main/LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/agentic-community/mcp-gateway-registry?style=flat&logo=github)](https://github.com/agentic-community/mcp-gateway-registry/releases)
 
-[🚀 Get Running Now](#option-a-pre-built-images-instant-setup) | [AWS Workshop Studio](https://catalog.us-east-1.prod.workshops.aws/workshops/0c3265a6-1a4a-467b-ae56-e4d019184b0e/en-US) | [AWS Deployment](terraform/aws-ecs/README.md) | [Quick Start](#quick-start) | [Documentation](docs/) | [Community](#community)
+[🚀 Get Running Now](#option-a-pre-built-images-instant-setup) | [macOS Setup Skill](.claude/skills/macos-setup/SKILL.md) | [AWS Workshop Studio](https://catalog.us-east-1.prod.workshops.aws/workshops/0c3265a6-1a4a-467b-ae56-e4d019184b0e/en-US) | [AWS Deployment](terraform/aws-ecs/README.md) | [Quick Start](#quick-start) | [Documentation](docs/) | [Community](#community)
 
 **Demo Videos:** ⭐ [MCP Registry CLI Demo](https://github.com/user-attachments/assets/98200866-e8bd-4ac3-bad6-c6d42b261dbe) | [Full End-to-End Functionality](https://github.com/user-attachments/assets/5ffd8e81-8885-4412-a4d4-3339bbdba4fb) | [OAuth 3-Legged Authentication](https://github.com/user-attachments/assets/3c3a570b-29e6-4dd3-b213-4175884396cc) | [Dynamic Tool Discovery](https://github.com/user-attachments/assets/cee25b31-61e4-4089-918c-c3757f84518c) | [Agent Skills](https://github.com/user-attachments/assets/5d1f227a-25f8-480d-9ff9-acba2498844b) | [Virtual MCP Servers](https://app.vidcast.io/share/954e6296-f217-4559-8d86-88cec25af763)
 
@@ -130,6 +130,8 @@ Interactive terminal interface for chatting with AI models and discovering MCP t
 ## What's New
 
 - ⭐ **AWS Workshop Studio: Securing AI Agent Ecosystems with MCP Gateway and Registry** - Hands-on workshop covering deployment, authentication, governance, and security best practices for production AI agent ecosystems. Learn to deploy the MCP Gateway & Registry on AWS, configure enterprise authentication, implement fine-grained access control, and secure AI agent communications. [Start Workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/0c3265a6-1a4a-467b-ae56-e4d019184b0e/en-US)
+
+- 💻 **One-Command macOS Setup** - The quickest way to get started and experiment with the solution on your MacBook. Simply ask Claude Code or your favorite AI coding assistant to use the [macOS Setup Skill](.claude/skills/macos-setup/SKILL.md) and it will automatically clone the repository, install all dependencies, configure services (MongoDB, Keycloak, registry), register sample servers, and verify the complete stack is running. Perfect for single-developer environments and hands-on exploration. Supports both full setup and complete teardown with a single command. *ECS/EKS deployment skill coming very soon.*
 
 - **AI Registry MCP Server (airegistry-tools)** - Enables AI coding assistants (Claude Code, Roo Code, Cursor, etc.) to discover and query MCP servers, agents, and skills directly from the registry. Provides 5 tools: `list_services`, `list_agents`, `list_skills`, `intelligent_tool_finder` (semantic search), and `healthcheck`. Auto-registered on registry startup with no manual setup required. See [AI Registry Tools documentation](docs/ai-registry-tools.md) for details.
 
@@ -423,13 +425,38 @@ flowchart TB
 ---
 ## Quick Start
 
-There are 3 options for setting up the MCP Gateway & Registry:
+There are 4 options for setting up the MCP Gateway & Registry:
 
-- **Option A: Pre-built Images** — Fastest setup using pre-built Docker or Podman containers. Recommended for most users.
-- **Option B: Podman (Rootless)** — Detailed Podman-specific instructions for macOS and rootless Linux environments.
-- **Option C: Build from Source** — Full source build for customization or development.
+- **Option A: AI-Assisted macOS Setup** — The absolute fastest way to get started on macOS. Ask your AI coding assistant to use the [macOS Setup Skill](.claude/skills/macos-setup/SKILL.md) for fully automated one-command setup. Perfect for experimentation.
+- **Option B: Pre-built Images** — Fast setup using pre-built Docker or Podman containers. Recommended for most users.
+- **Option C: Podman (Rootless)** — Detailed Podman-specific instructions for macOS and rootless Linux environments.
+- **Option D: Build from Source** — Full source build for customization or development.
 
-### Option A: Pre-built Images (Instant Setup)
+### Option A: AI-Assisted macOS Setup (Fastest)
+
+**The easiest way to get started on macOS.** Simply ask Claude Code or your AI coding assistant:
+
+> "Use the macOS setup skill to install and configure the MCP Gateway & Registry"
+
+The [macOS Setup Skill](.claude/skills/macos-setup/SKILL.md) will automatically:
+- ✅ Clone the repository and install all dependencies (Homebrew, Python, UV, Docker, Node.js)
+- ✅ Configure and start MongoDB with replica set
+- ✅ Set up and initialize Keycloak with admin user
+- ✅ Start the registry and auth server
+- ✅ Register the Cloudflare MCP docs server
+- ✅ Verify the complete stack is operational
+
+**Perfect for:** Single-developer experimentation, quick demos, hands-on exploration
+
+**What you need:** macOS with an AI coding assistant (Claude Code, Cursor, etc.)
+
+**Clean up:** When done, ask your AI assistant to "teardown the MCP Gateway setup" for complete removal.
+
+*Note: ECS/EKS deployment skill coming very soon for production deployments.*
+
+---
+
+### Option B: Pre-built Images (Instant Setup)
 
 Get running with pre-built Docker containers in minutes. This is the recommended approach for most users.
 
@@ -463,7 +490,7 @@ open http://localhost:7860  # macOS
 
 ---
 
-### Option B: Podman (Rootless Container Deployment)
+### Option C: Podman (Rootless Container Deployment)
 
 **Perfect for macOS and rootless Linux environments**
 
@@ -529,7 +556,7 @@ open http://localhost:8080
 
 For detailed Podman setup instructions, see [Installation Guide](docs/installation.md#podman-installation) and [macOS Setup Guide](docs/macos-setup-guide.md#podman-deployment).
 
-### Option C: Build from Source
+### Option D: Build from Source
 
 **New to MCP Gateway?** Start with our [Complete Setup Guide](docs/complete-setup-guide.md) for detailed step-by-step instructions from scratch on AWS EC2.
 
