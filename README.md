@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/github/license/agentic-community/mcp-gateway-registry?style=flat)](https://github.com/agentic-community/mcp-gateway-registry/blob/main/LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/agentic-community/mcp-gateway-registry?style=flat&logo=github)](https://github.com/agentic-community/mcp-gateway-registry/releases)
 
-[🚀 Get Running Now](#option-a-pre-built-images-instant-setup) | [AWS Deployment](terraform/aws-ecs/README.md) | [Quick Start](#quick-start) | [Documentation](docs/) | [Enterprise Features](#enterprise-features) | [Community](#community)
+[🚀 Get Running Now](#option-a-pre-built-images-instant-setup) | [AWS Workshop Studio](https://catalog.us-east-1.prod.workshops.aws/workshops/0c3265a6-1a4a-467b-ae56-e4d019184b0e/en-US) | [AWS Deployment](terraform/aws-ecs/README.md) | [Quick Start](#quick-start) | [Documentation](docs/) | [Community](#community)
 
 **Demo Videos:** ⭐ [MCP Registry CLI Demo](https://github.com/user-attachments/assets/98200866-e8bd-4ac3-bad6-c6d42b261dbe) | [Full End-to-End Functionality](https://github.com/user-attachments/assets/5ffd8e81-8885-4412-a4d4-3339bbdba4fb) | [OAuth 3-Legged Authentication](https://github.com/user-attachments/assets/3c3a570b-29e6-4dd3-b213-4175884396cc) | [Dynamic Tool Discovery](https://github.com/user-attachments/assets/cee25b31-61e4-4089-918c-c3757f84518c) | [Agent Skills](https://github.com/user-attachments/assets/5d1f227a-25f8-480d-9ff9-acba2498844b) | [Virtual MCP Servers](https://app.vidcast.io/share/954e6296-f217-4559-8d86-88cec25af763)
 
@@ -128,6 +128,8 @@ Interactive terminal interface for chatting with AI models and discovering MCP t
 ---
 
 ## What's New
+
+- ⭐ **AWS Workshop Studio: Securing AI Agent Ecosystems with MCP Gateway and Registry** - Hands-on workshop covering deployment, authentication, governance, and security best practices for production AI agent ecosystems. Learn to deploy the MCP Gateway & Registry on AWS, configure enterprise authentication, implement fine-grained access control, and secure AI agent communications. [Start Workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/0c3265a6-1a4a-467b-ae56-e4d019184b0e/en-US)
 
 - **AI Registry MCP Server (airegistry-tools)** - Enables AI coding assistants (Claude Code, Roo Code, Cursor, etc.) to discover and query MCP servers, agents, and skills directly from the registry. Provides 5 tools: `list_services`, `list_agents`, `list_skills`, `intelligent_tool_finder` (semantic search), and `healthcheck`. Auto-registered on registry startup with no manual setup required. See [AI Registry Tools documentation](docs/ai-registry-tools.md) for details.
 
