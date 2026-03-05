@@ -2,7 +2,7 @@
   "protocolVersion": "0.3.0",
   "name": "Flight Booking Agent",
   "description": "Flight booking and reservation management agent",
-  "url": "http://mcp-gateway-v2-flight-booking-agent.mcp-gateway-private-internal:8001",
+  "url": "http://flight-booking-agent.mcp-gateway-v2.local:9000",
   "version": "0.0.1",
   "capabilities": {
     "streaming": true

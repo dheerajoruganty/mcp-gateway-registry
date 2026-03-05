@@ -225,7 +225,7 @@ oauth_store_tokens_in_session = false
 # Enable static token auth for Registry API endpoints (/api/*, /v0.1/*)
 # MCP Gateway endpoints still require full IdP authentication
 # Default: false
-registry_static_token_auth_enabled = true
+registry_static_token_auth_enabled = false
 
 # Static API key for Registry API. Clients send: Authorization: Bearer <token>
 # Generate with: python3 -c "import secrets; print(secrets.token_urlsafe(32))"

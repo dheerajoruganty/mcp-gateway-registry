@@ -2,7 +2,7 @@
   "protocolVersion": "0.3.0",
   "name": "Travel Assistant Agent",
   "description": "Intelligent travel planning and assistance agent",
-  "url": "http://mcp-gateway-v2-travel-assistant-agent.mcp-gateway-private-internal:8002",
+  "url": "http://travel-assistant-agent.mcp-gateway-v2.local:9000",
   "version": "0.0.1",
   "capabilities": {
     "streaming": true
