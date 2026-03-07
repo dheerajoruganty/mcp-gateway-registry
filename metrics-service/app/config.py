@@ -12,7 +12,9 @@ class Settings:
 
     # Service settings
     METRICS_SERVICE_PORT: int = int(os.getenv("METRICS_SERVICE_PORT", "8890"))
-    METRICS_SERVICE_HOST: str = os.getenv("METRICS_SERVICE_HOST", "0.0.0.0")  # nosec B104
+    # Service binds to 0.0.0.0 for container/K8s deployment where network isolation
+    # is provided by container runtime and ingress controllers.
+    METRICS_SERVICE_HOST: str = os.getenv("METRICS_SERVICE_HOST", "0.0.0.0")  # nosec B104 - intentional for containerized deployment
 
     # OpenTelemetry settings
     OTEL_SERVICE_NAME: str = os.getenv("OTEL_SERVICE_NAME", "mcp-metrics-service")

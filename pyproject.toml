@@ -170,6 +170,7 @@ package = false
 # B101 (assert_used): exclude test directories where assert is expected
 # Requires: bandit -c pyproject.toml -r .
 # See: https://bandit.readthedocs.io/en/latest/plugins/b101_assert_used.html
+# NOTE: cli/ and scripts/ are NOT excluded - they contain operational code that should be scanned
 [tool.bandit]
 exclude_dirs = ["tests", "*/test/*", "*/tests/*", ".venv"]
 

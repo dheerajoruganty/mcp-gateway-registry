@@ -51,7 +51,9 @@ logger.info(
 )
 
 # Initialize FastMCP server
-mcp = FastMCP("ExampleMCPServer", host="0.0.0.0", port=int(args.port))  # nosec B104
+# Example server - binds to 0.0.0.0 for demonstration purposes only.
+# In production, bind to 127.0.0.1 or specific IP with proper firewall rules.
+mcp = FastMCP("ExampleMCPServer", host="0.0.0.0", port=int(args.port))  # nosec B104 - example/demo server
 mcp.settings.mount_path = "/example-server"
 
 

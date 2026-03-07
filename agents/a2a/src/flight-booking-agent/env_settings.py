@@ -31,7 +31,9 @@ class EnvSettings:
         self.agent_url: str = os.getenv("AGENTCORE_RUNTIME_URL", "http://127.0.0.1:9000/")
 
         # Server configuration (fixed for A2A protocol)
-        self.host: str = os.getenv("AGENT_HOST", "0.0.0.0")  # nosec B104
+        # Agent binds to 0.0.0.0 for container/K8s deployment where network isolation
+        # is provided by container runtime. In production, use firewall rules.
+        self.host: str = os.getenv("AGENT_HOST", "0.0.0.0")  # nosec B104 - intentional for containerized agent deployment
         self.port: int = 9000
 
         logger.info(
