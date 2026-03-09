@@ -102,8 +102,11 @@ RUN chmod +x /app/registry-entrypoint.sh
 # Create non-root user for security (CIS Docker Benchmark 4.1)
 RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser appuser
 
-# Set ownership of application files, venv, logs, nginx configs, and entrypoint
-RUN chown -R appuser:appuser /app /app/.venv /app/logs /etc/nginx /var/log/nginx /run/nginx /app/registry-entrypoint.sh
+# Set ownership for runtime-writable directories and entrypoint
+# Note: Use targeted chown instead of chown -R /app to avoid slow recursive
+# ownership change on .venv (thousands of files that don't need write access)
+RUN chown -R appuser:appuser /app/logs /app/registry /etc/nginx /var/log/nginx /var/lib/nginx /run/nginx && \
+    chown appuser:appuser /app /app/registry-entrypoint.sh
 
 # Switch to non-root user
 USER appuser

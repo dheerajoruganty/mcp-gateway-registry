@@ -64,7 +64,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser appuser
 
 # Set ownership of application files, nginx configs, and entrypoint
-RUN chown -R appuser:appuser /app /etc/nginx /var/log/nginx /run/nginx /app/docker/entrypoint.sh
+RUN chown -R appuser:appuser /app /etc/nginx /var/log/nginx /var/lib/nginx /run/nginx /app/docker/entrypoint.sh
 
 # Switch to non-root user
 USER appuser
