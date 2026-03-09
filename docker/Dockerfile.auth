@@ -3,7 +3,8 @@
 # ===== BUILD STAGE =====
 FROM python:3.12-slim AS builder
 
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
 # Install build dependencies (only needed for compiling wheels)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -27,7 +28,8 @@ RUN . .venv/bin/activate && \
 # ===== RUNTIME STAGE =====
 FROM python:3.12-slim
 
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
 # Install only runtime system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -56,6 +58,15 @@ EXPOSE 8888
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8888/health || exit 1
+
+# Create non-root user for security (CIS Docker Benchmark 4.1)
+RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser appuser
+
+# Set ownership of application files, venv, logs, and entrypoint
+RUN chown -R appuser:appuser /app /app/.venv /app/logs /app/auth-entrypoint.sh
+
+# Switch to non-root user
+USER appuser
 
 # Start the auth server via entrypoint
 ENTRYPOINT ["/app/auth-entrypoint.sh"]

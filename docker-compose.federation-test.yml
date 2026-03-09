@@ -92,7 +92,7 @@ services:
       - REGISTRY_ID=registry-a
     ports:
       - "7860:7860"
-      - "80:80"
+      - "80:8080"   # Map host 80 to container 8080 (non-root nginx)
     volumes:
       - fed-registry-a-data:/app/registry/servers
       - fed-registry-a-agents:/app/registry/agents
@@ -173,7 +173,7 @@ services:
       - FEDERATION_STATIC_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJtY3AtZ2F0ZXdheS1yZWdpc3RyeSIsInN1YiI6ImZlZGVyYXRpb24tc2VydmljZSIsInVzZXJuYW1lIjoiZmVkZXJhdGlvbi1zZXJ2aWNlIiwic2NvcGVzIjpbImZlZGVyYXRpb24tc2VydmljZSIsInJlZ2lzdHJ5LWFkbWlucyJdLCJncm91cHMiOlsiZmVkZXJhdGlvbi1zZXJ2aWNlIiwicmVnaXN0cnktYWRtaW5zIl0sImlhdCI6MTc2OTg4Njg3OSwiZXhwIjoxODAxNDIyODc5fQ.-zU0VW_egYINSPyf0rtD-8SF8zGnl0UezFs5Ux6eRwo
     ports:
       - "7861:7860"
-      - "81:80"
+      - "81:8080"   # Map host 81 to container 8080 (non-root nginx)
     volumes:
       - fed-registry-b-data:/app/registry/servers
       - fed-registry-b-agents:/app/registry/agents

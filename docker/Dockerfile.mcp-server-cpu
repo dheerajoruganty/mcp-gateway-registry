@@ -6,7 +6,9 @@ FROM public.ecr.aws/docker/library/python:3.12-slim
 # Build arg for server directory (when building from repo root)
 ARG SERVER_DIR
 
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    UV_NO_CACHE=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,27 +19,45 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user early (before creating any app files)
+RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser appuser
+
 WORKDIR /app
 
-# Copy server files - handle both build contexts
-COPY ${SERVER_DIR:-.}/ /app/
+# Install uv as root (global tool)
+RUN pip install uv
+
+# Create /app with correct ownership
+RUN chown appuser:appuser /app
+
+# Switch to appuser for venv creation (avoids need to chown .venv later)
+USER appuser
+
+# Setup Python environment as appuser
+# Install CPU-only PyTorch FIRST from the CPU wheel index
+RUN uv venv .venv --python 3.12 && \
+    . .venv/bin/activate && \
+    uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+# Switch back to root for COPY operations
+USER root
+
+# Copy server files with correct ownership
+COPY --chown=appuser:appuser ${SERVER_DIR:-.}/ /app/
 
 # Copy registry module for embeddings support (only when building from root with SERVER_DIR set)
 COPY --chown=root:root . /tmp/build-context/
 RUN if [ -d /tmp/build-context/registry ]; then \
         cp -r /tmp/build-context/registry /app/registry && \
+        chown -R appuser:appuser /app/registry && \
         echo "Registry module copied successfully"; \
     else \
         echo "Registry module not found in build context (expected for non-mcpgw servers)"; \
     fi && \
     rm -rf /tmp/build-context
 
-# Install uv and setup Python environment
-# Install CPU-only PyTorch FIRST from the CPU wheel index
-RUN pip install uv && \
-    uv venv .venv --python 3.12 && \
-    . .venv/bin/activate && \
-    uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+# Switch to appuser for package installation
+USER appuser
 
 # Install remaining dependencies from pyproject.toml
 RUN . .venv/bin/activate && \
@@ -51,6 +71,9 @@ EXPOSE 8000
 # Health check (generic for all MCP servers)
 HEALTHCHECK --interval=500s --timeout=10s --start-period=30s --retries=3 \
     CMD nc -z localhost ${PORT:-8000} || exit 1
+
+# Switch to root to create entrypoint script
+USER root
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\
@@ -66,6 +89,10 @@ if [ ! -z "$REGISTRY_BASE_URL" ]; then\n\
 fi\n\
 source .venv/bin/activate\n\
 exec python server.py --port $SERVER_PORT' > /entrypoint.sh && \
-    chmod +x /entrypoint.sh
+    chmod +x /entrypoint.sh && \
+    chown appuser:appuser /entrypoint.sh
+
+# Switch to non-root user for runtime (no chown needed - files already owned by appuser)
+USER appuser
 
 ENTRYPOINT ["/entrypoint.sh"]

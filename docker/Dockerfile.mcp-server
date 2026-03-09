@@ -3,7 +3,9 @@
 # Build context can be either the server directory or repo root (for servers needing registry module)
 FROM python:3.12-slim
 
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    UV_NO_CACHE=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -14,11 +16,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user early (before creating any app files)
+RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser appuser
+
 WORKDIR /app
 
-# Install uv and setup Python environment
-RUN pip install uv && \
-    uv venv .venv --python 3.12
+# Install uv as root (global tool)
+RUN pip install uv
+
+# Create /app directory with correct ownership from the start
+RUN chown appuser:appuser /app
+
+# Switch to non-root user for all subsequent operations
+USER appuser
+
+# Setup Python environment as appuser (avoids need to chown .venv later)
+RUN uv venv .venv --python 3.12
 
 # Install CPU-only PyTorch first to avoid GPU dependencies (for sentence-transformers)
 RUN . .venv/bin/activate && \
@@ -29,10 +42,13 @@ RUN . .venv/bin/activate && \
 # Build arg for server directory (when building from repo root)
 ARG SERVER_DIR
 
+# Switch back to root temporarily for COPY operations (Docker requires root for COPY)
+USER root
+
 # Copy server files - handle both build contexts
 # If SERVER_DIR is set (building from root), copy from that directory
 # Otherwise copy from current context (building from server directory)
-COPY ${SERVER_DIR:-.}/ /app/
+COPY --chown=appuser:appuser ${SERVER_DIR:-.}/ /app/
 
 # Copy registry module for embeddings support (only when building from root with SERVER_DIR set)
 # This is required for servers that use the embeddings client (like mcpgw)
@@ -40,11 +56,15 @@ COPY ${SERVER_DIR:-.}/ /app/
 COPY --chown=root:root . /tmp/build-context/
 RUN if [ -d /tmp/build-context/registry ]; then \
         cp -r /tmp/build-context/registry /app/registry && \
+        chown -R appuser:appuser /app/registry && \
         echo "Registry module copied successfully"; \
     else \
         echo "Registry module not found in build context (expected for non-mcpgw servers)"; \
     fi && \
     rm -rf /tmp/build-context
+
+# Switch back to appuser for package installation
+USER appuser
 
 # Install dependencies from pyproject.toml (copied from SERVER_PATH)
 RUN . .venv/bin/activate && \
@@ -58,6 +78,9 @@ EXPOSE 8000
 # Health check (generic for all MCP servers)
 HEALTHCHECK --interval=500s --timeout=10s --start-period=30s --retries=3 \
     CMD nc -z localhost ${PORT:-8000} || exit 1
+
+# Switch to root to create entrypoint script
+USER root
 
 # Create entrypoint script that handles environment setup and runs server.py
 RUN echo '#!/bin/bash\n\
@@ -78,6 +101,10 @@ fi\n\
 # Activate virtual environment and run the server\n\
 source .venv/bin/activate\n\
 exec python server.py --port $SERVER_PORT' > /entrypoint.sh && \
-    chmod +x /entrypoint.sh
+    chmod +x /entrypoint.sh && \
+    chown appuser:appuser /entrypoint.sh
+
+# Switch to non-root user for runtime (no chown needed - files already owned by appuser)
+USER appuser
 
 ENTRYPOINT ["/entrypoint.sh"] 

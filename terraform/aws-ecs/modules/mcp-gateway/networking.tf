@@ -157,7 +157,7 @@ module "alb" {
   target_groups = {
     registry = {
       backend_protocol                  = "HTTP"
-      backend_port                      = 7860
+      backend_port                      = 8080
       target_type                       = "ip"
       deregistration_delay              = 5
       load_balancing_cross_zone_enabled = true
@@ -168,7 +168,7 @@ module "alb" {
         interval            = 30
         matcher             = "200"
         path                = "/health"
-        port                = 7860
+        port                = 8080
         protocol            = "HTTP"
         timeout             = 5
         unhealthy_threshold = 2

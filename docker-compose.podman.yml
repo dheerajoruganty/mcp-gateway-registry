@@ -96,8 +96,8 @@ services:
       - REGISTRY_API_TOKEN=${REGISTRY_API_TOKEN:-}
       - MAX_TOKENS_PER_USER_PER_HOUR=${MAX_TOKENS_PER_USER_PER_HOUR:-100}
     ports:
-      - "8080:80"
-      - "8443:443"
+      - "80:8080"   # Map host 80 to container 8080 (non-root nginx)
+      - "443:8443"  # Map host 443 to container 8443 (non-root nginx)
       - "7860:7860"
     volumes:
       - ${HOME}/mcp-gateway/servers:/app/registry/servers
@@ -253,7 +253,7 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=8003
-      - REGISTRY_BASE_URL=http://registry:80
+      - REGISTRY_BASE_URL=http://registry:8080
     volumes:
       - ${HOME}/mcp-gateway/servers:/app/registry/servers
       - ${HOME}/mcp-gateway/models:/app/registry/models

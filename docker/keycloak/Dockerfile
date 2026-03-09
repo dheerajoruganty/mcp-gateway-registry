@@ -16,5 +16,12 @@ COPY --from=builder /opt/keycloak/ /opt/keycloak/
 
 WORKDIR /opt/keycloak
 
+# Health check for keycloak ready endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/health/ready || exit 1
+
+# Switch to keycloak user (provided by base image, UID 1000)
+USER keycloak
+
 # configuring email listener to send emails for specific events
 ENTRYPOINT ["/opt/keycloak/bin/kc.sh", "start", "--optimized"]

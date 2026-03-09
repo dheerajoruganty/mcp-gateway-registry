@@ -1,5 +1,8 @@
 FROM public.ecr.aws/docker/library/python:3.12-slim
 
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
 WORKDIR /app
 
 # Install system dependencies
@@ -18,11 +21,20 @@ COPY create_api_key.py ./
 # Create data directory
 RUN mkdir -p /var/lib/sqlite
 
+# Create non-root user for security (UID 1000 to match metrics-db)
+RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser appuser
+
+# Set ownership of application files and data directory
+RUN chown -R appuser:appuser /app /var/lib/sqlite
+
 # Expose port
 EXPOSE 8890
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8890/health || exit 1
+
+# Switch to non-root user
+USER appuser
 
 CMD ["python", "-m", "app.main"]

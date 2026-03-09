@@ -156,19 +156,25 @@ services:
       - REGISTRY_API_TOKEN=${REGISTRY_API_TOKEN:-}
       - MAX_TOKENS_PER_USER_PER_HOUR=${MAX_TOKENS_PER_USER_PER_HOUR:-100}
     ports:
-      - "80:80"
-      - "443:443"
+      - "80:8080"   # Map host 80 to container 8080 (non-root nginx)
+      - "443:8443"  # Map host 443 to container 8443 (non-root nginx)
       - "7860:7860"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     volumes:
+      # User-managed content (bind mounts)
       - ${HOME}/mcp-gateway/servers:/app/registry/servers
       - ${HOME}/mcp-gateway/agents:/app/registry/agents
       - ${HOME}/mcp-gateway/models:/app/registry/models
-      - ${HOME}/mcp-gateway/logs:/app/logs
-      - ${HOME}/mcp-gateway/security_scans:/app/security_scans
       - ${HOME}/mcp-gateway/auth_server/scopes.yml:/app/auth_server/scopes.yml
       - ${HOME}/mcp-gateway/federation.json:/app/config/federation.json
       - ${HOME}/mcp-gateway/ssl:/etc/ssl:ro
       - ${HOME}/.aws:/root/.aws:ro
+      # Application-managed (named volumes with proper permissions)
+      - registry-logs:/app/logs
+      - registry-scans:/app/security_scans
     depends_on:
       auth-server:
         condition: service_started
@@ -198,9 +204,14 @@ services:
     ports:
       - "8890:8890"
       - "9465:9465"  # Prometheus metrics endpoint
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     volumes:
       - metrics-db-data:/var/lib/sqlite
-      - ${HOME}/mcp-gateway/logs:/app/logs
+      # Application-managed (named volume with proper permissions)
+      - metrics-logs:/app/logs
     depends_on:
       - metrics-db
     restart: unless-stopped
@@ -272,8 +283,13 @@ services:
       - OAUTH_STORE_TOKENS_IN_SESSION=${OAUTH_STORE_TOKENS_IN_SESSION:-false}
     ports:
       - "8888:8888"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     volumes:
-      - ${HOME}/mcp-gateway/logs:/app/logs
+      # Application-managed (named volume with proper permissions)
+      - auth-logs:/app/logs
       # - ${HOME}/mcp-gateway/auth_server/scopes.yml:/app/scopes.yml
     depends_on:
       metrics-service:
@@ -323,7 +339,7 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=8003
-      - REGISTRY_BASE_URL=http://registry:80
+      - REGISTRY_BASE_URL=http://registry:8080
     volumes:
       - ${HOME}/mcp-gateway/servers:/app/registry/servers
       - ${HOME}/mcp-gateway/models:/app/registry/models
@@ -349,10 +365,15 @@ services:
 
   # SQLite container for metrics database
   metrics-db:
-    image: alpine:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.metrics-db
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     volumes:
       - metrics-db-data:/var/lib/sqlite
-    command: ["sh", "-c", "apk add --no-cache sqlite && mkdir -p /var/lib/sqlite && sqlite3 /var/lib/sqlite/metrics.db 'CREATE TABLE IF NOT EXISTS _health (id INTEGER);' && tail -f /dev/null"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "sqlite3", "/var/lib/sqlite/metrics.db", ".tables"]
@@ -443,6 +464,10 @@ services:
       
     ports:
       - "8080:8080"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       keycloak-db:
         condition: service_healthy
@@ -466,3 +491,8 @@ volumes:
   grafana-data:
   mongodb-data:
   mongodb-config:
+  # Application logs and scans (managed by containers, proper permissions)
+  registry-logs:
+  registry-scans:
+  auth-logs:
+  metrics-logs:

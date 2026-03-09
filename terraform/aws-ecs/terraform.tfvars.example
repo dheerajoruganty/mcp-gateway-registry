@@ -45,6 +45,45 @@ base_domain          = "mycorp.click"
 # root_domain = "example.com"
 
 # ============================================================================
+# DEPLOYMENT MODE - CloudFront vs Custom Domain
+# ============================================================================
+# Mode 1: Custom Domain (Route53/ACM) - enable_cloudfront=false, enable_route53_dns=true
+#   - Creates Route53 DNS records and ACM certificates
+#   - Access via custom domain (e.g., registry.us-east-1.mycorp.click)
+#   - HTTPS with ACM certificate
+#
+# Mode 2: CloudFront Only - enable_cloudfront=true, enable_route53_dns=false
+#   - Creates CloudFront distributions with default certificates
+#   - Access via CloudFront URLs (*.cloudfront.net)
+#   - No Route53 DNS or ACM certificates created
+#   - Recommended for testing or when you don't have a custom domain
+#
+# Mode 3: Development (HTTP) - enable_cloudfront=false, enable_route53_dns=false
+#   - No HTTPS, no custom domain, no CloudFront
+#   - Access directly via ALB DNS name
+#   - For local/dev testing only
+#
+# Mode 4: Dual Ingress - enable_cloudfront=true, enable_route53_dns=true
+#   - Both CloudFront AND custom domain access
+#   - More complex setup, useful for migration scenarios
+
+# Enable CloudFront distributions (Mode 2 or Mode 4)
+# Set to true to create CloudFront distributions in front of ALB
+# Default: false (use custom domain with Route53/ACM)
+# enable_cloudfront = false
+
+# Enable Route53 DNS and ACM certificates (Mode 1 or Mode 4)
+# Set to false when using CloudFront-only deployment (Mode 2)
+# Default: true (create custom domain setup)
+# enable_route53_dns = true
+
+# CloudFront Prefix List (optional, for Mode 2 or Mode 4)
+# Restricts ALB ingress to CloudFront origin-facing IPs for enhanced security
+# Leave commented out to allow direct ALB access
+# Set to "com.amazonaws.global.cloudfront.origin-facing" for CloudFront-only access
+# cloudfront_prefix_list_name = "com.amazonaws.global.cloudfront.origin-facing"
+
+# ============================================================================
 # KEYCLOAK CREDENTIALS (used when entra_enabled = false)
 # ============================================================================
 
@@ -143,6 +182,9 @@ session_cookie_secure = true
 #
 # Examples:
 #   Single domain deployment (registry.example.com): Leave empty or unset
+#     session_cookie_domain = ""
+#
+#   CloudFront-only mode (Mode 2): Leave empty for CloudFront URLs
 #     session_cookie_domain = ""
 #
 #   Cross-subdomain (registry.mycorp.click + kc.mycorp.click):

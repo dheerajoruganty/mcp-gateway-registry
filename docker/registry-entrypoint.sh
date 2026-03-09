@@ -30,6 +30,48 @@ if [ "$RUN_INIT_SCRIPTS" = "true" ]; then
     exec "$@"
 fi
 
+# --- Wait for MongoDB Replica Set ---
+if [ -n "$DOCUMENTDB_HOST" ]; then
+    echo "Waiting for MongoDB replica set at ${DOCUMENTDB_HOST}:${DOCUMENTDB_PORT:-27017}..."
+    source /app/.venv/bin/activate
+    python3 -c "
+import pymongo, os, time, sys
+host = os.getenv('DOCUMENTDB_HOST', 'mongodb')
+port = int(os.getenv('DOCUMENTDB_PORT', '27017'))
+user = os.getenv('DOCUMENTDB_USERNAME', '')
+pwd = os.getenv('DOCUMENTDB_PASSWORD', '')
+backend = os.getenv('STORAGE_BACKEND', 'mongodb-ce')
+auth = 'SCRAM-SHA-256' if backend == 'mongodb-ce' else 'SCRAM-SHA-1'
+if user and pwd:
+    uri = f'mongodb://{user}:{pwd}@{host}:{port}/?authMechanism={auth}&authSource=admin'
+else:
+    uri = f'mongodb://{host}:{port}/'
+while True:
+    try:
+        c = pymongo.MongoClient(uri, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000)
+        c.admin.command('ping')
+        try:
+            st = c.admin.command('replSetGetStatus')
+            ready = [m for m in st['members'] if m['state'] in [1, 2]]
+            total = len(st['members'])
+            if st['ok'] == 1 and len(ready) == total:
+                print(f'MongoDB replica set ready ({len(ready)}/{total} members)')
+                c.close()
+                break
+            print(f'Waiting for replica set: {len(ready)}/{total} ready')
+        except pymongo.errors.OperationFailure:
+            # Standalone mode (no replica set) - ping succeeded so we're good
+            print('MongoDB is ready (standalone mode)')
+            c.close()
+            break
+    except Exception as e:
+        print(f'MongoDB not ready yet: {e}')
+    time.sleep(5)
+"
+    deactivate
+    echo "MongoDB is ready."
+fi
+
 # --- Environment Variable Setup ---
 echo "Setting up environment variables..."
 
@@ -261,15 +303,24 @@ fi
 # names and FQDNs resolve to the IPv4 Service Connect VIP.
 # Gated on SERVICE_CONNECT_NAMESPACE -- only set in ECS Terraform deployments.
 if [ -n "${SERVICE_CONNECT_NAMESPACE:-}" ]; then
-    fqdn_count=0
-    grep '^127\.255\.0\.' /etc/hosts | while read -r ip name _rest; do
-        echo "$ip ${name}.${SERVICE_CONNECT_NAMESPACE}" >> /etc/hosts
-        fqdn_count=$((fqdn_count + 1))
-    done
-    echo "Added FQDN aliases for Service Connect entries (namespace: ${SERVICE_CONNECT_NAMESPACE})"
+    if [ -w /etc/hosts ]; then
+        fqdn_count=0
+        grep '^127\.255\.0\.' /etc/hosts | while read -r ip name _rest; do
+            echo "$ip ${name}.${SERVICE_CONNECT_NAMESPACE}" >> /etc/hosts
+            fqdn_count=$((fqdn_count + 1))
+        done
+        echo "Added FQDN aliases for Service Connect entries (namespace: ${SERVICE_CONNECT_NAMESPACE})"
+    else
+        echo "INFO: /etc/hosts not writable (ECS Fargate), FQDN aliases skipped"
+        echo "      Short names and IPs will still work via Service Connect"
+    fi
 fi
 
 echo "Starting Nginx..."
+# Create /run/nginx directory for pid file (tmpfs mount overwrites Dockerfile creation)
+mkdir -p /run/nginx
+# Change pid file location to writable directory for non-root user
+sed -i 's|pid /run/nginx.pid;|pid /run/nginx/nginx.pid;|' /etc/nginx/nginx.conf
 nginx
 
 echo "Registry service fully started. Keeping container alive..."

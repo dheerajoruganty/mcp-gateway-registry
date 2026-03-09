@@ -3,6 +3,7 @@ FROM python:3.12-slim
 
 # Set environment variables to prevent interactive prompts during installation
 ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
     DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies including nginx with lua module
@@ -15,7 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     git \
     build-essential \
-    sudo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,8 +36,15 @@ COPY docker/502.html /usr/share/nginx/html/502.html
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 RUN chmod +x /app/docker/entrypoint.sh
 
-# Expose ports for Nginx (HTTP/HTTPS) and the Registry (direct access, though usually proxied)
-EXPOSE 80 443 7860
+# Create nginx lua directories and remove default sites (needed by entrypoint script)
+RUN mkdir -p /etc/nginx/lua/virtual_mappings && \
+    rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-available/default && \
+    mkdir -p /var/lib/nginx/body /var/lib/nginx/proxy /var/lib/nginx/fastcgi /var/lib/nginx/uwsgi /var/lib/nginx/scgi && \
+    mkdir -p /var/log/nginx && \
+    mkdir -p /run/nginx
+
+# Expose ports for Nginx (HTTP/HTTPS on high ports for non-root) and the Registry
+EXPOSE 8080 8443 7860
 
 # Define environment variables for registry/server configuration (can be overridden at runtime)
 # Provide sensible defaults or leave empty if they should be explicitly set
@@ -52,6 +59,15 @@ ENV POLYGON_API_KEY=$POLYGON_API_KEY
 # Add health check using the new HTTP endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
+
+# Create non-root user for security (CIS Docker Benchmark 4.1)
+RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser appuser
+
+# Set ownership of application files, nginx configs, and entrypoint
+RUN chown -R appuser:appuser /app /etc/nginx /var/log/nginx /run/nginx /app/docker/entrypoint.sh
+
+# Switch to non-root user
+USER appuser
 
 # Run the entrypoint script when the container launches
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
