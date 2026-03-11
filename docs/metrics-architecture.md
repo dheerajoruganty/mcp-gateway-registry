@@ -184,11 +184,14 @@ The service creates standard OTEL instruments:
 - `mcp_auth_requests_total` - Authentication events
 - `mcp_tool_executions_total` - Tool calls
 - `mcp_tool_discovery_total` - Discovery requests
+- `mcp_health_checks_total` - Health check operations
 
 **Histograms** (duration distributions):
 - `mcp_auth_request_duration_seconds` - Auth latency
 - `mcp_tool_execution_duration_seconds` - Tool latency
+- `mcp_tool_discovery_duration_seconds` - Discovery query latency
 - `mcp_protocol_latency_seconds` - Protocol flow timing
+- `mcp_health_check_duration_seconds` - Health check latency
 
 ### Export Configuration
 
@@ -237,6 +240,112 @@ OTEL_OTLP_ENDPOINT=http://otel-collector:4318
 ```
 
 3. **Metrics flow automatically** from service → collector → your platform
+
+### Direct OTLP Push Export (Simplified Setup)
+
+For simpler deployments, the metrics service can push OTLP metrics directly to any observability platform that supports OTLP HTTP ingestion **without requiring an intermediate OTEL Collector**. This is the easiest way to integrate with commercial observability platforms.
+
+**Supported Platforms:**
+- Datadog (US1, US3, US5, EU1, AP1, GOV)
+- New Relic
+- Honeycomb
+- Grafana Cloud
+- Any OTLP-compatible endpoint
+
+**Configuration:**
+
+Set these environment variables to enable direct OTLP push:
+
+```bash
+# Required: OTLP endpoint URL
+OTEL_OTLP_ENDPOINT=https://otlp.datadoghq.com
+
+# Required: Authentication headers (API keys, tokens)
+OTEL_EXPORTER_OTLP_HEADERS=dd-api-key=YOUR_DATADOG_API_KEY
+
+# Optional: Export interval (default: 30000ms = 30 seconds)
+OTEL_OTLP_EXPORT_INTERVAL_MS=30000
+
+# Optional: Metric temporality (Datadog requires 'delta', most others use 'cumulative')
+OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+```
+
+**Platform-Specific Examples:**
+
+| Platform | Endpoint | Headers | Temporality |
+|----------|----------|---------|-------------|
+| Datadog US1 | `https://otlp.datadoghq.com` | `dd-api-key=YOUR_KEY` | `delta` |
+| Datadog EU1 | `https://otlp.datadoghq.eu` | `dd-api-key=YOUR_KEY` | `delta` |
+| New Relic | `https://otlp.nr-data.net` | `api-key=YOUR_LICENSE_KEY` | `cumulative` |
+| Honeycomb | `https://api.honeycomb.io` | `x-honeycomb-team=YOUR_API_KEY` | `cumulative` |
+| Grafana Cloud | `https://otlp-gateway-{region}.grafana.net/otlp` | `Authorization=Basic {base64}` | `cumulative` |
+
+**Docker Compose Setup:**
+
+Add to your `.env` file:
+
+```bash
+# Datadog example
+OTEL_OTLP_ENDPOINT=https://otlp.datadoghq.com
+OTEL_EXPORTER_OTLP_HEADERS=dd-api-key=YOUR_DATADOG_API_KEY
+OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+OTEL_OTLP_EXPORT_INTERVAL_MS=30000
+```
+
+Then start the metrics service:
+
+```bash
+docker-compose up -d metrics-service
+```
+
+The metrics service will automatically start pushing metrics to your configured endpoint every 30 seconds (or your configured interval).
+
+**Terraform/ECS Deployment:**
+
+For AWS ECS deployments, add these variables to your `terraform.tfvars`:
+
+```hcl
+# Datadog example
+otel_otlp_endpoint = "https://otlp.datadoghq.com"
+otel_exporter_otlp_headers = "dd-api-key=YOUR_DATADOG_API_KEY"  # Stored in AWS Secrets Manager
+otel_exporter_otlp_metrics_temporality_preference = "delta"
+otel_otlp_export_interval_ms = "30000"
+```
+
+For security, `OTEL_EXPORTER_OTLP_HEADERS` is stored in AWS Secrets Manager and not exposed in the ECS task definition plaintext.
+
+**Verification:**
+
+1. Check metrics service logs for OTLP export confirmation:
+```
+INFO: OTLP metrics exporter enabled for https://otlp.datadoghq.com (interval: 30000ms)
+```
+
+2. Within 2 minutes, you should see all 9 MCP Gateway metrics appearing in your observability platform:
+   - 4 counters: `mcp_auth_requests_total`, `mcp_tool_executions_total`, `mcp_tool_discovery_total`, `mcp_health_checks_total`
+   - 5 histograms: `mcp_auth_request_duration_seconds`, `mcp_tool_execution_duration_seconds`, `mcp_tool_discovery_duration_seconds`, `mcp_protocol_latency_seconds`, `mcp_health_check_duration_seconds`
+
+3. All metric dimensions (service, method, tool_name, success, etc.) will appear as tags/labels in your platform
+
+**Benefits of Direct Push:**
+
+- ✅ **No OTEL Collector required** - Simpler architecture, fewer moving parts
+- ✅ **Lower latency** - Metrics go directly from service to platform
+- ✅ **Easier debugging** - Fewer components in the pipeline
+- ✅ **Lower operational overhead** - No collector to manage, scale, or monitor
+- ✅ **Secure by default** - API keys stored in Secrets Manager on ECS
+- ✅ **Works alongside Prometheus** - Both exporters run simultaneously if needed
+
+**When to Use Direct Push vs OTEL Collector:**
+
+| Use Direct Push When | Use OTEL Collector When |
+|-----------------------|--------------------------|
+| Single observability platform | Multiple downstream platforms |
+| Standard OTLP endpoint | Custom metric transformations needed |
+| Simplicity is priority | Advanced filtering/sampling required |
+| Platform-native OTLP support | Legacy/proprietary protocols |
+
+**Note:** Direct OTLP push and Prometheus export can run simultaneously. This allows you to use Grafana for real-time monitoring while also sending metrics to a commercial platform for long-term storage and advanced analytics.
 
 ## Grafana Dashboards
 

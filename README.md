@@ -129,6 +129,8 @@ Interactive terminal interface for chatting with AI models and discovering MCP t
 
 ## What's New
 
+- **📊 Direct OTLP Push Export for Metrics** - Push metrics directly to any OTLP-compatible observability platform (Datadog, New Relic, Honeycomb, Grafana Cloud) without requiring an intermediate OTEL Collector. Configure via environment variables (`OTEL_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`) for instant integration with commercial observability platforms. Supports both Docker Compose and Terraform/ECS deployments with secure credential handling via AWS Secrets Manager. Works alongside existing Prometheus/Grafana setup for hybrid monitoring. [Metrics Architecture Guide - Direct OTLP Push](docs/metrics-architecture.md#direct-otlp-push-export-simplified-setup)
+
 - ⭐ **AWS Workshop Studio: Securing AI Agent Ecosystems with MCP Gateway and Registry** - Hands-on workshop covering deployment, authentication, governance, and security best practices for production AI agent ecosystems. Learn to deploy the MCP Gateway & Registry on AWS, configure enterprise authentication, implement fine-grained access control, and secure AI agent communications. [Start Workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/0c3265a6-1a4a-467b-ae56-e4d019184b0e/en-US)
 
 - 💻 **One-Command macOS Setup** - The quickest way to get started and experiment with the solution on your MacBook. Simply ask Claude Code or your favorite AI coding assistant to use the [macOS Setup Skill](.claude/skills/macos-setup/SKILL.md) and it will automatically clone the repository, install all dependencies, configure services (MongoDB, Keycloak, registry), register sample servers, and verify the complete stack is running. Perfect for single-developer environments and hands-on exploration. Supports both full setup and complete teardown with a single command. *ECS/EKS deployment skill coming very soon.*
@@ -176,7 +178,6 @@ Interactive terminal interface for chatting with AI models and discovering MCP t
 - **🔎 Unified Semantic Search for Servers, Tools & Agents** - Natural-language search across every MCP server, its tools, and registered A2A agents using `POST /api/search/semantic`. Works from the dashboard UI (session cookie auth) or programmatically with JWT Bearer tokens, returning relevance-scored matches per entity type in a single response.
 - **🚀 Pre-built Images** - Deploy instantly with pre-built Docker images. [Get Started](#option-a-pre-built-images-instant-setup) | [macOS Guide](docs/macos-setup-guide.md)
 - **🔐 Keycloak Integration** - Enterprise authentication with AI agent audit trails and group-based authorization. [Learn more](docs/keycloak-integration.md)
-- **📊 Real-Time Metrics & Observability** - Grafana dashboards with SQLite and OpenTelemetry integration. [Observability Guide](docs/OBSERVABILITY.md)
 - **⚡ Amazon Bedrock AgentCore Integration** - AgentCore Gateway support with dual authentication. [Integration Guide](docs/agentcore.md)
 
 
