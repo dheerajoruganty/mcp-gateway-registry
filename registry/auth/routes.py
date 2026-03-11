@@ -4,11 +4,13 @@ import urllib.parse
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Cookie, Request, status
+from fastapi import APIRouter, Cookie, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from prometheus_client import Counter
 
+from .csrf import generate_csrf_token, verify_csrf_token, verify_csrf_token_flexible
+from ..audit.context import set_audit_action
 from ..core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -294,8 +296,9 @@ async def logout_get(
 async def logout_post(
     request: Request,
     session: Annotated[str | None, Cookie(alias=settings.session_cookie_name)] = None,
+    _csrf: Annotated[None, Depends(verify_csrf_token_flexible)] = None,
 ):
-    """Handle logout via POST request (for forms)"""
+    """Handle logout via POST request (for forms with CSRF validation)"""
     return await logout_handler(request, session)
 
 
@@ -310,3 +313,24 @@ async def get_providers_api():
 async def get_auth_config():
     """API endpoint to get auth configuration for React frontend"""
     return {"auth_server_url": settings.auth_server_external_url}
+
+
+@router.get("/csrf-token")
+async def get_csrf_token(
+    request: Request,
+    session: Annotated[str | None, Cookie(alias=settings.session_cookie_name)] = None,
+):
+    """API endpoint to get a CSRF token for React/SPA applications.
+
+    Returns a CSRF token bound to the current session that can be used
+    in X-CSRF-Token headers for API requests.
+    """
+    if not session:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"error": "No session found"}
+        )
+
+    csrf_token = generate_csrf_token(session)
+    return {"csrf_token": csrf_token}

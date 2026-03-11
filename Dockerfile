@@ -63,6 +63,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Create non-root user for security (CIS Docker Benchmark 4.1)
 RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser appuser
 
+# Create security scan directories and certs directory with proper permissions
+RUN mkdir -p /app/security_scans /app/skill_security_scans /app/agent_security_scans /app/certs && \
+    chown -R appuser:appuser /app/security_scans /app/skill_security_scans /app/agent_security_scans /app/certs
+
 # Set ownership of application files, nginx configs, and entrypoint
 RUN chown -R appuser:appuser /app /etc/nginx /var/log/nginx /var/lib/nginx /run/nginx /app/docker/entrypoint.sh
 

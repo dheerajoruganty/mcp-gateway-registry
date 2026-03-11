@@ -27,6 +27,7 @@ from fastapi import (
 from pydantic import BaseModel
 
 from ..audit.context import set_audit_action
+from ..auth.csrf import verify_csrf_token_flexible
 from ..auth.dependencies import nginx_proxied_auth
 from ..exceptions import (
     SkillAlreadyExistsError,
@@ -647,6 +648,7 @@ async def toggle_skill(
     request: ToggleStateRequest,
     user_context: Annotated[dict, Depends(nginx_proxied_auth)],
     skill_path: str = Path(..., description="Skill path or name"),
+    _csrf: Annotated[None, Depends(verify_csrf_token_flexible)] = None,
 ) -> dict:
     """Toggle a skill's enabled state."""
     normalized_path = normalize_skill_path(skill_path)

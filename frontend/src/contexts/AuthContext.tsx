@@ -65,12 +65,27 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
 
   useEffect(() => {
     // Set axios baseURL from <base> tag when component mounts
     axios.defaults.baseURL = getBaseURL();
+
+    // Setup axios interceptor to include CSRF token in requests
+    const interceptor = axios.interceptors.request.use((config) => {
+      if (csrfToken && config.method && ['post', 'put', 'delete', 'patch'].includes(config.method.toLowerCase())) {
+        config.headers['X-CSRF-Token'] = csrfToken;
+      }
+      return config;
+    });
+
     checkAuth();
-  }, []);
+
+    // Cleanup interceptor on unmount
+    return () => {
+      axios.interceptors.request.eject(interceptor);
+    };
+  }, [csrfToken]);
 
   const checkAuth = async () => {
     try {
@@ -87,17 +102,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         is_admin: userData.is_admin || false,
         ui_permissions: userData.ui_permissions || {},
       });
+
+      // Fetch CSRF token after successful authentication
+      try {
+        const csrfResponse = await axios.get('/api/auth/csrf-token');
+        if (csrfResponse.data.csrf_token) {
+          setCsrfToken(csrfResponse.data.csrf_token);
+        }
+      } catch (csrfError) {
+        console.warn('Failed to fetch CSRF token:', csrfError);
+      }
     } catch (error) {
       // User not authenticated
       setUser(null);
+      setCsrfToken(null);
     } finally {
       setLoading(false);
     }
   };
 
   const logout = async () => {
-    // Clear user state immediately for responsive UI
+    // Clear user state and CSRF token immediately for responsive UI
     setUser(null);
+    setCsrfToken(null);
     // Perform full-page redirect to logout endpoint
     // This allows the browser to follow the redirect chain: Registry → Auth-server → IdP → Registry
     // Using window.location.href avoids CORS issues with cross-origin redirects

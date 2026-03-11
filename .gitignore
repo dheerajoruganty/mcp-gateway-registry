@@ -351,6 +351,7 @@ image-manifest.json# Admin password files
 terraform/.admin_password
 image-manifest.json
 agent_security_scans/
+skill_security_scans/
 
 # Helm dependency charts and lock files (fetched via helm dependency build)
 charts/*/charts/

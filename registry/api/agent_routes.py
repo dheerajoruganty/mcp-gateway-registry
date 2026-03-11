@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from ..audit import set_audit_action
+from ..auth.csrf import verify_csrf_token_flexible
 from ..auth.dependencies import nginx_proxied_auth
 from ..core.config import settings
 from ..repositories.factory import get_search_repository
@@ -731,6 +732,7 @@ async def toggle_agent(
     path: str,
     enabled: bool,
     user_context: Annotated[dict, Depends(nginx_proxied_auth)],
+    _csrf: Annotated[None, Depends(verify_csrf_token_flexible)] = None,
 ):
     """
     Enable or disable an agent.

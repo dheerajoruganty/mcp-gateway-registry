@@ -53,8 +53,10 @@ def test_app(mock_user_context):
 
     # Override the auth dependency to return mock user context
     from registry.api.agent_routes import nginx_proxied_auth
+    from registry.auth.csrf import verify_csrf_token_flexible
 
     app.dependency_overrides[nginx_proxied_auth] = lambda: mock_user_context
+    app.dependency_overrides[verify_csrf_token_flexible] = lambda: None
 
     client = TestClient(app)
     yield client
@@ -134,8 +136,10 @@ def test_app_admin(mock_admin_context):
     app.include_router(router)
 
     from registry.api.agent_routes import nginx_proxied_auth
+    from registry.auth.csrf import verify_csrf_token_flexible
 
     app.dependency_overrides[nginx_proxied_auth] = lambda: mock_admin_context
+    app.dependency_overrides[verify_csrf_token_flexible] = lambda: None
 
     client = TestClient(app)
     yield client
@@ -151,8 +155,10 @@ def test_app_limited(mock_limited_user_context):
     app.include_router(router)
 
     from registry.api.agent_routes import nginx_proxied_auth
+    from registry.auth.csrf import verify_csrf_token_flexible
 
     app.dependency_overrides[nginx_proxied_auth] = lambda: mock_limited_user_context
+    app.dependency_overrides[verify_csrf_token_flexible] = lambda: None
 
     client = TestClient(app)
     yield client
