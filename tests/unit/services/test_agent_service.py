@@ -774,6 +774,7 @@ class TestEnableDisableAgent:
         # Assert
         assert "/test-agent" in agent_service.agent_state["enabled"]
         assert "/test-agent" not in agent_service.agent_state["disabled"]
+        mock_agent_repository.set_state.assert_called_with("/test-agent", True)
 
     @pytest.mark.asyncio
     async def test_enable_already_enabled_agent(
@@ -827,6 +828,7 @@ class TestEnableDisableAgent:
         # Assert
         assert "/test-agent" in agent_service.agent_state["disabled"]
         assert "/test-agent" not in agent_service.agent_state["enabled"]
+        mock_agent_repository.set_state.assert_called_with("/test-agent", False)
 
     @pytest.mark.asyncio
     async def test_disable_already_disabled_agent(

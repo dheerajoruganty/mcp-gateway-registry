@@ -337,6 +337,7 @@ class AgentService:
             self.agent_state["disabled"].remove(path)
         self.agent_state["enabled"].append(path)
 
+        await self._repo.set_state(path, True)
         await self._persist_state()
 
         agent_name = self.registered_agents[path].name
@@ -366,6 +367,7 @@ class AgentService:
             self.agent_state["enabled"].remove(path)
         self.agent_state["disabled"].append(path)
 
+        await self._repo.set_state(path, False)
         await self._persist_state()
 
         agent_name = self.registered_agents[path].name
