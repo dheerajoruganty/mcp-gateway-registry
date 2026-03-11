@@ -154,6 +154,11 @@ module "mcp_gateway" {
   metrics_service_image_uri = var.metrics_service_image_uri
   grafana_image_uri         = var.grafana_image_uri
   grafana_admin_password    = var.grafana_admin_password
+
+  otel_otlp_endpoint           = var.otel_otlp_endpoint
+  otel_exporter_otlp_headers   = var.otel_exporter_otlp_headers
+  otel_otlp_export_interval_ms = var.otel_otlp_export_interval_ms
+  otel_exporter_otlp_metrics_temporality_preference = var.otel_exporter_otlp_metrics_temporality_preference
 }
 
 # =============================================================================
