@@ -313,6 +313,23 @@ class AgentService:
             logger.error(f"Failed to delete agent at path '{path}': {e}", exc_info=True)
             raise ValueError(f"Failed to delete agent: {e}")
 
+    async def _ensure_agent_loaded(
+        self,
+        path: str,
+    ) -> None:
+        """Load agent from DB into in-memory dict if not already present.
+
+        Raises:
+            ValueError: If agent not found in DB either
+        """
+        if path in self.registered_agents:
+            return
+        agent = await self._repo.get(path)
+        if agent is None:
+            raise ValueError(f"Agent not found at path: {path}")
+        self.registered_agents[path] = agent
+        logger.info(f"Loaded agent '{agent.name}' ({path}) from database into memory")
+
     async def enable_agent(
         self,
         path: str,
@@ -326,8 +343,7 @@ class AgentService:
         Raises:
             ValueError: If agent not found
         """
-        if path not in self.registered_agents:
-            raise ValueError(f"Agent not found at path: {path}")
+        await self._ensure_agent_loaded(path)
 
         if path in self.agent_state["enabled"]:
             logger.info(f"Agent '{path}' is already enabled")
@@ -356,8 +372,7 @@ class AgentService:
         Raises:
             ValueError: If agent not found
         """
-        if path not in self.registered_agents:
-            raise ValueError(f"Agent not found at path: {path}")
+        await self._ensure_agent_loaded(path)
 
         if path in self.agent_state["disabled"]:
             logger.info(f"Agent '{path}' is already disabled")
