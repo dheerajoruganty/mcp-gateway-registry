@@ -400,7 +400,7 @@ module "ecs_service_registry" {
     namespace = aws_service_discovery_private_dns_namespace.mcp.arn
     service = [{
       client_alias = {
-        port     = 8080  # Non-root nginx listens on 8080
+        port     = 8080 # Non-root nginx listens on 8080
         dns_name = "registry"
       }
       port_name      = "http"
@@ -421,12 +421,12 @@ module "ecs_service_registry" {
       portMappings = [
         {
           name          = "http"
-          containerPort = 8080  # Non-root nginx listens on 8080
+          containerPort = 8080 # Non-root nginx listens on 8080
           protocol      = "tcp"
         },
         {
           name          = "https"
-          containerPort = 8443  # Non-root nginx listens on 8443
+          containerPort = 8443 # Non-root nginx listens on 8443
           protocol      = "tcp"
         },
         {
@@ -710,7 +710,7 @@ module "ecs_service_registry" {
     http = {
       target_group_arn = module.alb.target_groups["registry"].arn
       container_name   = "registry"
-      container_port   = 8080  # Non-root nginx listens on 8080
+      container_port   = 8080 # Non-root nginx listens on 8080
     }
     gradio = {
       target_group_arn = module.alb.target_groups["gradio"].arn

@@ -73,6 +73,12 @@ module "alb" {
   # This keeps CloudFront prefix list rules in a separate SG to avoid the 60 rules/SG limit
   security_groups = var.cloudfront_prefix_list_name != "" ? [aws_security_group.alb_cloudfront[0].id] : []
 
+  # Enable access logs
+  access_logs = {
+    bucket  = var.alb_logs_bucket
+    enabled = true
+  }
+
   # Security Groups
   # Create dynamic ingress rules for each CIDR block and port combination
   # Note: CloudFront prefix list is in a separate SG (alb_cloudfront) to avoid rules limit

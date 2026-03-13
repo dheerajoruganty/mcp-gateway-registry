@@ -1,5 +1,83 @@
 # Secrets Manager resources for MCP Gateway Registry
 
+#
+# KMS Key for Application Secrets Encryption
+#
+resource "aws_kms_key" "secrets" {
+  description             = "KMS key for MCP Gateway application secrets encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow ECS Task Execution Role to Decrypt"
+        Effect = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:PrincipalAccount" = data.aws_caller_identity.current.account_id
+          }
+          StringLike = {
+            "aws:PrincipalArn" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/*task-exec*"
+          }
+        }
+      },
+      {
+        Sid    = "Allow CloudWatch Logs"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:CreateGrant",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:*"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name      = "${local.name_prefix}-secrets-key"
+      Component = "secrets"
+    }
+  )
+}
+
+resource "aws_kms_alias" "secrets" {
+  name          = "alias/${local.name_prefix}-secrets"
+  target_key_id = aws_kms_key.secrets.key_id
+}
+
 # Random passwords for application secrets
 
 resource "random_password" "secret_key" {
@@ -13,6 +91,7 @@ resource "aws_secretsmanager_secret" "secret_key" {
   name_prefix             = "${local.name_prefix}-secret-key-"
   description             = "Secret key for MCP Gateway Registry"
   recovery_window_in_days = 0
+  kms_key_id              = aws_kms_key.secrets.id
   tags                    = local.common_tags
 }
 
@@ -26,6 +105,7 @@ resource "aws_secretsmanager_secret" "keycloak_client_secret" {
   name                    = "mcp-gateway-keycloak-client-secret"
   description             = "Keycloak web client secret (updated by init-keycloak.sh after deployment)"
   recovery_window_in_days = 0
+  kms_key_id              = aws_kms_key.secrets.id
   tags                    = local.common_tags
 }
 
@@ -44,6 +124,7 @@ resource "aws_secretsmanager_secret" "keycloak_m2m_client_secret" {
   name                    = "mcp-gateway-keycloak-m2m-client-secret"
   description             = "Keycloak M2M client secret (updated by init-keycloak.sh after deployment)"
   recovery_window_in_days = 0
+  kms_key_id              = aws_kms_key.secrets.id
   tags                    = local.common_tags
 }
 
@@ -64,6 +145,7 @@ resource "aws_secretsmanager_secret" "keycloak_admin_password" {
   name_prefix             = "${local.name_prefix}-keycloak-admin-password-"
   description             = "Keycloak admin password for Management API user/group operations"
   recovery_window_in_days = 0
+  kms_key_id              = aws_kms_key.secrets.id
   tags                    = local.common_tags
 }
 
@@ -78,6 +160,7 @@ resource "aws_secretsmanager_secret" "embeddings_api_key" {
   name_prefix             = "${local.name_prefix}-embeddings-api-key-"
   description             = "API key for embeddings provider (OpenAI, Anthropic, etc.)"
   recovery_window_in_days = 0
+  kms_key_id              = aws_kms_key.secrets.id
   tags                    = local.common_tags
 }
 
@@ -98,6 +181,7 @@ resource "aws_secretsmanager_secret" "entra_client_secret" {
   name_prefix             = "${local.name_prefix}-entra-client-secret-"
   description             = "Microsoft Entra ID client secret for OAuth authentication and IAM operations"
   recovery_window_in_days = 0
+  kms_key_id              = aws_kms_key.secrets.id
   tags                    = local.common_tags
 }
 
@@ -126,6 +210,7 @@ resource "aws_secretsmanager_secret" "metrics_api_key" {
   name_prefix             = "${local.name_prefix}-metrics-api-key-"
   description             = "API key for metrics-service (shared by auth-server and registry)"
   recovery_window_in_days = 0
+  kms_key_id              = aws_kms_key.secrets.id
   tags                    = local.common_tags
 }
 
@@ -145,6 +230,7 @@ resource "aws_secretsmanager_secret" "otlp_exporter_headers" {
   name_prefix             = "${local.name_prefix}-otlp-exporter-headers-"
   description             = "OTLP exporter authentication headers (e.g., Datadog API key)"
   recovery_window_in_days = 0
+  kms_key_id              = aws_kms_key.secrets.id
   tags                    = local.common_tags
 }
 

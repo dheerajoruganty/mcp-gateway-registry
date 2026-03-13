@@ -247,11 +247,11 @@ Accelerate development workflows with integrated tooling:
 
 | Getting Started | Authentication & Security | Architecture & Development |
 |-----------------|---------------------------|----------------------------|
-| [Complete Setup Guide](complete-setup-guide.md)<br/>Step-by-step from scratch on AWS EC2 | [Authentication Guide](auth.md)<br/>OAuth and identity provider integration | [AI Coding Assistants Setup](ai-coding-assistants-setup.md)<br/>VS Code, Cursor, Claude Code integration |
-| [Installation Guide](installation.md)<br/>Complete setup instructions for EC2 and EKS | [Amazon Cognito Setup](cognito.md)<br/>Step-by-step IdP configuration | [API Reference](registry_api.md)<br/>Programmatic registry management |
-| [Configuration Reference](configuration.md)<br/>Environment variables and settings | [Fine-Grained Access Control](scopes.md)<br/>Permission management and security | [Dynamic Tool Discovery](dynamic-tool-discovery.md)<br/>Autonomous agent capabilities |
-| | | [Deployment Guide](installation.md)<br/>Complete setup for deployment environments |
-| | | [Troubleshooting Guide](FAQ.md)<br/>Common issues and solutions |
+| [Complete Setup Guide](complete-setup-guide.md)<br/>Step-by-step from scratch on AWS EC2 | [Security Posture](security-posture.md)<br/>Comprehensive security controls and compliance | [AI Coding Assistants Setup](ai-coding-assistants-setup.md)<br/>VS Code, Cursor, Claude Code integration |
+| [Installation Guide](installation.md)<br/>Complete setup instructions for EC2 and EKS | [Authentication Guide](auth.md)<br/>OAuth and identity provider integration | [API Reference](registry_api.md)<br/>Programmatic registry management |
+| [Configuration Reference](configuration.md)<br/>Environment variables and settings | [Amazon Cognito Setup](cognito.md)<br/>Step-by-step IdP configuration | [Dynamic Tool Discovery](dynamic-tool-discovery.md)<br/>Autonomous agent capabilities |
+| | [Fine-Grained Access Control](scopes.md)<br/>Permission management and security | [Deployment Guide](installation.md)<br/>Complete setup for deployment environments |
+| | [Security Scanner](security-scanner.md)<br/>MCP server supply chain security | [Troubleshooting Guide](FAQ.md)<br/>Common issues and solutions |
 
 ---
 

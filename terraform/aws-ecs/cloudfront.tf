@@ -32,6 +32,13 @@ resource "aws_cloudfront_distribution" "mcp_gateway" {
   default_root_object = ""
   price_class         = "PriceClass_100"
 
+  # CloudFront access logs
+  logging_config {
+    bucket          = aws_s3_bucket.cloudfront_logs.bucket_domain_name
+    prefix          = "mcp-gateway/"
+    include_cookies = false
+  }
+
   # Custom domain alias when Route53 is also enabled (Mode 3)
   aliases = var.enable_route53_dns ? ["registry.${local.root_domain}"] : []
 
@@ -109,6 +116,13 @@ resource "aws_cloudfront_distribution" "keycloak" {
   enabled     = true
   comment     = "${var.name} Keycloak CloudFront Distribution"
   price_class = "PriceClass_100"
+
+  # CloudFront access logs
+  logging_config {
+    bucket          = aws_s3_bucket.cloudfront_logs.bucket_domain_name
+    prefix          = "keycloak/"
+    include_cookies = false
+  }
 
   # Custom domain alias when Route53 is also enabled (Mode 3)
   aliases = var.enable_route53_dns ? [local.keycloak_domain] : []

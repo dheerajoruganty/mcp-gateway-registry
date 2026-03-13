@@ -16,12 +16,22 @@ resource "aws_lb" "keycloak" {
   )
   subnets = module.vpc.public_subnets
 
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs.id
+    enabled = true
+    prefix  = "keycloak-alb"
+  }
+
   tags = merge(
     local.common_tags,
     {
       Name = "keycloak-alb"
     }
   )
+
+  # Wait for S3 bucket policy to propagate (30s delay)
+  # This prevents "Access Denied" errors when ALB tests write permissions
+  depends_on = [time_sleep.wait_for_bucket_policy]
 }
 
 # Random suffix for target group name (required by AWS)

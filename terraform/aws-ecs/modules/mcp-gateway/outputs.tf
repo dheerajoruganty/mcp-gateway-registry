@@ -96,6 +96,19 @@ output "secret_arns" {
   sensitive = false
 }
 
+# KMS Key outputs
+output "kms_key_arn" {
+  description = "ARN of the KMS key used for secrets encryption"
+  value       = aws_kms_key.secrets.arn
+  sensitive   = false
+}
+
+output "kms_key_id" {
+  description = "ID of the KMS key used for secrets encryption"
+  value       = aws_kms_key.secrets.id
+  sensitive   = false
+}
+
 # ECS Service outputs
 output "ecs_service_arns" {
   description = "ARNs of the ECS services"

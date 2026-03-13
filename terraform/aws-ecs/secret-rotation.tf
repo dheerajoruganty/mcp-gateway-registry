@@ -1,0 +1,384 @@
+#
+# AWS Secrets Manager Rotation with Lambda Functions
+#
+# This configuration implements automatic password rotation for DocumentDB and RDS
+# using AWS Lambda functions. Secrets are rotated every 30 days automatically.
+#
+# Architecture:
+# - Lambda functions are deployed in VPC private subnets for database access
+# - IAM roles grant permissions to read/update secrets and modify databases
+# - CloudWatch Logs capture rotation execution logs for troubleshooting
+# - Lambda functions implement the 4-step AWS rotation process:
+#   1. createSecret: Generate new random password
+#   2. setSecret: Update database with new password
+#   3. testSecret: Verify new password works
+#   4. finishSecret: Promote new version to AWSCURRENT
+#
+
+#
+# IAM Role for Lambda Rotation Functions
+#
+resource "aws_iam_role" "rotation_lambda" {
+  name = "${var.name}-secret-rotation-lambda"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+
+  tags = local.common_tags
+}
+
+#
+# IAM Policy for Lambda to Rotate Secrets
+#
+resource "aws_iam_role_policy" "rotation_lambda" {
+  name = "${var.name}-secret-rotation-policy"
+  role = aws_iam_role.rotation_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "SecretsManagerAccess"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:PutSecretValue",
+          "secretsmanager:UpdateSecretVersionStage"
+        ]
+        Resource = [
+          aws_secretsmanager_secret.documentdb_credentials.arn,
+          aws_secretsmanager_secret.keycloak_db_secret.arn
+        ]
+      },
+      {
+        Sid    = "GenerateRandomPassword"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetRandomPassword"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "KMSAccess"
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey",
+          "kms:GenerateDataKey"
+        ]
+        Resource = [
+          aws_kms_key.documentdb.arn,
+          aws_kms_key.rds.arn
+        ]
+      },
+      {
+        Sid    = "RDSAccess"
+        Effect = "Allow"
+        Action = [
+          "rds:DescribeDBInstances",
+          "rds:DescribeDBClusters",
+          "rds:ModifyDBCluster"
+        ]
+        Resource = aws_rds_cluster.keycloak.arn
+      },
+      {
+        Sid    = "DocumentDBAccess"
+        Effect = "Allow"
+        Action = [
+          "docdb:DescribeDBClusters",
+          "docdb:ModifyDBCluster"
+        ]
+        Resource = aws_docdb_cluster.registry.arn
+      },
+      {
+        Sid    = "VPCNetworkInterface"
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DeleteNetworkInterface",
+          "ec2:AssignPrivateIpAddresses",
+          "ec2:UnassignPrivateIpAddresses"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+#
+# Attach Lambda VPC Execution Policy
+#
+resource "aws_iam_role_policy_attachment" "lambda_vpc_execution" {
+  role       = aws_iam_role.rotation_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+#
+# Security Group for Lambda Functions
+#
+resource "aws_security_group" "rotation_lambda" {
+  name        = "${var.name}-rotation-lambda-sg"
+  description = "Security group for secret rotation Lambda functions"
+  vpc_id      = module.vpc.vpc_id
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name      = "${var.name}-rotation-lambda-sg"
+      Component = "secrets-rotation"
+    }
+  )
+}
+
+#
+# Lambda -> DocumentDB
+#
+resource "aws_vpc_security_group_egress_rule" "lambda_to_documentdb" {
+  security_group_id = aws_security_group.rotation_lambda.id
+
+  referenced_security_group_id = aws_security_group.documentdb.id
+  from_port                    = 27017
+  to_port                      = 27017
+  ip_protocol                  = "tcp"
+  description                  = "Allow Lambda to connect to DocumentDB for rotation"
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "lambda-to-documentdb"
+    }
+  )
+}
+
+#
+# DocumentDB <- Lambda
+#
+resource "aws_vpc_security_group_ingress_rule" "documentdb_from_lambda" {
+  security_group_id = aws_security_group.documentdb.id
+
+  referenced_security_group_id = aws_security_group.rotation_lambda.id
+  from_port                    = 27017
+  to_port                      = 27017
+  ip_protocol                  = "tcp"
+  description                  = "Allow Lambda rotation function to connect to DocumentDB"
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "documentdb-from-lambda"
+    }
+  )
+}
+
+#
+# Lambda -> RDS
+#
+resource "aws_vpc_security_group_egress_rule" "lambda_to_rds" {
+  security_group_id = aws_security_group.rotation_lambda.id
+
+  referenced_security_group_id = aws_security_group.keycloak_db.id
+  from_port                    = 3306
+  to_port                      = 3306
+  ip_protocol                  = "tcp"
+  description                  = "Allow Lambda to connect to RDS for rotation"
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "lambda-to-rds"
+    }
+  )
+}
+
+#
+# RDS <- Lambda
+#
+resource "aws_vpc_security_group_ingress_rule" "rds_from_lambda" {
+  security_group_id = aws_security_group.keycloak_db.id
+
+  referenced_security_group_id = aws_security_group.rotation_lambda.id
+  from_port                    = 3306
+  to_port                      = 3306
+  ip_protocol                  = "tcp"
+  description                  = "Allow Lambda rotation function to connect to RDS"
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "rds-from-lambda"
+    }
+  )
+}
+
+#
+# Lambda -> HTTPS (for Secrets Manager API)
+#
+resource "aws_vpc_security_group_egress_rule" "lambda_to_https" {
+  security_group_id = aws_security_group.rotation_lambda.id
+
+  cidr_ipv4   = "0.0.0.0/0"
+  from_port   = 443
+  to_port     = 443
+  ip_protocol = "tcp"
+  description = "Allow Lambda to call AWS APIs (Secrets Manager, KMS)"
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "lambda-to-https"
+    }
+  )
+}
+
+#
+# CloudWatch Log Groups for Lambda Functions
+#
+resource "aws_cloudwatch_log_group" "documentdb_rotation" {
+  name              = "/aws/lambda/${var.name}-rotate-documentdb"
+  retention_in_days = 30
+
+  tags = merge(
+    local.common_tags,
+    {
+      Component = "secrets-rotation"
+    }
+  )
+}
+
+resource "aws_cloudwatch_log_group" "rds_rotation" {
+  name              = "/aws/lambda/${var.name}-rotate-rds"
+  retention_in_days = 30
+
+  tags = merge(
+    local.common_tags,
+    {
+      Component = "secrets-rotation"
+    }
+  )
+}
+
+#
+# Lambda Function Package - DocumentDB Rotation
+#
+data "archive_file" "documentdb_rotation" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda/rotate-documentdb"
+  output_path = "${path.module}/.terraform/lambda/rotate-documentdb.zip"
+}
+
+#
+# Lambda Function Package - RDS Rotation
+#
+data "archive_file" "rds_rotation" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda/rotate-rds"
+  output_path = "${path.module}/.terraform/lambda/rotate-rds.zip"
+}
+
+#
+# Lambda Function - DocumentDB Rotation
+#
+resource "aws_lambda_function" "documentdb_rotation" {
+  filename         = data.archive_file.documentdb_rotation.output_path
+  function_name    = "${var.name}-rotate-documentdb"
+  role             = aws_iam_role.rotation_lambda.arn
+  handler          = "index.lambda_handler"
+  source_code_hash = data.archive_file.documentdb_rotation.output_base64sha256
+  runtime          = "python3.11"
+  timeout          = 300
+  memory_size      = 256
+
+  vpc_config {
+    subnet_ids         = module.vpc.private_subnets
+    security_group_ids = [aws_security_group.rotation_lambda.id]
+  }
+
+  environment {
+    variables = {
+      SECRETS_MANAGER_ENDPOINT = "https://secretsmanager.${var.aws_region}.amazonaws.com"
+      EXCLUDE_CHARACTERS       = "/@\"'\\"
+    }
+  }
+
+  tags = merge(
+    local.common_tags,
+    {
+      Component = "secrets-rotation"
+    }
+  )
+
+  depends_on = [
+    aws_cloudwatch_log_group.documentdb_rotation,
+    aws_iam_role_policy.rotation_lambda,
+    aws_iam_role_policy_attachment.lambda_vpc_execution
+  ]
+}
+
+#
+# Lambda Function - RDS Rotation
+#
+resource "aws_lambda_function" "rds_rotation" {
+  filename         = data.archive_file.rds_rotation.output_path
+  function_name    = "${var.name}-rotate-rds"
+  role             = aws_iam_role.rotation_lambda.arn
+  handler          = "index.lambda_handler"
+  source_code_hash = data.archive_file.rds_rotation.output_base64sha256
+  runtime          = "python3.11"
+  timeout          = 300
+  memory_size      = 256
+
+  vpc_config {
+    subnet_ids         = module.vpc.private_subnets
+    security_group_ids = [aws_security_group.rotation_lambda.id]
+  }
+
+  environment {
+    variables = {
+      SECRETS_MANAGER_ENDPOINT = "https://secretsmanager.${var.aws_region}.amazonaws.com"
+      EXCLUDE_CHARACTERS       = "/@\"'\\"
+    }
+  }
+
+  tags = merge(
+    local.common_tags,
+    {
+      Component = "secrets-rotation"
+    }
+  )
+
+  depends_on = [
+    aws_cloudwatch_log_group.rds_rotation,
+    aws_iam_role_policy.rotation_lambda,
+    aws_iam_role_policy_attachment.lambda_vpc_execution
+  ]
+}
+
+#
+# Lambda Permission for Secrets Manager - DocumentDB
+#
+resource "aws_lambda_permission" "documentdb_rotation" {
+  statement_id  = "AllowExecutionFromSecretsManager"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.documentdb_rotation.function_name
+  principal     = "secretsmanager.amazonaws.com"
+}
+
+#
+# Lambda Permission for Secrets Manager - RDS
+#
+resource "aws_lambda_permission" "rds_rotation" {
+  statement_id  = "AllowExecutionFromSecretsManager"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.rds_rotation.function_name
+  principal     = "secretsmanager.amazonaws.com"
+}

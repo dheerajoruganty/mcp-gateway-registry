@@ -29,6 +29,9 @@ module "mcp_gateway" {
   public_subnet_ids   = module.vpc.public_subnets
   ingress_cidr_blocks = var.ingress_cidr_blocks
 
+  # ALB logging
+  alb_logs_bucket = aws_s3_bucket.alb_logs.id
+
   # ECS configuration
   ecs_cluster_arn         = module.ecs_cluster.arn
   ecs_cluster_name        = module.ecs_cluster.name
@@ -155,10 +158,14 @@ module "mcp_gateway" {
   grafana_image_uri         = var.grafana_image_uri
   grafana_admin_password    = var.grafana_admin_password
 
-  otel_otlp_endpoint           = var.otel_otlp_endpoint
-  otel_exporter_otlp_headers   = var.otel_exporter_otlp_headers
-  otel_otlp_export_interval_ms = var.otel_otlp_export_interval_ms
+  otel_otlp_endpoint                                = var.otel_otlp_endpoint
+  otel_exporter_otlp_headers                        = var.otel_exporter_otlp_headers
+  otel_otlp_export_interval_ms                      = var.otel_otlp_export_interval_ms
   otel_exporter_otlp_metrics_temporality_preference = var.otel_exporter_otlp_metrics_temporality_preference
+
+  # Wait for S3 bucket policy to propagate (30s delay)
+  # This prevents "Access Denied" errors when ALB tests write permissions
+  depends_on = [time_sleep.wait_for_bucket_policy]
 }
 
 # =============================================================================

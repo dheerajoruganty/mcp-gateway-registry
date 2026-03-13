@@ -185,6 +185,11 @@ variable "alb_scheme" {
   }
 }
 
+variable "alb_logs_bucket" {
+  description = "S3 bucket for ALB access logs"
+  type        = string
+}
+
 variable "ingress_cidr_blocks" {
   description = "List of CIDR blocks allowed to access the ALB (main ALB + auth server + registry)"
   type        = list(string)

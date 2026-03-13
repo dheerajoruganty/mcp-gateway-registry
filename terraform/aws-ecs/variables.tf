@@ -34,6 +34,12 @@ variable "alarm_email" {
   default     = ""
 }
 
+variable "alarm_sns_topic_arn" {
+  description = "SNS topic ARN for CloudWatch alarm notifications. Leave empty to disable SNS notifications."
+  type        = string
+  default     = ""
+}
+
 #
 # Keycloak Configuration Variables
 #
@@ -615,4 +621,14 @@ variable "otel_exporter_otlp_metrics_temporality_preference" {
   description = "OTLP metrics temporality preference. Datadog requires delta. Default cumulative."
   type        = string
   default     = "cumulative"
+}
+
+# =============================================================================
+# WAF CONFIGURATION (Issue #603 Security Hardening)
+# =============================================================================
+
+variable "enable_waf" {
+  description = "Enable WAFv2 Web ACLs for ALBs. Requires wafv2:* IAM permissions. Set to false if IAM permissions are not available."
+  type        = bool
+  default     = false
 }

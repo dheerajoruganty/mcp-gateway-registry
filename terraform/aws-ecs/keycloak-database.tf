@@ -120,9 +120,83 @@ resource "aws_rds_cluster_parameter_group" "keycloak" {
 
 # KMS Key for RDS Encryption
 resource "aws_kms_key" "rds" {
-  description             = "KMS key for RDS encryption"
+  description             = "KMS key for RDS and secrets encryption"
   deletion_window_in_days = 7
   enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow ECS Task Execution Role to Decrypt"
+        Effect = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:PrincipalAccount" = data.aws_caller_identity.current.account_id
+          }
+          StringLike = {
+            "aws:PrincipalArn" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/*task-exec*"
+          }
+        }
+      },
+      {
+        Sid    = "Allow RDS Service"
+        Effect = "Allow"
+        Principal = {
+          Service = "rds.amazonaws.com"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey",
+          "kms:CreateGrant"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "rds.${data.aws_region.current.name}.amazonaws.com"
+          }
+        }
+      },
+      {
+        Sid    = "Allow CloudWatch Logs"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:CreateGrant",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:*"
+          }
+        }
+      }
+    ]
+  })
 
   tags = local.common_tags
 }
@@ -176,6 +250,7 @@ resource "aws_secretsmanager_secret" "keycloak_db_secret" {
   name                    = "keycloak/database"
   description             = "Keycloak database credentials"
   recovery_window_in_days = 0
+  kms_key_id              = aws_kms_key.rds.id
 
   tags = local.common_tags
 }
@@ -190,22 +265,25 @@ resource "aws_secretsmanager_secret_version" "keycloak_db_secret" {
 
 # SSM Parameters for Database Connection
 resource "aws_ssm_parameter" "keycloak_database_url" {
-  name  = "/keycloak/database/url"
-  type  = "SecureString"
-  value = "jdbc:mysql://${aws_rds_cluster.keycloak.endpoint}:3306/keycloak"
-  tags  = local.common_tags
+  name   = "/keycloak/database/url"
+  type   = "SecureString"
+  key_id = aws_kms_key.rds.id
+  value  = "jdbc:mysql://${aws_rds_cluster.keycloak.endpoint}:3306/keycloak"
+  tags   = local.common_tags
 }
 
 resource "aws_ssm_parameter" "keycloak_database_username" {
-  name  = "/keycloak/database/username"
-  type  = "SecureString"
-  value = var.keycloak_database_username
-  tags  = local.common_tags
+  name   = "/keycloak/database/username"
+  type   = "SecureString"
+  key_id = aws_kms_key.rds.id
+  value  = var.keycloak_database_username
+  tags   = local.common_tags
 }
 
 resource "aws_ssm_parameter" "keycloak_database_password" {
-  name  = "/keycloak/database/password"
-  type  = "SecureString"
-  value = var.keycloak_database_password
-  tags  = local.common_tags
+  name   = "/keycloak/database/password"
+  type   = "SecureString"
+  key_id = aws_kms_key.rds.id
+  value  = var.keycloak_database_password
+  tags   = local.common_tags
 }

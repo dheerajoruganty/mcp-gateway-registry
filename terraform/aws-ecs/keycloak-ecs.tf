@@ -369,15 +369,17 @@ resource "aws_appautoscaling_policy" "keycloak_memory" {
 
 # SSM Parameters for Keycloak Credentials
 resource "aws_ssm_parameter" "keycloak_admin" {
-  name  = "/keycloak/admin"
-  type  = "SecureString"
-  value = var.keycloak_admin
-  tags  = local.common_tags
+  name   = "/keycloak/admin"
+  type   = "SecureString"
+  key_id = aws_kms_key.rds.id
+  value  = var.keycloak_admin
+  tags   = local.common_tags
 }
 
 resource "aws_ssm_parameter" "keycloak_admin_password" {
-  name  = "/keycloak/admin_password"
-  type  = "SecureString"
-  value = var.keycloak_admin_password
-  tags  = local.common_tags
+  name   = "/keycloak/admin_password"
+  type   = "SecureString"
+  key_id = aws_kms_key.rds.id
+  value  = var.keycloak_admin_password
+  tags   = local.common_tags
 }

@@ -115,6 +115,59 @@ resource "aws_s3_bucket_versioning" "codebuild" {
   }
 }
 
+resource "aws_s3_bucket_public_access_block" "codebuild" {
+  count  = var.create_codebuild ? 1 : 0
+  bucket = aws_s3_bucket.codebuild[0].id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_policy" "codebuild_tls" {
+  count  = var.create_codebuild ? 1 : 0
+  bucket = aws_s3_bucket.codebuild[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "EnforceTLS"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.codebuild[0].arn,
+        "${aws_s3_bucket.codebuild[0].arn}/*"
+      ]
+      Condition = {
+        Bool = {
+          "aws:SecureTransport" = "false"
+        }
+      }
+    }]
+  })
+}
+
+# Lifecycle policy - delete old artifacts after 90 days
+resource "aws_s3_bucket_lifecycle_configuration" "codebuild" {
+  count  = var.create_codebuild ? 1 : 0
+  bucket = aws_s3_bucket.codebuild[0].id
+
+  rule {
+    id     = "delete-old-artifacts"
+    status = "Enabled"
+
+    expiration {
+      days = 90
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
+}
+
 # =============================================================================
 # BUILDSPEC (inline, uploaded to S3)
 # =============================================================================
