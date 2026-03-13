@@ -50,8 +50,34 @@ async def _migrate_schema_if_needed(db):
 
         if missing_columns:
             logger.info(f"Adding missing columns to tool_metrics: {missing_columns}")
+
+            # Define allowed columns for security (defense in depth)
+            ALLOWED_COLUMNS = {
+                "client_name",
+                "client_version",
+                "method",
+                "user_hash",
+                "server_name",
+                "tool_name",
+                "status",
+                "error_type",
+                "duration_ms",
+                "timestamp",
+                "success",
+                "user_id",
+                "session_id",
+            }
+
             for column in missing_columns:
-                await db.execute(f"ALTER TABLE tool_metrics ADD COLUMN {column} TEXT")
+                # Validate column name against allowlist before use in SQL
+                if column not in ALLOWED_COLUMNS:
+                    logger.warning(f"Skipping unexpected column name: {column}")
+                    continue
+
+                # Column name validated against allowlist - safe to use in SQL
+                await db.execute(  # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query
+                    f"ALTER TABLE tool_metrics ADD COLUMN {column} TEXT"
+                )
 
             # Add indexes for new columns
             if "client_name" in missing_columns:

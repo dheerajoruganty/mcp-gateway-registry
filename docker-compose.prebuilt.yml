@@ -111,6 +111,10 @@ services:
       - ${HOME}/mcp-gateway/auth_server/scopes.yml:/app/auth_server/scopes.yml
       - ${HOME}/mcp-gateway/federation.json:/app/config/federation.json
       - ${HOME}/mcp-gateway/ssl:/etc/ssl:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       auth-server:
         condition: service_started
@@ -145,6 +149,10 @@ services:
     volumes:
       - metrics-db-data:/var/lib/sqlite
       - ${HOME}/mcp-gateway/logs:/app/logs
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       - metrics-db
     restart: unless-stopped
@@ -211,6 +219,10 @@ services:
     volumes:
       - ${HOME}/mcp-gateway/logs:/app/logs
       # - ${HOME}/mcp-gateway/auth_server/scopes.yml:/app/scopes.yml
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       metrics-service:
         condition: service_healthy
@@ -226,6 +238,10 @@ services:
       - MCP_TRANSPORT=streamable-http
     ports:
       - "8000:8000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     restart: unless-stopped
 
   # Financial Info MCP Server - using pre-built image
@@ -238,6 +254,10 @@ services:
       - ${HOME}/mcp-gateway/secrets/fininfo/:/app/fininfo/
     ports:
       - "8001:8001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     restart: unless-stopped
 
   # MCP Gateway Server - using pre-built image
@@ -253,6 +273,10 @@ services:
       - ${HOME}/mcp-gateway/auth_server/scopes.yml:/app/auth_server/scopes.yml
     ports:
       - "8003:8003"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       - registry
     restart: unless-stopped
@@ -264,6 +288,10 @@ services:
       - PORT=8002
     ports:
       - "8002:8002"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     restart: unless-stopped
 
   # SQLite container for metrics database - using mirrored pre-built image
@@ -272,6 +300,10 @@ services:
     volumes:
       - metrics-db-data:/var/lib/sqlite
     command: ["sh", "-c", "apk add --no-cache sqlite && mkdir -p /var/lib/sqlite && sqlite3 /var/lib/sqlite/metrics.db 'CREATE TABLE IF NOT EXISTS _health (id INTEGER);' && tail -f /dev/null"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "sqlite3", "/var/lib/sqlite/metrics.db", ".tables"]
@@ -294,6 +326,10 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     restart: unless-stopped
 
   # Grafana for metrics visualization - using mirrored pre-built image
@@ -309,6 +345,10 @@ services:
       - grafana-data:/var/lib/grafana
       - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards
       - ./config/grafana/datasources:/etc/grafana/provisioning/datasources
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       - prometheus
     restart: unless-stopped
@@ -362,6 +402,10 @@ services:
 
     ports:
       - "8080:8080"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       keycloak-db:
         condition: service_healthy
@@ -415,6 +459,10 @@ services:
       - mongodb-data:/data/db
       - mongodb-config:/data/configdb
       - mongodb-keyfile:/keyfile:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       mongodb-keyfile-init:
         condition: service_completed_successfully
@@ -430,6 +478,10 @@ services:
   mongodb-init:
     image: python:3.11-slim
     container_name: mcp-mongodb-init
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       mongodb:
         condition: service_healthy

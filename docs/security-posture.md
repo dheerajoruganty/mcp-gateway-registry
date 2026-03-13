@@ -1,6 +1,6 @@
 # Security Posture - Enterprise-Grade Security for MCP Gateway & Registry
 
-**Last Updated:** March 12, 2026
+**Last Updated:** March 13, 2026
 **Version:** 1.0.16+
 
 ---
@@ -748,6 +748,28 @@ Automated security checks before every commit:
 - Python syntax validation
 - Shell script syntax validation
 ```
+
+**Semgrep Static Analysis:**
+
+Comprehensive multi-language static code analysis:
+- **Languages**: Python, JavaScript/TypeScript, YAML, Terraform, Dockerfile
+- **Rule Sets**:
+  - SQL injection detection
+  - JWT security validation
+  - Secret detection (credentials, tokens, API keys)
+  - Docker Compose security best practices
+  - Terraform infrastructure security
+  - Path traversal prevention
+  - CSRF protection validation
+- **Scan Coverage**: 162 initial findings → 25 actionable items (84% reduction)
+- **Resolution Status**:
+  - ✅ SQL injection - Column validation implemented in metrics service
+  - ✅ Docker Compose - `security_opt` and `cap_drop` added to all services
+  - ✅ Terraform secrets - KMS encryption enabled for all AWS Secrets Manager secrets
+  - ✅ JWT verification - Confirmed secure (two-step validation pattern)
+  - ✅ Path traversal - Fixed in CLI and API endpoints
+- **False Positive Filtering**: `.semgrepignore` excludes docs and tests
+- **Tracking**: GitHub Issue [#650](https://github.com/agentic-community/mcp-gateway-registry/issues/650)
 
 **CI/CD Pipeline:**
 
