@@ -784,7 +784,7 @@ The following major features span multiple milestones and represent significant 
 - **[#605 - AgentCore Auto-Registration](https://github.com/agentic-community/mcp-gateway-registry/issues/605)** 🚧 **IN PROGRESS** (March 2026 Week 2)
   Automated discovery and registration of Bedrock AgentCore gateways with credential management integration.
 
-- **[#641 - Okta Identity Provider](https://github.com/agentic-community/mcp-gateway-registry/issues/641)** 📅 **PLANNED**
+- **[#641 - Okta Identity Provider](https://github.com/agentic-community/mcp-gateway-registry/issues/641)** 🚧 **IN PROGRESS**
   Add Okta as an identity provider option alongside Keycloak, Entra ID, Auth0, GitHub, and Google OAuth2.
 
 - **[#614 - MCP OAuth 2.1 Authorization Spec](https://github.com/agentic-community/mcp-gateway-registry/issues/614)** 📅 **PLANNED** (March 2026 Week 3)
