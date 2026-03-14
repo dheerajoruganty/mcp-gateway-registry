@@ -768,11 +768,10 @@ Our development roadmap is organized into weekly milestones with clear deliverab
 
 | Milestone | Due Date | Progress | Status | Key Issues |
 |-----------|----------|----------|--------|------------|
-| **February 2026 Week 1** | 2026-02-06 | 83% (5/6) | 🚧 In Progress | **Open:** [#358 - Custom Authorizer Endpoint](https://github.com/agentic-community/mcp-gateway-registry/issues/358)<br/>**Closed:** [#443](https://github.com/agentic-community/mcp-gateway-registry/issues/443), [#419](https://github.com/agentic-community/mcp-gateway-registry/issues/419), [#391](https://github.com/agentic-community/mcp-gateway-registry/issues/391), [#370](https://github.com/agentic-community/mcp-gateway-registry/issues/370), [#357](https://github.com/agentic-community/mcp-gateway-registry/issues/357) |
-| **February 2026 Week 2** | 2026-02-12 | 67% (2/3) | 🚧 In Progress | **Open:** [#416 - Settings Page with IAM Management](https://github.com/agentic-community/mcp-gateway-registry/issues/416)<br/>**Closed:** [#418](https://github.com/agentic-community/mcp-gateway-registry/issues/418), [#413](https://github.com/agentic-community/mcp-gateway-registry/issues/413) |
-| **February 2026 Week 3** | 2026-02-18 | 100% (1/1) | ✅ Complete | **Closed:** [#129 - Virtual MCP Server Support](https://github.com/agentic-community/mcp-gateway-registry/issues/129) |
-| **February 2026 Week 4** | 2026-02-25 | 0% (0/1) | 📅 Planned | **Open:** [#295 - Multi-Level Rate Limiting](https://github.com/agentic-community/mcp-gateway-registry/issues/295) |
-| **Parking Lot** | — | 25% (2/8) | 🗂️ Backlog | 6 open issues, 2 closed |
+| **March 2026 Week 2** | 2026-03-12 | 0% (0/5) | 🚧 In Progress | **Open:** [#611 - Network-trusted auth token generation](https://github.com/agentic-community/mcp-gateway-registry/issues/611), [#605 - AgentCore Auto-Registration](https://github.com/agentic-community/mcp-gateway-registry/issues/605), [#559 - Server-side telemetry](https://github.com/agentic-community/mcp-gateway-registry/issues/559), [#558 - Client-side telemetry](https://github.com/agentic-community/mcp-gateway-registry/issues/558), [#557 - Anonymous telemetry](https://github.com/agentic-community/mcp-gateway-registry/issues/557) |
+| **March 2026 Week 3** | 2026-03-19 | 0% (0/2) | 📅 Planned | **Open:** [#614 - MCP OAuth 2.1 Authorization Spec](https://github.com/agentic-community/mcp-gateway-registry/issues/614), [#500 - Logout path-based routing fix](https://github.com/agentic-community/mcp-gateway-registry/issues/500) |
+| **March 2026 Week 4** | 2026-03-26 | 0% (0/3) | 📅 Planned | **Open:** [#556 - AI Gateway Rebrand](https://github.com/agentic-community/mcp-gateway-registry/issues/556), [#502 - Federation Protocol Spec](https://github.com/agentic-community/mcp-gateway-registry/issues/502), [#469 - Keycloak Secrets Manager](https://github.com/agentic-community/mcp-gateway-registry/issues/469) |
+| **Parking Lot** | — | 0% (0/11) | 🗂️ Backlog | 11 open issues awaiting prioritization |
 
 **Status Legend:** 🚧 In Progress • 📅 Planned • 🗂️ Backlog • ✅ Complete
 
@@ -781,6 +780,21 @@ Our development roadmap is organized into weekly milestones with clear deliverab
 #### Major Features
 
 The following major features span multiple milestones and represent significant architectural improvements:
+
+- **[#605 - AgentCore Auto-Registration](https://github.com/agentic-community/mcp-gateway-registry/issues/605)** 🚧 **IN PROGRESS** (March 2026 Week 2)
+  Automated discovery and registration of Bedrock AgentCore gateways with credential management integration.
+
+- **[#641 - Okta Identity Provider](https://github.com/agentic-community/mcp-gateway-registry/issues/641)** 📅 **PLANNED**
+  Add Okta as an identity provider option alongside Keycloak, Entra ID, Auth0, GitHub, and Google OAuth2.
+
+- **[#614 - MCP OAuth 2.1 Authorization Spec](https://github.com/agentic-community/mcp-gateway-registry/issues/614)** 📅 **PLANNED** (March 2026 Week 3)
+  Implement RFC 9728 Protected Resource Metadata with native IDE support for MCP OAuth 2.1 authorization.
+
+- **[#556 - AI Gateway & Registry Rebrand](https://github.com/agentic-community/mcp-gateway-registry/issues/556)** 📅 **PLANNED** (March 2026 Week 4)
+  Rename "MCP Gateway Registry" to "AI Gateway & Registry" to reflect expanded support for agents and tools beyond MCP.
+
+- **[#557-559 - Observability & Telemetry Suite](https://github.com/agentic-community/mcp-gateway-registry/issues/557)** 🚧 **IN PROGRESS** (March 2026 Week 2)
+  Comprehensive telemetry infrastructure with server-side collector, client-side instrumentation, and lightweight anonymous adoption tracking.
 
 - **[#129 - Virtual MCP Server Support](https://github.com/agentic-community/mcp-gateway-registry/issues/129)** ✅ **COMPLETED**
   Dynamic tool aggregation and intelligent routing using Lua scripting. Enables logical grouping of tools from multiple backend servers into a single virtual endpoint.
@@ -791,48 +805,60 @@ The following major features span multiple milestones and represent significant 
 - **[#260 - Federation Between MCP Registry Instances](https://github.com/agentic-community/mcp-gateway-registry/issues/260)** ✅ **COMPLETED**
   Federated registry with bi-directional sync, peer management, chain prevention, orphan detection, and security scan propagation across registries.
 
-- **[#295 - Multi-Level Tool Usage Rate Limiting](https://github.com/agentic-community/mcp-gateway-registry/issues/295)** 📅 **PLANNED** (Feb 2026 Week 4)
-  Comprehensive rate limiting architecture with detailed implementation guide for tool usage control.
-
 - **[#297 - Unified UI Registration Flow](https://github.com/agentic-community/mcp-gateway-registry/issues/297)** ✅ **COMPLETED**
   Streamlined registration experience for both MCP servers and A2A agents through a unified interface.
+
+- **[#295 - Multi-Level Tool Usage Rate Limiting](https://github.com/agentic-community/mcp-gateway-registry/issues/295)** 🗂️ **BACKLOG**
+  Comprehensive rate limiting architecture with detailed implementation guide for tool usage control.
 
 ---
 
-#### Recently Completed
+#### Recently Completed (February-March 2026)
 
-- **[#260 - Federation Between MCP Registry Instances](https://github.com/agentic-community/mcp-gateway-registry/issues/260)** ✅ **COMPLETED** (v1.0.13)
-  Federated registry with bi-directional sync between registry instances. Features peer management UI, automatic sync with configurable filters, chain prevention for clean topology, orphan detection, and security scan propagation. [Federation Guide](docs/federation.md) | [Federation Architecture](docs/design/federation-architecture.md)
+- **[#650 - Semgrep Security Findings](https://github.com/agentic-community/mcp-gateway-registry/issues/650)** ✅ **COMPLETED** (March 2026)
+  Fixed SQL injection vulnerability with allowlist validation and hardened Docker Compose security (CIS Docker Benchmark 4.6). Added security_opt and cap_drop to all services, reducing findings by 86%.
 
-- **[#316 - Entra ID IAM APIs](https://github.com/agentic-community/mcp-gateway-registry/issues/316)** ✅ **COMPLETED**
-  Full IAM support for Microsoft Entra ID with harmonized API for user/group management. Includes M2M service accounts, self-signed JWT tokens, and fine-grained access control through scopes. [Authentication Design](docs/design/authentication-design.md) | [Scopes Management](docs/scopes-mgmt.md)
+- **[#603 - Infrastructure as Code Security](https://github.com/agentic-community/mcp-gateway-registry/issues/603)** ✅ **COMPLETED** (March 2026)
+  Terraform, CloudFormation, and Kubernetes security hardening (101 findings resolved).
 
-- **[#297 - Unified UI Registration Flow](https://github.com/agentic-community/mcp-gateway-registry/issues/297)** ✅ **COMPLETED**
-  Streamlined registration experience for both MCP servers and A2A agents through a unified interface.
+- **[#602 - Docker & Container Security](https://github.com/agentic-community/mcp-gateway-registry/issues/602)** ✅ **COMPLETED** (March 2026)
+  Root container fixes, HEALTHCHECK additions, and version tag implementations (29 findings resolved).
 
-- **[#232 - A2A Curated Registry Discovery](https://github.com/agentic-community/mcp-gateway-registry/issues/232)** ✅ **COMPLETED**
-  Agent-to-agent discovery and tool invocation through curated registry patterns.
+- **[#601 - Secrets & Credentials Security](https://github.com/agentic-community/mcp-gateway-registry/issues/601)** ✅ **COMPLETED** (March 2026)
+  Hardcoded secrets removal and OAuth2 security improvements (39 findings resolved).
 
-- **[#329 - Update llms.txt](https://github.com/agentic-community/mcp-gateway-registry/issues/329)** ✅ **COMPLETED** (v1.0.9)
-  Updated AI assistant reference documentation with recent architecture changes.
+- **[#600 - Application Security](https://github.com/agentic-community/mcp-gateway-registry/issues/600)** ✅ **COMPLETED** (March 2026)
+  CSRF protection, path traversal prevention, and credential logging fixes (30 findings resolved).
 
-- **[#221 - DocumentDB Implementation](https://github.com/agentic-community/mcp-gateway-registry/issues/221)** ✅ **COMPLETED** (v1.0.9)
-  Distributed storage with MongoDB/DocumentDB backend implementation.
+- **[#598 - Request Timeout Security](https://github.com/agentic-community/mcp-gateway-registry/issues/598)** ✅ **COMPLETED** (March 2026)
+  Added missing request timeouts across all HTTP operations (B113 findings).
 
-- **[#70 - Docker Build & Runtime Performance Optimization](https://github.com/agentic-community/mcp-gateway-registry/issues/70)** ✅ **COMPLETED** (v1.0.9)
-  Multi-stage Docker builds with 66-80% image size reduction.
+- **[#613 - FAISS Search Fix](https://github.com/agentic-community/mcp-gateway-registry/issues/613)** ✅ **COMPLETED** (March 2026)
+  Fixed FAISS search initialization and entity type handling.
 
-- **[#287 - Filter Sidebar Buttons](https://github.com/agentic-community/mcp-gateway-registry/issues/287)** ✅ **COMPLETED**
-  Fixed filter buttons to properly filter both MCP servers and A2A agent cards.
+- **[#622 - Agent State Persistence](https://github.com/agentic-community/mcp-gateway-registry/issues/622)** ✅ **COMPLETED** (March 2026)
+  Agent enabled state now properly persisted to repository on toggle operations.
 
-- **[#284 - Statistics Count Fix](https://github.com/agentic-community/mcp-gateway-registry/issues/284)** ✅ **COMPLETED**
-  Sidebar statistics now correctly count both MCP servers and A2A agents.
+- **[#626 - Helm Chart UI Fix](https://github.com/agentic-community/mcp-gateway-registry/issues/626)** ✅ **COMPLETED** (March 2026)
+  Registry UI now renders correctly when deployed using Helm chart for full stack.
 
-- **[#259 - Simplify JWT Token Generation](https://github.com/agentic-community/mcp-gateway-registry/issues/259)** ✅ **COMPLETED**
-  Streamlined JWT token generation process in Registry UI.
+- **[#572 - Audit Log Enhancements](https://github.com/agentic-community/mcp-gateway-registry/issues/572)** ✅ **COMPLETED** (March 2026)
+  Searchable dropdown filters and statistics dashboard for audit logs.
 
-- **[#315 - Distroless Docker Images](https://github.com/agentic-community/mcp-gateway-registry/issues/315)** ✅ **COMPLETED**
-  Security hardening through migration to distroless/hardened base images.
+- **[#583 - mcpgw Refactoring](https://github.com/agentic-community/mcp-gateway-registry/issues/583)** ✅ **COMPLETED** (March 2026)
+  Refactored mcpgw MCP server to eliminate technical debt and use registry HTTP APIs.
+
+- **[#543 - OTLP Push Export](https://github.com/agentic-community/mcp-gateway-registry/issues/543)** ✅ **COMPLETED** (March 2026)
+  Enabled OTLP push export for metrics service (Datadog, New Relic, Prometheus remote write support).
+
+- **[#542 - Encrypted Credential Storage](https://github.com/agentic-community/mcp-gateway-registry/issues/542)** ✅ **COMPLETED** (February 2026)
+  Replaced auth_type with auth_scheme and added encrypted credential storage for backend server authentication and health checks.
+
+- **[#547 - ECS Service Connect DNS Fix](https://github.com/agentic-community/mcp-gateway-registry/issues/547)** ✅ **COMPLETED** (February 2026)
+  Fixed dual-stack DNS issues breaking Lua metrics flush and Python health checker in ECS deployments.
+
+- **[#581 - macOS Quick-start Skill](https://github.com/agentic-community/mcp-gateway-registry/issues/581)** ✅ **COMPLETED** (March 2026)
+  Added Claude skill for macOS quickstart installation with interactive setup and teardown.
 
 For the complete list of all issues, feature requests, and detailed release history, visit:
 - [All GitHub Issues](https://github.com/agentic-community/mcp-gateway-registry/issues)
