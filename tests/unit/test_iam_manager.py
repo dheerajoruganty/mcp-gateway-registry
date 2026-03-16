@@ -167,6 +167,27 @@ class TestGetIAMManagerFactory:
 
         # Assert
         assert isinstance(manager, iam_module.EntraIAMManager)
+        
+    def test_returns_okta_manager_when_auth_provider_is_okta(
+        self,
+        monkeypatch,
+    ):
+        """Test returns OktaIAMManager when AUTH_PROVIDER is 'okta'."""
+        # Arrange
+        monkeypatch.setenv("AUTH_PROVIDER", "okta")
+
+        # Need to reimport to pick up the new env var
+        import importlib
+
+        import registry.utils.iam_manager as iam_module
+
+        importlib.reload(iam_module)
+
+        # Act
+        manager = iam_module.get_iam_manager()
+
+        # Assert
+        assert isinstance(manager, iam_module.OktaIAMManager)
 
     def test_defaults_to_keycloak_when_auth_provider_not_set(
         self,

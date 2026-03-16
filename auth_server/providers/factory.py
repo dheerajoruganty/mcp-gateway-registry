@@ -7,6 +7,7 @@ from .base import AuthProvider
 from .cognito import CognitoProvider
 from .entra import EntraIdProvider
 from .keycloak import KeycloakProvider
+from .okta import OktaProvider
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,6 +40,8 @@ def get_auth_provider(provider_type: str | None = None) -> AuthProvider:
         return _create_cognito_provider()
     elif provider_type == "entra":
         return _create_entra_provider()
+    elif provider_type == "okta":
+        return _create_okta_provider()
     else:
         raise ValueError(f"Unknown auth provider: {provider_type}")
 
@@ -150,6 +153,39 @@ def _create_entra_provider() -> EntraIdProvider:
     logger.info(f"Initializing Entra ID provider for tenant '{tenant_id}'")
 
     return EntraIdProvider(tenant_id=tenant_id, client_id=client_id, client_secret=client_secret)
+
+def _create_okta_provider() -> OktaProvider:
+    """Create and configure Okta provider."""
+    okta_domain = os.environ.get("OKTA_DOMAIN")
+    client_id = os.environ.get("OKTA_CLIENT_ID")
+    client_secret = os.environ.get("OKTA_CLIENT_SECRET")
+    m2m_client_id = os.environ.get("OKTA_M2M_CLIENT_ID")
+    m2m_client_secret = os.environ.get("OKTA_M2M_CLIENT_SECRET")
+
+    missing_vars = []
+    if not okta_domain:
+        missing_vars.append("OKTA_DOMAIN")
+    if not client_id:
+        missing_vars.append("OKTA_CLIENT_ID")
+    if not client_secret:
+        missing_vars.append("OKTA_CLIENT_SECRET")
+
+    if missing_vars:
+        raise ValueError(
+            f"Missing required Okta configuration: {', '.join(missing_vars)}. "
+            "Please set these environment variables."
+        )
+
+    logger.info(f"Initializing Okta provider for domain '{okta_domain}'")
+
+    return OktaProvider(
+        okta_domain=okta_domain,
+        client_id=client_id,
+        client_secret=client_secret,
+        m2m_client_id=m2m_client_id,
+        m2m_client_secret=m2m_client_secret,
+    )
+
 
 
 def _get_provider_health_info() -> dict:

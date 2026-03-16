@@ -1488,6 +1488,33 @@ async def validate_request(request: Request):
 
         logger.info(f"Token validation successful using method: {validation_result['method']}")
 
+        # Enrich groups from MongoDB if empty (for M2M clients)
+        try:
+            from mongodb_groups_enrichment import (
+                enrich_groups_from_mongodb,
+                should_enrich_groups,
+            )
+
+            client_id = validation_result.get("client_id")
+            current_groups = validation_result.get("groups", [])
+            should_enrich = should_enrich_groups(validation_result)
+            logger.info(
+                f"Enrichment check: client_id={client_id}, "
+                f"groups={current_groups}, should_enrich={should_enrich}"
+            )
+
+            if should_enrich:
+                enriched_groups = await enrich_groups_from_mongodb(client_id, current_groups)
+
+                if enriched_groups != current_groups:
+                    validation_result["groups"] = enriched_groups
+                    logger.info(
+                        f"Groups enriched from MongoDB for client {client_id}: {enriched_groups}"
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to enrich groups from MongoDB: {e}")
+            # Don't fail validation if enrichment fails
+
         # Parse server and tool information from original URL if available
         server_name = server_name_from_url  # Use the server_name we extracted earlier
         tool_name = None
@@ -1524,10 +1551,10 @@ async def validate_request(request: Request):
                     logger.error(f"Error processing request payload for tool extraction: {e}")
 
         # Validate scope-based access if we have server/tool information
-        # For providers that use groups (Keycloak, Entra ID, Cognito), map groups to scopes
+        # For providers that use groups (Keycloak, Entra ID, Cognito, Okta), map groups to scopes
         user_groups = validation_result.get("groups", [])
         auth_method = validation_result.get("method", "")
-        if user_groups and auth_method in ["keycloak", "entra", "cognito"]:
+        if user_groups and auth_method in ["keycloak", "entra", "cognito", "okta"]:
             # Map IdP groups to scopes using the group mappings (query DocumentDB)
             user_scopes = await map_groups_to_scopes(user_groups)
             logger.info(f"Mapped {auth_method} groups {user_groups} to scopes: {user_scopes}")
@@ -1656,6 +1683,7 @@ async def validate_request(request: Request):
         response.headers["X-Auth-Method"] = validation_result.get("method") or ""
         response.headers["X-Server-Name"] = server_name or ""
         response.headers["X-Tool-Name"] = tool_name or ""
+        response.headers["X-Groups"] = " ".join(validation_result.get("groups", []))
 
         return response
 
@@ -2601,6 +2629,39 @@ async def oauth2_callback(
                 logger.info(f"Raw user info from {provider}: {user_info}")
                 mapped_user = map_user_info(user_info, provider_config)
                 logger.info(f"Mapped user info from userInfo: {mapped_user}")
+        elif provider == "okta":
+            # For Okta, decode the ID token to get groups (userinfo doesn't include groups)
+            try:
+                if "id_token" in token_data:
+                    import jwt
+
+                    id_token_claims = jwt.decode(
+                        token_data["id_token"], options={"verify_signature": False}
+                    )
+                    logger.info(f"Okta ID token claims: {id_token_claims}")
+
+                    mapped_user = {
+                        "username": id_token_claims.get("preferred_username")
+                        or id_token_claims.get("email")
+                        or id_token_claims.get("sub"),
+                        "email": id_token_claims.get("email"),
+                        "name": id_token_claims.get("name")
+                        or id_token_claims.get("given_name"),
+                        "groups": id_token_claims.get("groups", []),
+                    }
+                    logger.info(f"User extracted from Okta ID token: {mapped_user}")
+                else:
+                    logger.warning("No ID token found in Okta response, falling back to userInfo")
+                    raise ValueError("Missing ID token")
+
+            except Exception as e:
+                logger.warning(
+                    f"Okta ID token parsing failed: {e}, falling back to userInfo endpoint"
+                )
+                user_info = await get_user_info(token_data["access_token"], provider_config)
+                logger.info(f"Raw user info from {provider}: {user_info}")
+                mapped_user = map_user_info(user_info, provider_config)
+                logger.info(f"Mapped user info from userInfo: {mapped_user}")
         else:
             # For other providers, use userInfo endpoint
             user_info = await get_user_info(token_data["access_token"], provider_config)
@@ -2835,6 +2896,16 @@ async def oauth2_logout(
                 logout_params["id_token_hint"] = id_token_hint
             logger.debug(
                 f"Entra ID logout params built: has_id_token_hint={bool(id_token_hint)}"
+            )
+        elif "okta" in provider.lower() or ".okta.com" in logout_url:
+            # Okta logout parameters
+            logout_params = {
+                "post_logout_redirect_uri": full_redirect_uri,
+            }
+            if id_token_hint:
+                logout_params["id_token_hint"] = id_token_hint
+            logger.debug(
+                f"Okta logout params built: has_id_token_hint={bool(id_token_hint)}"
             )
         else:
             # Cognito logout parameters (no id_token_hint support)

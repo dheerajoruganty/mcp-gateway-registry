@@ -323,10 +323,23 @@ registry_api_token = "m3zT65wREARMVDToKosg_DgNkKqS_434hNxy3sslGPY"
 # ============================================================================
 # AUTHENTICATION PROVIDER CONFIGURATION
 # ============================================================================
+#
+# IMPORTANT: Only ONE authentication provider should be enabled at a time!
+#
+# Three authentication provider options:
+#   1. Keycloak (default) - Leave both okta_enabled and entra_enabled as false/unset
+#   2. Microsoft Entra ID - Set entra_enabled = true
+#   3. Okta - Set okta_enabled = true
+#
+# If multiple providers are enabled simultaneously, priority order is:
+#   okta_enabled > entra_enabled > keycloak (default)
+#
+# ============================================================================
 
 # Microsoft Entra ID Configuration (Alternative to Keycloak)
 # Set entra_enabled = true to use Microsoft Entra ID instead of Keycloak
 # When enabled, AUTH_PROVIDER is automatically set to "entra"
+# IMPORTANT: Set okta_enabled = false (or omit) when using Entra
 
 # Enable Microsoft Entra ID authentication (default: false, uses Keycloak)
 # entra_enabled = true
@@ -347,6 +360,46 @@ registry_api_token = "m3zT65wREARMVDToKosg_DgNkKqS_434hNxy3sslGPY"
 #   - Azure China: https://login.chinacloudapi.cn
 #   - Azure Germany: https://login.microsoftonline.de
 # entra_login_base_url = "https://login.microsoftonline.com"
+
+# ============================================================================
+# OKTA CONFIGURATION (Alternative to Keycloak)
+# ============================================================================
+
+# Set okta_enabled = true to use Okta instead of Keycloak
+# When enabled, AUTH_PROVIDER is automatically set to "okta"
+# IMPORTANT: Set entra_enabled = false (or omit) when using Okta
+
+# Enable Okta authentication (default: false, uses Keycloak)
+# okta_enabled = true
+
+# Okta domain (e.g., your-org.okta.com)
+# Get from: Okta Admin Console
+# okta_domain = "your-org.okta.com"
+
+# Okta Application (client) ID
+# Get from: Okta Admin Console → Applications → Your App → General
+# okta_client_id = "your-client-id"
+
+# Okta Client Secret
+# Get from: Okta Admin Console → Applications → Your App → General → Client Credentials
+# okta_client_secret = "your-client-secret"
+
+# Okta M2M Client ID (for service account operations)
+# Create a separate OAuth 2.0 client for M2M operations
+# okta_m2m_client_id = "your-m2m-client-id"
+
+# Okta M2M Client Secret
+# okta_m2m_client_secret = "your-m2m-client-secret"
+
+# Okta API Token (for IAM management operations)
+# Get from: Okta Admin Console → Security → API → Tokens
+# okta_api_token = "your-api-token"
+
+# Okta Custom Authorization Server ID (optional)
+# Get from: Okta Admin Console → Security → API → Authorization Servers
+# If using custom authorization server for M2M, specify the ID here (e.g., aus1108sx6pwGzb8T698)
+# If not set, uses the default Org Authorization Server
+# okta_auth_server_id = "your-auth-server-id"
 
 # ============================================================================
 # DEPLOYMENT MODE CONFIGURATION

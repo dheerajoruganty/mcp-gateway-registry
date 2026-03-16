@@ -579,3 +579,74 @@ def mock_rate_limiter():
         Dictionary to track rate limit state
     """
     return {"counts": {}, "limit": 100}
+
+
+# =============================================================================
+# OKTA FIXTURES
+# =============================================================================
+
+
+@pytest.fixture
+def okta_env_vars(monkeypatch) -> dict[str, str]:
+    """
+    Set up Okta environment variables for testing.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture
+
+    Returns:
+        Dictionary of environment variables set
+    """
+    env_vars = {
+        "AUTH_PROVIDER": "okta",
+        "OKTA_DOMAIN": "dev-123456.okta.com",
+        "OKTA_CLIENT_ID": "test-client-id",
+        "OKTA_CLIENT_SECRET": "test-client-secret",
+        "OKTA_M2M_CLIENT_ID": "m2m-client-id",
+        "OKTA_M2M_CLIENT_SECRET": "m2m-client-secret",
+    }
+
+    for key, value in env_vars.items():
+        monkeypatch.setenv(key, value)
+
+    logger.debug(f"Set up {len(env_vars)} Okta environment variables")
+    return env_vars
+
+
+@pytest.fixture
+def mock_okta_provider():
+    """
+    Create a mock Okta provider for testing.
+
+    Returns:
+        Mock Okta provider
+    """
+    provider = MagicMock()
+    provider.validate_token = MagicMock(
+        return_value={
+            "valid": True,
+            "method": "okta",
+            "username": "testuser@example.com",
+            "email": "testuser@example.com",
+            "groups": ["users", "developers"],
+            "scopes": ["openid", "profile", "email"],
+            "client_id": "test-client-id",
+            "data": {
+                "sub": "testuser@example.com",
+                "email": "testuser@example.com",
+                "groups": ["users", "developers"],
+            },
+        }
+    )
+    provider.get_provider_info = MagicMock(
+        return_value={
+            "provider_type": "okta",
+            "okta_domain": "dev-123456.okta.com",
+            "client_id": "test-client-id",
+        }
+    )
+    provider.get_jwks = MagicMock(
+        return_value={"keys": [{"kid": "test-key", "kty": "RSA"}]}
+    )
+
+    return provider

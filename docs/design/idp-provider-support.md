@@ -8,10 +8,11 @@
 - [Authentication Design](./authentication-design.md) - Auth flows for human users, programmatic access, and M2M workloads
 - [Authentication & Authorization Guide](../auth.md) - Operational guide with setup instructions
 - [Microsoft Entra ID Integration](../entra.md) - Entra ID-specific setup and configuration
+- [Okta Integration](../okta-setup.md) - Okta-specific setup and configuration
 
 ## Overview
 
-The MCP Gateway Registry supports multiple identity providers (IdPs) through a pluggable architecture. This design enables organizations to use their existing enterprise identity infrastructure (Keycloak, Microsoft Entra ID) for authentication and authorization.
+The MCP Gateway Registry supports multiple identity providers (IdPs) through a pluggable architecture. This design enables organizations to use their existing enterprise identity infrastructure (Keycloak, Microsoft Entra ID, Okta) for authentication and authorization.
 
 ## Architecture
 
@@ -48,15 +49,15 @@ The MCP Gateway Registry supports multiple identity providers (IdPs) through a p
 |  |                |    | (Base Class)     |    |                |  |
 |  +----------------+    +------------------+    +----------------+  |
 |                                                      |             |
-|                           +----------------+---------+             |
-|                           |                |                       |
-|                           v                v                       |
-|                    +------+------+  +------+------+                |
-|                    |             |  |             |                |
-|                    |  Keycloak   |  |  Entra ID   |                |
-|                    |  Provider   |  |  Provider   |                |
-|                    |             |  |             |                |
-|                    +-------------+  +-------------+                |
+|                           +----------------+---------+--------+    |
+|                           |                |                  |    |
+|                           v                v                  v    |
+|                    +------+------+  +------+------+  +--------+-+  |
+|                    |             |  |             |  |           |  |
+|                    |  Keycloak   |  |  Entra ID   |  |   Okta    |  |
+|                    |  Provider   |  |  Provider   |  |  Provider |  |
+|                    |             |  |             |  |           |  |
+|                    +-------------+  +-------------+  +-----------+  |
 |                                                                    |
 +--------------------------------------------------------------------+
          |
@@ -85,6 +86,7 @@ The active identity provider is determined by the `AUTH_PROVIDER` environment va
 ```
 AUTH_PROVIDER=keycloak   # Use Keycloak
 AUTH_PROVIDER=entra      # Use Microsoft Entra ID
+AUTH_PROVIDER=okta       # Use Okta
 ```
 
 ### Provider Factory Pattern
@@ -96,18 +98,18 @@ AUTH_PROVIDER=entra      # Use Microsoft Entra ID
 |                   |     |                          |
 +-------------------+     +------------+-------------+
                                        |
-                    +------------------+------------------+
-                    |                                     |
-                    v                                     v
-          +---------+---------+              +-----------+-----------+
-          |                   |              |                       |
-          | KeycloakProvider  |              |  EntraIdProvider      |
-          |                   |              |                       |
-          | - OIDC endpoints  |              | - Microsoft Graph API |
-          | - JWKS validation |              | - JWKS validation     |
-          | - Realm-based     |              | - Tenant-based        |
-          |                   |              |                       |
-          +-------------------+              +-----------------------+
+                +----------------------+----------------------+
+                |                      |                      |
+                v                      v                      v
+    +-------------------+  +-----------------------+  +-----------------------+
+    |                   |  |                       |  |                       |
+    | KeycloakProvider  |  | EntraIdProvider       |  | OktaProvider          |
+    |                   |  |                       |  |                       |
+    | - OIDC endpoints  |  | - Microsoft Graph API |  | - Okta OAuth2/OIDC    |
+    | - JWKS validation |  | - JWKS validation     |  | - JWKS validation     |
+    | - Realm-based     |  | - Tenant-based        |  | - Domain-based        |
+    |                   |  |                       |  |                       |
+    +-------------------+  +-----------------------+  +-----------------------+
 ```
 
 ## IAM Manager Interface
@@ -159,26 +161,26 @@ class IAMManager(Protocol):
 ### Implementation Classes
 
 ```
-+------------------+          +------------------+
-|                  |          |                  |
-| KeycloakIAM      |          | EntraIAM         |
-| Manager          |          | Manager          |
-|                  |          |                  |
-+--------+---------+          +--------+---------+
-         |                             |
-         | Delegates to                | Delegates to
-         v                             v
-+--------+---------+          +--------+---------+
-|                  |          |                  |
-| keycloak_manager |          | entra_manager    |
-| .py              |          | .py              |
-|                  |          |                  |
-| - Keycloak Admin |          | - Microsoft      |
-|   REST API       |          |   Graph API      |
-| - Realm mgmt     |          | - App registr.   |
-| - Client mgmt    |          | - Service        |
-|                  |          |   principals     |
-+------------------+          +------------------+
++------------------+          +------------------+          +------------------+
+|                  |          |                  |          |                  |
+| KeycloakIAM      |          | EntraIAM         |          | OktaIAM          |
+| Manager          |          | Manager          |          | Manager          |
+|                  |          |                  |          |                  |
++--------+---------+          +--------+---------+          +--------+---------+
+         |                             |                             |
+         | Delegates to                | Delegates to                | Delegates to
+         v                             v                             v
++--------+---------+          +--------+---------+          +--------+---------+
+|                  |          |                  |          |                  |
+| keycloak_manager |          | entra_manager    |          | okta_manager     |
+| .py              |          | .py              |          | .py              |
+|                  |          |                  |          |                  |
+| - Keycloak Admin |          | - Microsoft      |          | - Okta Admin     |
+|   REST API       |          |   Graph API      |          |   REST API       |
+| - Realm mgmt     |          | - App registr.   |          | - SSWS auth      |
+| - Client mgmt    |          | - Service        |          | - OIDC service   |
+|                  |          |   principals     |          |   apps           |
++------------------+          +------------------+          +------------------+
 ```
 
 ## Provider-Specific Details
@@ -218,6 +220,31 @@ class IAMManager(Protocol):
   - `Directory.ReadWrite.All`
   - `Group.ReadWrite.All`
   - `User.ReadWrite.All`
+
+### Okta Provider
+
+**Authentication Flow:**
+- Uses OAuth2 Authorization Code flow (users)
+- Uses OAuth2 Client Credentials flow (M2M)
+- Tokens issued by Okta org authorization server
+- JWKS endpoint: `https://{okta_domain}/oauth2/v1/keys`
+
+**Group Identifier in Tokens:**
+- Group names (e.g., `mcp-admin`, `mcp-user`) — similar to Keycloak
+- Stored in `groups` claim of JWT
+- Requires groups claim to be configured in the Okta Authorization Server
+
+**Key Differences from Other Providers:**
+- Single issuer format: `https://{okta_domain}` (unlike Entra ID's dual v1.0/v2.0)
+- Uses `scp` claim for scopes in access tokens (fallback to `scope`)
+- Uses `cid` claim for client ID
+- Admin API uses a separate API token (`SSWS` scheme), not OAuth2 credentials
+
+**IAM Operations:**
+- Uses Okta Admin REST API (`/api/v1/*`)
+- Requires dedicated API token (`OKTA_API_TOKEN`) with `SSWS` authorization
+- User deletion requires deactivate-then-delete two-step flow
+- See [Okta Setup Guide](../okta-setup.md) for configuration details
 
 ## Group-to-Scope Mapping
 
@@ -278,7 +305,7 @@ groups: ["public-mcp-users"]   groups: ["5f605d68-06bc-4208-b992-bb378eee12c5"]
 
 ```bash
 # Provider Selection
-AUTH_PROVIDER=entra              # or "keycloak"
+AUTH_PROVIDER=entra              # or "keycloak" or "okta"
 
 # Keycloak Configuration
 KEYCLOAK_URL=https://keycloak.example.com
@@ -290,6 +317,14 @@ KEYCLOAK_CLIENT_SECRET=...
 ENTRA_TENANT_ID=6e6ee81b-6bf3-495d-a7fc-d363a551f765
 ENTRA_CLIENT_ID=1bd17ba1-aad3-447f-be0b-26f8f9ee859f
 ENTRA_CLIENT_SECRET=...
+
+# Okta Configuration
+OKTA_DOMAIN=dev-123456.okta.com
+OKTA_CLIENT_ID=0oa1234567890abcdef
+OKTA_CLIENT_SECRET=...
+# OKTA_M2M_CLIENT_ID=...        # Optional separate M2M credentials
+# OKTA_M2M_CLIENT_SECRET=...
+# OKTA_API_TOKEN=...             # Optional, for IAM operations
 
 # Token Validation
 SECRET_KEY=...                   # For self-signed tokens
@@ -316,6 +351,13 @@ group_mappings:
     - registry-admins
 
   "public-mcp-users":
+    - public-mcp-users
+
+  # Okta also uses group names (same format as Keycloak)
+  "mcp-admin":
+    - registry-admins
+
+  "mcp-user":
     - public-mcp-users
 ```
 

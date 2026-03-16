@@ -360,6 +360,101 @@ class EntraIAMManager:
         return await update_entra_group(group_name_or_id=group_name, description=description)
 
 
+class OktaIAMManager:
+    """Okta IAM manager implementation."""
+
+    async def list_users(
+        self, search: str | None = None, max_results: int = 500, include_groups: bool = True
+    ) -> list[dict[str, Any]]:
+        """List users from Okta."""
+        from .okta_manager import list_okta_users
+
+        return await list_okta_users(
+            search=search, max_results=max_results, include_groups=include_groups
+        )
+
+    async def create_human_user(
+        self,
+        username: str,
+        email: str,
+        first_name: str,
+        last_name: str,
+        groups: list[str],
+        password: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a human user in Okta."""
+        from .okta_manager import create_okta_human_user
+
+        return await create_okta_human_user(
+            username=username,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            groups=groups,
+            password=password,
+        )
+
+    async def delete_user(self, username: str) -> bool:
+        """Delete a user from Okta."""
+        from .okta_manager import delete_okta_user
+
+        return await delete_okta_user(username_or_id=username)
+
+    async def list_groups(self) -> list[dict[str, Any]]:
+        """List all groups from Okta."""
+        from .okta_manager import list_okta_groups
+
+        return await list_okta_groups()
+
+    async def create_group(self, group_name: str, description: str = "") -> dict[str, Any]:
+        """Create a group in Okta."""
+        from .okta_manager import create_okta_group
+
+        return await create_okta_group(group_name=group_name, description=description)
+
+    async def delete_group(self, group_name: str) -> bool:
+        """Delete a group from Okta."""
+        from .okta_manager import delete_okta_group
+
+        return await delete_okta_group(group_name_or_id=group_name)
+
+    async def group_exists(self, group_name: str) -> bool:
+        """Check if a group exists in Okta."""
+        from .okta_manager import list_okta_groups
+
+        try:
+            groups = await list_okta_groups()
+            return any(g.get("name", "").lower() == group_name.lower() for g in groups)
+        except Exception:
+            return False
+
+    async def create_service_account(
+        self, client_id: str, groups: list[str], description: str | None = None
+    ) -> dict[str, Any]:
+        """Create an OAuth2 service application in Okta."""
+        from .okta_manager import create_okta_service_account
+
+        return await create_okta_service_account(
+            client_id_name=client_id, group_names=groups, description=description
+        )
+
+    async def update_user_groups(self, username: str, groups: list[str]) -> dict[str, Any]:
+        """Update group memberships for an Okta user."""
+        from .okta_manager import update_okta_user_groups
+
+        return await update_okta_user_groups(username_or_id=username, groups=groups)
+
+    async def update_group(
+        self,
+        group_name: str,
+        description: str = "",
+    ) -> dict[str, Any]:
+        """Update a group's properties in Okta."""
+        from .okta_manager import update_okta_group
+
+        return await update_okta_group(group_name_or_id=group_name, description=description)
+
+
 def get_iam_manager() -> IAMManager:
     """
     Factory function to get the appropriate IAM manager based on AUTH_PROVIDER.
@@ -376,6 +471,10 @@ def get_iam_manager() -> IAMManager:
     elif provider == "entra":
         logger.debug("Using Entra ID IAM manager")
         return EntraIAMManager()
+
+    elif provider == "okta":
+        logger.debug("Using Okta IAM manager")
+        return OktaIAMManager()
 
     else:
         logger.warning(f"Unknown AUTH_PROVIDER '{provider}', defaulting to Keycloak")
