@@ -3,9 +3,59 @@
   "info": {
     "title": "MCP Gateway Registry",
     "description": "A registry and management system for Model Context Protocol (MCP) servers",
-    "version": "v1.0.16"
+    "version": "v1.0.17"
   },
   "paths": {
+    "/api/version": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Get Version",
+        "description": "Get application version.\n\nReturns:\n    Dictionary with version string",
+        "operationId": "get_version_api_version_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Get System Stats",
+        "description": "Get system statistics including uptime, deployment info, and registry metrics.\n\nThis endpoint provides operational information for monitoring and display:\n- Application uptime since last restart\n- Deployment environment and mode\n- Registry resource counts (servers, agents, skills)\n- Database health status\n\nResponse is cached for 30 seconds to reduce load.\n\nReturns:\n    System statistics dictionary with:\n    - uptime_seconds: Time since server started\n    - started_at: ISO 8601 timestamp of server start\n    - version: Application version\n    - deployment_type: Kubernetes/ECS/EC2/Local\n    - deployment_mode: with-gateway/registry-only\n    - registry_stats: Object with servers, agents, skills counts\n    - database_status: Object with backend, status, host\n    - auth_status: Object with provider, status, url",
+        "operationId": "get_system_stats_api_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/auth/login": {
       "get": {
         "tags": [
@@ -40,44 +90,6 @@
                 "schema": {
                   "type": "string"
                 }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "Authentication"
-        ],
-        "summary": "Login Submit",
-        "description": "Handle login form submission - supports both traditional and API calls",
-        "operationId": "login_submit_api_auth_login_post",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_login_submit_api_auth_login_post"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
               }
             }
           },
@@ -237,7 +249,7 @@
           "Authentication"
         ],
         "summary": "Logout Post",
-        "description": "Handle logout via POST request (for forms)",
+        "description": "Handle logout via POST request (for forms with CSRF validation)",
         "operationId": "logout_post_api_auth_logout_post",
         "parameters": [
           {
@@ -313,6 +325,54 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/csrf-token": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Get Csrf Token",
+        "description": "API endpoint to get a CSRF token for React/SPA applications.\n\nReturns a CSRF token bound to the current session that can be used\nin X-CSRF-Token headers for API requests.",
+        "operationId": "get_csrf_token_api_auth_csrf_token_get",
+        "parameters": [
+          {
+            "name": "mcp_gateway_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mcp Gateway Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -3263,7 +3323,7 @@
           "Management API"
         ],
         "summary": "Management Update User Groups",
-        "description": "Update a user's group memberships (admin only).\n\nThis endpoint calculates the diff between current and desired groups,\nthen adds or removes group memberships as needed.",
+        "description": "Update a user's group memberships (admin only).\n\nThis endpoint calculates the diff between current and desired groups,\nthen adds or removes group memberships as needed.\n\nFor M2M accounts (service accounts), updates the DocumentDB record directly.\nFor human users, delegates to the IdP manager.",
         "operationId": "management_update_user_groups_api_management_iam_users__username__groups_patch",
         "parameters": [
           {
@@ -3925,7 +3985,7 @@
           "federation"
         ],
         "summary": "Remove Anthropic server from config",
-        "description": "Remove a server from Anthropic federation configuration.\n\nArgs:\n    config_id: Configuration ID\n    server_name: Server name to remove\n    user_context: Authenticated user context\n    repo: Federation config repository\n\nReturns:\n    Updated configuration",
+        "description": "Remove a server from Anthropic federation configuration.\n\nAlso removes the server from mcp_servers_default if it was\npreviously synced.\n\nArgs:\n    config_id: Configuration ID\n    server_name: Server name to remove (e.g., \"io.github.jgador/websharp\")\n    user_context: Authenticated user context\n    repo: Federation config repository\n\nReturns:\n    Updated configuration with removal details",
         "operationId": "remove_anthropic_server_api_federation_config__config_id__anthropic_servers__server_name__delete",
         "parameters": [
           {
@@ -7147,6 +7207,176 @@
         ]
       }
     },
+    "/api/audit/filter-options": {
+      "get": {
+        "tags": [
+          "Audit Logs",
+          "Audit Logs"
+        ],
+        "summary": "Get Filter Options",
+        "description": "Get distinct filter values for audit log dropdowns. Requires admin access.",
+        "operationId": "get_filter_options_api_audit_filter_options_get",
+        "parameters": [
+          {
+            "name": "stream",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(registry_api|mcp_access)$",
+              "description": "Log stream type",
+              "default": "registry_api",
+              "title": "Stream"
+            },
+            "description": "Log stream type"
+          },
+          {
+            "name": "mcp_gateway_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mcp Gateway Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditFilterOptions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
+    "/api/audit/statistics": {
+      "get": {
+        "tags": [
+          "Audit Logs",
+          "Audit Logs"
+        ],
+        "summary": "Get Statistics",
+        "description": "Get aggregated audit statistics for the dashboard. Requires admin access.",
+        "operationId": "get_statistics_api_audit_statistics_get",
+        "parameters": [
+          {
+            "name": "stream",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(registry_api|mcp_access)$",
+              "description": "Log stream type",
+              "default": "registry_api",
+              "title": "Stream"
+            },
+            "description": "Log stream type"
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "description": "Number of days to include in statistics",
+              "default": 7,
+              "title": "Days"
+            },
+            "description": "Number of days to include in statistics"
+          },
+          {
+            "name": "username",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter statistics to a specific username",
+              "title": "Username"
+            },
+            "description": "Filter statistics to a specific username"
+          },
+          {
+            "name": "mcp_gateway_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mcp Gateway Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditStatisticsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/audit/events": {
       "get": {
         "tags": [
@@ -8071,28 +8301,6 @@
         }
       }
     },
-    "/api/version": {
-      "get": {
-        "summary": "Get Version",
-        "description": "Get application version.",
-        "operationId": "get_version_api_version_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "Bearer": []
-          }
-        ]
-      }
-    },
     "/{full_path}": {
       "get": {
         "summary": "Serve React App",
@@ -8453,6 +8661,88 @@
         "title": "AuditEventsResponse",
         "description": "Response model for paginated audit events."
       },
+      "AuditFilterOptions": {
+        "properties": {
+          "usernames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Usernames",
+            "description": "Distinct usernames found in audit events"
+          },
+          "server_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Server Names",
+            "description": "Distinct MCP server names (MCP stream only)"
+          }
+        },
+        "type": "object",
+        "title": "AuditFilterOptions",
+        "description": "Available filter values for audit log dropdowns."
+      },
+      "AuditStatisticsResponse": {
+        "properties": {
+          "total_events": {
+            "type": "integer",
+            "title": "Total Events",
+            "description": "Total events in time range"
+          },
+          "top_users": {
+            "items": {
+              "$ref": "#/components/schemas/UsageSummaryItem"
+            },
+            "type": "array",
+            "title": "Top Users",
+            "description": "Top 10 users by event count"
+          },
+          "top_servers": {
+            "items": {
+              "$ref": "#/components/schemas/UsageSummaryItem"
+            },
+            "type": "array",
+            "title": "Top Servers",
+            "description": "Top 10 MCP servers (MCP stream only)"
+          },
+          "top_operations": {
+            "items": {
+              "$ref": "#/components/schemas/UsageSummaryItem"
+            },
+            "type": "array",
+            "title": "Top Operations",
+            "description": "Top 10 operations by event count"
+          },
+          "activity_timeline": {
+            "items": {
+              "$ref": "#/components/schemas/TimeSeriesBucket"
+            },
+            "type": "array",
+            "title": "Activity Timeline",
+            "description": "Daily event counts for the time range"
+          },
+          "status_distribution": {
+            "$ref": "#/components/schemas/StatusDistribution",
+            "description": "Distribution of HTTP status codes"
+          },
+          "user_activity": {
+            "items": {
+              "$ref": "#/components/schemas/UserActivityItem"
+            },
+            "type": "array",
+            "title": "User Activity",
+            "description": "Per-user breakdown of top operations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_events"
+        ],
+        "title": "AuditStatisticsResponse",
+        "description": "Aggregated audit statistics."
+      },
       "AuthCredentialUpdateRequest": {
         "properties": {
           "auth_scheme": {
@@ -8680,12 +8970,17 @@
               }
             ],
             "title": "Auth Header Name"
+          },
+          "csrf_token": {
+            "type": "string",
+            "title": "Csrf Token"
           }
         },
         "type": "object",
         "required": [
           "name",
-          "proxy_pass_url"
+          "proxy_pass_url",
+          "csrf_token"
         ],
         "title": "Body_edit_server_submit_api_edit__service_path__post"
       },
@@ -8931,24 +9226,6 @@
           "service_path"
         ],
         "title": "Body_internal_toggle_service_api_internal_toggle_post"
-      },
-      "Body_login_submit_api_auth_login_post": {
-        "properties": {
-          "username": {
-            "type": "string",
-            "title": "Username"
-          },
-          "password": {
-            "type": "string",
-            "title": "Password"
-          }
-        },
-        "type": "object",
-        "required": [
-          "username",
-          "password"
-        ],
-        "title": "Body_login_submit_api_auth_login_post"
       },
       "Body_register_service_api_api_servers_register_post": {
         "properties": {
@@ -11619,6 +11896,31 @@
         "title": "SkillTier1_Metadata",
         "description": "Tier 1: Always available, ~100 tokens."
       },
+      "StatusDistribution": {
+        "properties": {
+          "status_2xx": {
+            "type": "integer",
+            "title": "Status 2Xx",
+            "description": "2xx success count",
+            "default": 0
+          },
+          "status_4xx": {
+            "type": "integer",
+            "title": "Status 4Xx",
+            "description": "4xx client error count",
+            "default": 0
+          },
+          "status_5xx": {
+            "type": "integer",
+            "title": "Status 5Xx",
+            "description": "5xx server error count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "StatusDistribution",
+        "description": "Status code distribution."
+      },
       "StoreSessionRequest": {
         "properties": {
           "backend_session_id": {
@@ -11898,6 +12200,27 @@
         ],
         "title": "SyncResult",
         "description": "Result of a sync operation.\n\nReturned by sync methods to indicate success/failure and\nprovide details about what was synced."
+      },
+      "TimeSeriesBucket": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "description": "Time period label (e.g., '2026-02-28')"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Number of events in this period"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "count"
+        ],
+        "title": "TimeSeriesBucket",
+        "description": "A single time bucket for the activity chart."
       },
       "ToggleStateRequest": {
         "properties": {
@@ -12334,6 +12657,56 @@
         "type": "object",
         "title": "UpdateVirtualServerRequest",
         "description": "Request model for updating a virtual server."
+      },
+      "UsageSummaryItem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Username, server name, or category"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Number of events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "count"
+        ],
+        "title": "UsageSummaryItem",
+        "description": "A single row in a usage summary."
+      },
+      "UserActivityItem": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username",
+            "description": "Username"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Total requests by this user"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/UsageSummaryItem"
+            },
+            "type": "array",
+            "title": "Operations",
+            "description": "Top operations for this user"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "total"
+        ],
+        "title": "UserActivityItem",
+        "description": "Per-user activity breakdown showing top operations."
       },
       "UserDeleteResponse": {
         "properties": {
