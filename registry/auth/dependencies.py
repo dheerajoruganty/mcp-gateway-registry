@@ -662,6 +662,25 @@ def create_session_cookie(
     return signer.dumps(session_data)
 
 
+def get_github_token_from_request(request: Request) -> str | None:
+    """Extract GitHub OAuth token from user's session cookie.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        GitHub token string or None if not present.
+    """
+    cookie_value = request.cookies.get(settings.session_cookie_name)
+    if not cookie_value:
+        return None
+    try:
+        session_data = signer.loads(cookie_value, max_age=settings.session_max_age_seconds)
+        return session_data.get("github_token")
+    except Exception:
+        return None
+
+
 def ui_permission_required(permission: str, service_name: str = None):
     """
     Decorator to require a specific UI permission for a route.

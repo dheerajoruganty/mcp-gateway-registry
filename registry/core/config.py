@@ -112,6 +112,8 @@ class Settings(BaseSettings):
     github_app_id: str = ""  # GitHub App ID for installation-based auth
     github_app_installation_id: str = ""  # GitHub App Installation ID
     github_app_private_key: str = ""  # GitHub App private key (PEM format)
+    github_oauth_client_id: str = ""  # GitHub OAuth App client ID for user SSO
+    github_oauth_client_secret: str = ""  # GitHub OAuth App client secret
 
     # Skill security scanning settings (AI Agent Skills)
     skill_security_scan_enabled: bool = True

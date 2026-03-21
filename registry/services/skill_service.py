@@ -164,6 +164,7 @@ def _is_safe_url(
 
 async def _validate_skill_md_url(
     url: str,
+    github_token: str | None = None,
 ) -> dict[str, Any]:
     """Validate SKILL.md URL is accessible and get content hash.
 
@@ -183,7 +184,7 @@ async def _validate_skill_md_url(
         )
 
     try:
-        async with await get_authenticated_client(str(url)) as client:
+        async with await get_authenticated_client(str(url), user_token=github_token) as client:
             response = await client.get(
                 str(url), follow_redirects=True, timeout=URL_VALIDATION_TIMEOUT
             )
@@ -214,6 +215,7 @@ async def _validate_skill_md_url(
 
 async def _parse_skill_md_content(
     url: str,
+    github_token: str | None = None,
 ) -> dict[str, Any]:
     """Parse SKILL.md content and extract metadata.
 
@@ -256,7 +258,7 @@ async def _parse_skill_md_content(
         )
 
     try:
-        async with await get_authenticated_client(raw_url_str) as client:
+        async with await get_authenticated_client(raw_url_str, user_token=github_token) as client:
             # Fetch from raw URL
             response = await client.get(
                 raw_url_str, follow_redirects=True, timeout=URL_VALIDATION_TIMEOUT
@@ -402,6 +404,7 @@ async def _parse_skill_md_content(
 
 async def _check_skill_health(
     url: str,
+    github_token: str | None = None,
 ) -> dict[str, Any]:
     """Check skill health by performing HEAD request to SKILL.md URL.
 
@@ -425,7 +428,7 @@ async def _check_skill_health(
         }
 
     try:
-        async with await get_authenticated_client(str(url)) as client:
+        async with await get_authenticated_client(str(url), user_token=github_token) as client:
             response = await client.head(
                 str(url), follow_redirects=True, timeout=URL_VALIDATION_TIMEOUT
             )
@@ -555,6 +558,7 @@ class SkillService:
         request: SkillRegistrationRequest,
         owner: str | None = None,
         validate_url: bool = True,
+        github_token: str | None = None,
     ) -> SkillCard:
         """Register a new skill.
 
@@ -581,7 +585,7 @@ class SkillService:
         content_updated_at = None
 
         if validate_url:
-            validation = await _validate_skill_md_url(raw_url)
+            validation = await _validate_skill_md_url(raw_url, github_token=github_token)
             content_version = validation["content_version"]
             content_updated_at = validation["content_updated_at"]
 
@@ -794,25 +798,29 @@ class SkillService:
     async def parse_skill_md(
         self,
         url: str,
+        github_token: str | None = None,
     ) -> dict[str, Any]:
         """Parse SKILL.md content and extract metadata.
 
         Args:
             url: URL to SKILL.md file
+            github_token: Optional user GitHub OAuth token.
 
         Returns:
             Dict with parsed metadata (name, description, version, tags)
         """
-        return await _parse_skill_md_content(url)
+        return await _parse_skill_md_content(url, github_token=github_token)
 
     async def check_skill_health(
         self,
         path: str,
+        github_token: str | None = None,
     ) -> dict[str, Any]:
         """Check skill health by performing HEAD request to SKILL.md URL.
 
         Args:
             path: Skill path
+            github_token: Optional user GitHub OAuth token.
 
         Returns:
             Dict with health status
@@ -833,7 +841,7 @@ class SkillService:
 
         # Use raw URL for health check (more reliable, returns actual content)
         url = skill.skill_md_raw_url or skill.skill_md_url
-        result = await _check_skill_health(str(url))
+        result = await _check_skill_health(str(url), github_token=github_token)
 
         # Persist health status to database
         health_status = "healthy" if result.get("healthy") else "unhealthy"

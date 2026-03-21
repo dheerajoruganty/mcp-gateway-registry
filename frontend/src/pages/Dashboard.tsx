@@ -18,6 +18,7 @@ import {
   UpdateVirtualServerRequest,
 } from '../types/virtualServer';
 import VirtualServerForm from '../components/VirtualServerForm';
+import GitHubConnect from '../components/GitHubConnect';
 import axios from 'axios';
 
 
@@ -2777,6 +2778,11 @@ const Dashboard: React.FC<DashboardProps> = ({ activeFilter = 'all' }) => {
                     />
                   </button>
                 </div>
+              )}
+
+              {/* GitHub Connect - only for new skills */}
+              {!editingSkill && (
+                <GitHubConnect compact onShowToast={showToast} />
               )}
 
               {/* SKILL.md URL with Parse button */}

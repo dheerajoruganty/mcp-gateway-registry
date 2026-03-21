@@ -23,6 +23,7 @@ import AgentDetailsModal from './AgentDetailsModal';
 import type { Server } from './ServerCard';
 import type { Agent as AgentType } from './AgentCard';
 import useEscapeKey from '../hooks/useEscapeKey';
+import GitHubConnect from './GitHubConnect';
 
 interface SemanticSearchResultsProps {
   query: string;
@@ -375,6 +376,12 @@ const SkillContentModal: React.FC<SkillContentModalProps> = ({
           ) : error ? (
             <div className="text-center py-12 text-gray-500">
               <p className="text-red-500">{error}</p>
+              <div className="mt-3 max-w-sm mx-auto">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  This may be a private repository. Connect your GitHub account to access it.
+                </p>
+                <GitHubConnect compact />
+              </div>
               {skill.skill_md_url && (
                 <p className="mt-2 text-sm">
                   Try visiting the{' '}

@@ -33,6 +33,7 @@ from registry.api.registry_routes import router as registry_router
 from registry.api.search_routes import router as search_router
 from registry.api.server_routes import router as servers_router
 from registry.api.skill_routes import router as skill_router
+from registry.auth.github_oauth import router as github_oauth_router
 from registry.api.system_routes import router as system_router
 from registry.api.system_routes import set_server_start_time
 from registry.api.virtual_server_routes import router as virtual_server_router
@@ -564,6 +565,7 @@ app.include_router(health_router, prefix="/api/health", tags=["Health Monitoring
 app.include_router(federation_export_router)
 app.include_router(peer_management_router)
 app.include_router(audit_router, prefix="/api", tags=["Audit Logs"])
+app.include_router(github_oauth_router, prefix="/api/github", tags=["GitHub OAuth"])
 
 # Register Anthropic MCP Registry API (public API for MCP servers only)
 app.include_router(registry_router, tags=["Anthropic Registry API"])

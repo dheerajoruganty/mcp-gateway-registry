@@ -28,7 +28,7 @@ from pydantic import BaseModel
 
 from ..audit.context import set_audit_action
 from ..auth.csrf import verify_csrf_token_flexible
-from ..auth.dependencies import nginx_proxied_auth
+from ..auth.dependencies import get_github_token_from_request, nginx_proxied_auth
 from ..exceptions import (
     SkillAlreadyExistsError,
     SkillServiceError,
@@ -160,6 +160,7 @@ async def list_skills(
 
 @router.post("/parse-skill-md", summary="Parse SKILL.md content from URL")
 async def parse_skill_md(
+    http_request: Request,
     user_context: Annotated[dict, Depends(nginx_proxied_auth)],
     url: str = Query(..., description="URL to SKILL.md file"),
 ) -> dict:
@@ -168,9 +169,10 @@ async def parse_skill_md(
     Returns name, description, version, and tags from the SKILL.md file.
     Useful for auto-populating the skill registration form.
     """
+    github_token = get_github_token_from_request(http_request)
     service = get_skill_service()
     try:
-        result = await service.parse_skill_md(url)
+        result = await service.parse_skill_md(url, github_token=github_token)
         return {
             "success": True,
             "name": result.get("name"),
@@ -251,6 +253,7 @@ async def search_skills(
 
 @router.get("/{skill_path:path}/health", summary="Check skill health")
 async def check_skill_health(
+    http_request: Request,
     user_context: Annotated[dict, Depends(nginx_proxied_auth)],
     skill_path: str = Path(..., description="Skill path or name"),
 ) -> dict:
@@ -258,9 +261,10 @@ async def check_skill_health(
 
     Returns health status, HTTP status code, and response time.
     """
+    github_token = get_github_token_from_request(http_request)
     normalized_path = normalize_skill_path(skill_path)
     service = get_skill_service()
-    result = await service.check_skill_health(normalized_path)
+    result = await service.check_skill_health(normalized_path, github_token=github_token)
     return {
         "path": normalized_path,
         "healthy": result["healthy"],
@@ -272,6 +276,7 @@ async def check_skill_health(
 
 @router.get("/{skill_path:path}/content", summary="Get SKILL.md content")
 async def get_skill_content(
+    http_request: Request,
     user_context: Annotated[dict, Depends(nginx_proxied_auth)],
     skill_path: str = Path(..., description="Skill path or name"),
 ) -> dict:
@@ -314,7 +319,8 @@ async def get_skill_content(
 
         from ..utils.github_client import get_authenticated_client
 
-        async with await get_authenticated_client(str(raw_url)) as client:
+        github_token = get_github_token_from_request(http_request)
+        async with await get_authenticated_client(str(raw_url), user_token=github_token) as client:
             response = await client.get(str(raw_url), follow_redirects=True, timeout=30.0)
 
             # SSRF protection: validate final URL after redirects
@@ -535,11 +541,14 @@ async def register_skill(
         description=f"Register skill {request.name}",
     )
 
+    github_token = get_github_token_from_request(http_request)
     service = get_skill_service()
     owner = user_context.get("username")
 
     try:
-        skill = await service.register_skill(request=request, owner=owner, validate_url=True)
+        skill = await service.register_skill(
+            request=request, owner=owner, validate_url=True, github_token=github_token
+        )
         logger.info(f"Registered skill: {skill.name} by {owner}")
 
         # Perform security scan on registration (non-blocking on failure)

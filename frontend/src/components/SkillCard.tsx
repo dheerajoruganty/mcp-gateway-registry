@@ -24,6 +24,7 @@ import {
 import { Skill } from '../types/skill';
 import StarRatingWidget from './StarRatingWidget';
 import SecurityScanModal from './SecurityScanModal';
+import GitHubConnect from './GitHubConnect';
 import useEscapeKey from '../hooks/useEscapeKey';
 
 /**
@@ -129,6 +130,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
   const [showDetails, setShowDetails] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [skillMdContent, setSkillMdContent] = useState<string | null>(null);
+  const [contentFetchFailed, setContentFetchFailed] = useState(false);
 
   useEscapeKey(() => setShowDetails(false), showDetails);
   const [loadingToolCheck, setLoadingToolCheck] = useState(false);
@@ -204,6 +206,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
     setShowDetails(true);
     setLoadingDetails(true);
     setSkillMdContent(null);
+    setContentFetchFailed(false);
 
     try {
       // Fetch SKILL.md content via backend proxy to avoid CORS issues
@@ -215,6 +218,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
       setSkillMdContent(response.data.content);
     } catch (error: any) {
       console.error('Failed to fetch SKILL.md content:', error);
+      setContentFetchFailed(true);
       if (onShowToast) {
         onShowToast(
           error.response?.data?.detail || 'Failed to load SKILL.md content',
@@ -731,6 +735,14 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
             ) : (
               <div className="text-center py-12 text-gray-500">
                 <p>Could not load SKILL.md content.</p>
+                {contentFetchFailed && (
+                  <div className="mt-3 max-w-sm mx-auto">
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                      This may be a private repository. Connect your GitHub account to access it.
+                    </p>
+                    <GitHubConnect compact onShowToast={onShowToast} />
+                  </div>
+                )}
                 <p className="mt-2 text-sm">
                   Try visiting the{' '}
                   <a

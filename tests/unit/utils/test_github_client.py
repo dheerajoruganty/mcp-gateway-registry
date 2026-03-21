@@ -221,6 +221,84 @@ class TestGetGithubAuthHeaders:
         headers = await get_github_auth_headers()
         assert headers == {}
 
+    @pytest.mark.asyncio
+    @patch("registry.utils.github_client.settings")
+    async def test_user_token_takes_priority_over_pat(self, mock_settings):
+        """User OAuth token should take priority over PAT."""
+        mock_settings.github_pat = "ghp_server_pat"
+        mock_settings.github_app_id = ""
+        mock_settings.github_app_installation_id = ""
+        mock_settings.github_app_private_key = ""
+
+        headers = await get_github_auth_headers(user_token="gho_user_token")
+        assert headers == {"Authorization": "token gho_user_token"}
+
+    @pytest.mark.asyncio
+    @patch("registry.utils.github_client._get_cached_installation_token", new_callable=AsyncMock)
+    @patch("registry.utils.github_client.settings")
+    async def test_user_token_takes_priority_over_app(self, mock_settings, mock_get_token):
+        """User OAuth token should take priority over GitHub App credentials."""
+        mock_settings.github_app_id = "12345"
+        mock_settings.github_app_installation_id = "67890"
+        mock_settings.github_app_private_key = "-----BEGIN RSA PRIVATE KEY-----"
+        mock_settings.github_pat = ""
+
+        mock_get_token.return_value = "ghs_app_token"
+
+        headers = await get_github_auth_headers(user_token="gho_user_token")
+        assert headers == {"Authorization": "token gho_user_token"}
+        # Should not call the app token fetch at all
+        mock_get_token.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_get_github_auth_headers_with_user_token(self):
+        """User token should produce proper Authorization header."""
+        headers = await get_github_auth_headers(user_token="gho_abc123")
+        assert headers == {"Authorization": "token gho_abc123"}
+
+
+# ---------------------------------------------------------------------------
+# User token with get_authenticated_client
+# ---------------------------------------------------------------------------
+
+
+class TestUserTokenWithClient:
+    """Tests for user_token parameter in get_authenticated_client."""
+
+    @pytest.mark.asyncio
+    @patch("registry.utils.github_client.get_github_auth_headers", new_callable=AsyncMock)
+    async def test_user_token_passed_to_auth_headers(self, mock_auth_headers):
+        """User token should be forwarded to get_github_auth_headers."""
+        mock_auth_headers.return_value = {"Authorization": "token gho_user"}
+
+        client = await get_authenticated_client(
+            "https://raw.githubusercontent.com/org/repo/main/SKILL.md",
+            user_token="gho_user",
+        )
+
+        try:
+            assert client.headers.get("authorization") == "token gho_user"
+        finally:
+            await client.aclose()
+
+        mock_auth_headers.assert_awaited_once_with(user_token="gho_user")
+
+    @pytest.mark.asyncio
+    @patch("registry.utils.github_client.get_github_auth_headers", new_callable=AsyncMock)
+    async def test_user_token_not_applied_to_non_github_urls(self, mock_auth_headers):
+        """User token should not be applied to non-GitHub URLs."""
+        client = await get_authenticated_client(
+            "https://gitlab.com/org/repo/SKILL.md",
+            user_token="gho_user_token",
+        )
+
+        try:
+            assert "authorization" not in client.headers
+        finally:
+            await client.aclose()
+
+        mock_auth_headers.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # Token caching tests
@@ -381,7 +459,7 @@ class TestSkillServiceGitHubIntegration:
         result = await _validate_skill_md_url(url)
 
         assert result["valid"] is True
-        mock_get_client.assert_awaited_once_with(url)
+        mock_get_client.assert_awaited_once_with(url, user_token=None)
 
     @pytest.mark.asyncio
     @patch("registry.services.skill_service._is_safe_url", return_value=True)
@@ -407,7 +485,7 @@ class TestSkillServiceGitHubIntegration:
         result = await _validate_skill_md_url(url)
 
         assert result["valid"] is True
-        mock_get_client.assert_awaited_once_with(url)
+        mock_get_client.assert_awaited_once_with(url, user_token=None)
 
     @pytest.mark.asyncio
     @patch("registry.services.skill_service._is_safe_url", return_value=True)
@@ -434,7 +512,7 @@ class TestSkillServiceGitHubIntegration:
         result = await _check_skill_health(url)
 
         assert result["healthy"] is True
-        mock_get_client.assert_awaited_once_with(url)
+        mock_get_client.assert_awaited_once_with(url, user_token=None)
 
     @pytest.mark.asyncio
     @patch("registry.services.skill_service._is_safe_url", return_value=True)
@@ -471,7 +549,8 @@ class TestSkillServiceGitHubIntegration:
 
         assert result["name"] == "Test Skill"
         mock_get_client.assert_awaited_once_with(
-            "https://raw.githubusercontent.com/org/repo/main/SKILL.md"
+            "https://raw.githubusercontent.com/org/repo/main/SKILL.md",
+            user_token=None,
         )
 
 
@@ -488,8 +567,10 @@ class TestSkillRoutesGitHubIntegration:
     @patch("registry.api.skill_routes._user_can_access_skill", return_value=True)
     @patch("registry.utils.github_client.get_authenticated_client", new_callable=AsyncMock)
     @patch("registry.api.skill_routes.get_skill_service")
+    @patch("registry.api.skill_routes.get_github_token_from_request", return_value=None)
     async def test_get_skill_content_uses_auth_for_github(
         self,
+        mock_get_token,
         mock_get_service,
         mock_get_client,
         mock_access,
@@ -522,13 +603,16 @@ class TestSkillRoutesGitHubIntegration:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_get_client.return_value = mock_client
 
+        mock_request = MagicMock()
         user_context = {"username": "testuser", "is_admin": False}
         result = await get_skill_content(
+            http_request=mock_request,
             user_context=user_context,
             skill_path="my-skill",
         )
 
         assert result["content"] == "# My Skill Content"
         mock_get_client.assert_awaited_once_with(
-            "https://raw.githubusercontent.com/org/repo/main/SKILL.md"
+            "https://raw.githubusercontent.com/org/repo/main/SKILL.md",
+            user_token=None,
         )

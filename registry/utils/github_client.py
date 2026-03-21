@@ -161,17 +161,24 @@ async def _get_cached_installation_token() -> str:
     return token
 
 
-async def get_github_auth_headers() -> dict[str, str]:
+async def get_github_auth_headers(user_token: str | None = None) -> dict[str, str]:
     """Get authentication headers for GitHub API requests.
 
     Authentication priority:
-    1. GitHub App (if app_id, installation_id, and private_key are set)
-    2. Personal Access Token (if github_pat is set)
-    3. Empty dict (unauthenticated fallback)
+    1. User OAuth token (if provided via SSO)
+    2. GitHub App (if app_id, installation_id, and private_key are set)
+    3. Personal Access Token (if github_pat is set)
+    4. Empty dict (unauthenticated fallback)
+
+    Args:
+        user_token: Optional user OAuth token from GitHub SSO.
 
     Returns:
         Dictionary of HTTP headers for authentication.
     """
+    if user_token:
+        logger.debug("Using user OAuth token for GitHub authentication")
+        return {"Authorization": f"token {user_token}"}
     if _has_github_app_credentials():
         try:
             token = await _get_cached_installation_token()
@@ -192,13 +199,17 @@ async def get_github_auth_headers() -> dict[str, str]:
     return {}
 
 
-async def get_authenticated_client(url: str) -> httpx.AsyncClient:
+async def get_authenticated_client(
+    url: str,
+    user_token: str | None = None,
+) -> httpx.AsyncClient:
     """Create an httpx.AsyncClient with GitHub auth headers if the URL is a GitHub domain.
 
     For non-GitHub URLs, returns a plain client with no extra headers.
 
     Args:
         url: The target URL to configure authentication for.
+        user_token: Optional user OAuth token from GitHub SSO.
 
     Returns:
         Configured httpx.AsyncClient instance. Caller is responsible for closing it.
@@ -206,7 +217,7 @@ async def get_authenticated_client(url: str) -> httpx.AsyncClient:
     headers: dict[str, str] = {}
 
     if _is_github_url(url):
-        headers = await get_github_auth_headers()
+        headers = await get_github_auth_headers(user_token=user_token)
         if headers:
             logger.debug("Created authenticated GitHub client for %s", url)
         else:
