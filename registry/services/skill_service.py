@@ -38,6 +38,7 @@ from ..schemas.skill_models import (
     VisibilityEnum,
 )
 from ..utils.path_utils import normalize_skill_path
+from ..utils.github_client import get_authenticated_client
 from ..utils.url_utils import translate_skill_url
 
 # Configure logging
@@ -182,7 +183,7 @@ async def _validate_skill_md_url(
         )
 
     try:
-        async with httpx.AsyncClient() as client:
+        async with await get_authenticated_client(str(url)) as client:
             response = await client.get(
                 str(url), follow_redirects=True, timeout=URL_VALIDATION_TIMEOUT
             )
@@ -255,7 +256,7 @@ async def _parse_skill_md_content(
         )
 
     try:
-        async with httpx.AsyncClient() as client:
+        async with await get_authenticated_client(raw_url_str) as client:
             # Fetch from raw URL
             response = await client.get(
                 raw_url_str, follow_redirects=True, timeout=URL_VALIDATION_TIMEOUT
@@ -424,7 +425,7 @@ async def _check_skill_health(
         }
 
     try:
-        async with httpx.AsyncClient() as client:
+        async with await get_authenticated_client(str(url)) as client:
             response = await client.head(
                 str(url), follow_redirects=True, timeout=URL_VALIDATION_TIMEOUT
             )

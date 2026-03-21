@@ -312,7 +312,9 @@ async def get_skill_content(
     try:
         import httpx
 
-        async with httpx.AsyncClient() as client:
+        from ..utils.github_client import get_authenticated_client
+
+        async with await get_authenticated_client(str(raw_url)) as client:
             response = await client.get(str(raw_url), follow_redirects=True, timeout=30.0)
 
             # SSRF protection: validate final URL after redirects

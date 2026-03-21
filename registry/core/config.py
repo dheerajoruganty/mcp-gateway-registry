@@ -107,6 +107,12 @@ class Settings(BaseSettings):
     agent_security_add_pending_tag: bool = True
     a2a_scanner_llm_api_key: str = ""  # Optional Azure OpenAI API key for LLM-based analysis
 
+    # GitHub authentication for private repo SKILL.md fetching
+    github_pat: str = ""  # Personal Access Token for GitHub API access
+    github_app_id: str = ""  # GitHub App ID for installation-based auth
+    github_app_installation_id: str = ""  # GitHub App Installation ID
+    github_app_private_key: str = ""  # GitHub App private key (PEM format)
+
     # Skill security scanning settings (AI Agent Skills)
     skill_security_scan_enabled: bool = True
     skill_security_scan_on_registration: bool = True
